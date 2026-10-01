@@ -14,6 +14,21 @@ Também é a hora de adicionar o `react-router`, como o plano do Login já previ
 > - Os dois símbolos de fundo usam as mesmas SVGs (`public/symbol/`): no Figma eles têm a mesma forma e diferem só por 1px na altura.
 > - No `LoginForm` e no `SignUpForm`, a linha "Lembrar-me" fica a 8px do campo de senha, como no Figma (antes eram 16px).
 
+> **Atualização (2026-10-01), tokens no lugar de valores arbitrários:** revisamos as classes e trocamos os valores arbitrários pelos tokens mais próximos, conforme a regra nova do `CLAUDE.md`. As medidas do Figma na tabela abaixo continuam como referência, mas o código usa:
+>
+> | Medida do Figma | Antes | Agora |
+> |---|---|---|
+> | Banner de 407px e coluna de 410px | `lg:w-[407px]`, `lg:w-[410px]` | `lg:w-102` (408px) nos dois |
+> | Card no tablet (648px) e no desktop (996px) | `max-w-[648px]`, `lg:max-w-[996px]` | `max-w-2xl` (672px), `lg:max-w-5xl` (1024px) |
+> | Padding horizontal do card (78px) | `lg:px-[78px]` | removido; vale o `md:px-20` (80px) |
+> | Símbolos de fundo: 407px, a 7,4% da borda | `max-w-[407px]`, `left-[7.4%]`/`right-[7.4%]` | `max-w-sm` (384px), `left-1/12`/`right-1/12` (8,3%) |
+> | Proporções do banner | `aspect-[4/5]`, `aspect-[7/6]` | `aspect-4/5`, `aspect-7/6` (sintaxe nativa) |
+> | Recorte do banner do Cadastro (60%) | `object-[60%_50%]` | `object-center-right`, utilitário criado com `@utility` em `src/index.css` |
+> | Logo de 127,258px | `w-[127.258px]` | `w-32` (128px) |
+> | Partes do `Logo` e do `BrandSymbol` | `<span>` com `inset-[x%_y%_...]` | um `<svg viewBox>` com `<image x y width height>` nas coordenadas do Figma. Arredondar os percentuais desalinharia o desenho. |
+>
+> Cores: o vermelho de erro (`red-400`) virou o token `--color-danger` (ver `PaginaLogin.md`, passo 2).
+
 ### Diferenças entre o implementado e o Figma (valem para Login e Cadastro)
 | Item | Hoje | Figma |
 |---|---|---|
@@ -43,6 +58,7 @@ Também é a hora de adicionar o `react-router`, como o plano do Login já previ
 ## 2. Tema (`src/index.css`)
 - Criar tokens de tipografia com os nomes do guia de estilos do Figma, com `--text-*` e line-height 1.5: `--text-subtitle: 1.9375rem` (31px), `--text-paragraph-lg: 1.375rem` (22px), `--text-paragraph-sm: 0.9375rem` (15px), `--text-label: 0.78125rem` (12.5px). Os 18px continuam como `text-lg`.
 - As cores não mudam. `#888` (`input`), `#171D1F` (`surface`) e `#132E35` (`ink`) já existem.
+- Tamanhos do Figma sem token exato usam o passo mais próximo da escala do Tailwind, sem valores arbitrários (ver a atualização de 2026-10-01 acima).
 
 ## 3. Assets (`public/`)
 Baixados uma única vez pelas URLs de asset do Figma MCP:

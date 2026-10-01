@@ -9,6 +9,8 @@ Assets em `public/`, usados por URL absoluta (`/Banner_login_page.png`, `/Github
 
 > **Atualização (2026-09-30), troca das imagens sociais:** a primeira versão usava `Github.png`/`Gmail.png`. Essas imagens tinham só o nome escrito, sem o logo, e o resultado ficou ruim. Trocamos por `Github-img.png`/`Gmail-img.png`, colocamos o nome em texto visível abaixo do logo e apagamos os arquivos antigos de `public/`.
 
+> **Atualização (2026-10-01), tokens no lugar de valores arbitrários:** as classes não usam mais valores arbitrários (`w-[...]`, `bg-[#...]`). Os tamanhos vão para o passo mais próximo da escala do Tailwind e as cores só usam nomes da paleta do projeto (regra registrada no `CLAUDE.md`). Nesta página, o erro do `FormField` e o contorno do `Input` inválido trocaram `red-400` pelo novo token `--color-danger` (passo 2). As mudanças de layout estão no plano `PaginaCadastro.md`.
+
 ## 1. Test runner (exigido pelo CLAUDE.md antes de criar componentes)
 - devDeps em `apps/web`: `vitest`, `jsdom`, `@testing-library/react`, `@testing-library/user-event`, `@testing-library/jest-dom`.
 - `vite.config.ts`: bloco `test` com `environment: 'jsdom'`, `globals: true`, `setupFiles: './src/test/setup.ts'` (esse arquivo importa `@testing-library/jest-dom/vitest`). Usar `/// <reference types="vitest/config" />`.
@@ -16,7 +18,7 @@ Assets em `public/`, usados por URL absoluta (`/Banner_login_page.png`, `/Github
 - Scripts: em `apps/web/package.json`, `"test": "vitest run"` e `"test:watch": "vitest"`. Na raiz, `"test:web": "pnpm --filter web test"`.
 
 ## 2. Tema (`src/index.css`, bloco `@theme`)
-- Cores: `--color-page: #00090E`, `--color-surface: #171D1F`, `--color-primary: #81FE88`, `--color-input: #888888`, `--color-offwhite: #E1E1E1`, `--color-muted: #BCBCBC`, `--color-ink: #132E35` (texto do botão verde).
+- Cores: `--color-page: #00090E`, `--color-surface: #171D1F`, `--color-primary: #81FE88`, `--color-input: #888888`, `--color-offwhite: #E1E1E1`, `--color-muted: #BCBCBC`, `--color-ink: #132E35` (texto do botão verde), `--color-danger: var(--color-red-400)` (mensagens de erro; adicionado em 2026-10-01). O `@theme` estende a paleta padrão, mas os componentes usam só esses nomes, nunca hex nem cores padrão (`red-400`) direto nas classes.
 - Fonte `--font-sans: "Prompt", sans-serif`, carregada via Google Fonts no `index.html`. Também trocar `lang="pt-BR"` e o `<title>`.
 - Base: `body` com `bg-page text-offwhite font-sans`.
 

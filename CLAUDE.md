@@ -60,6 +60,12 @@ Rules:
 
 - Style with Tailwind utility classes in JSX. Don't add new `.css` files or CSS modules per component; `src/index.css` only holds the Tailwind import and global base styles.
 - Put design tokens (colors, fonts, spacing) in the Tailwind theme, not as hard-coded values scattered through components.
+- **No arbitrary values in classes.** Don't write `w-[407px]`, `text-[15px]`, `bg-[#81FE88]` or similar. Map every value from the design to a token:
+  - **Sizes** (width, height, spacing, max-width, inset, radius): use the nearest step of Tailwind's scale instead of the exact pixel value. The spacing scale is 4px per step (`w-102` = 408px, `size-4.5` = 18px), container sizes cover large widths (`max-w-sm` = 384px, `max-w-2xl` = 672px, `max-w-5xl` = 1024px), fractions cover percentages (`left-1/12`, `w-1/4`) and ratios use the native syntax (`aspect-4/5`). A difference of a few pixels from the Figma value is acceptable.
+  - **Colors**: only project palette names (`bg-surface`, `text-primary`, `text-danger`). Never hex values in classes, and never Tailwind's default colors (`red-400`, `gray-500`) directly. For a new color, extend the palette with a `--color-<name>` token in the `@theme` block of `src/index.css` (it can point at a default color, e.g. `--color-danger: var(--color-red-400)`). Name tokens by role (`danger`, `surface`), not by hue.
+  - **Typography**: Figma style-guide sizes live as `--text-*` tokens (`text-subtitle`, `text-paragraph-sm`, `text-label`); use them or the default scale (`text-lg`).
+  - **Anything else** with no token (for example an `object-position`): add a named utility with `@utility` in `src/index.css`.
+  - Composing an image from several Figma SVG parts: place them with coordinates inside one `<svg viewBox>` (`<image x y width height>`) instead of percentage `inset-[...]` classes.
 - Component variants (size, color, state) are driven by props that map to class sets. Don't make the caller pass raw class strings for that.
 - Setup: Tailwind v4 via the `@tailwindcss/vite` plugin in `vite.config.ts`. There is no `tailwind.config.js`; v4 is configured in CSS, so theme tokens go in an `@theme` block in `src/index.css`. The VS Code extension `bradlc.vscode-tailwindcss` is recommended in `.vscode/extensions.json`.
 
@@ -127,6 +133,7 @@ Every execution plan for this project lives in `plan/` at the repo root, one Mar
 - Once a plan is approved, save it in `plan/` before implementing it.
 - If the scope changes during or after implementation (a swapped asset, a changed component), update the plan file with a dated note explaining what changed and why. Don't create a new file for the change.
 - Plans follow the structure of `plan/PaginaLogin.md`: context, implementation steps, tests, commits and verification.
+- When a plan lists measurements from the design, it also names the Tailwind token each one maps to (for example "407px → `w-102`", "`#81FE88` → `primary`"), following the styling rules above. New colors go in the plan's theme step as `--color-*` tokens.
 
 ## Git: Conventional Commits
 
