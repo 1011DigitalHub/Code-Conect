@@ -4,8 +4,8 @@ import { SocialLogin } from './SocialLogin'
 import { expectNoA11yViolations } from '../../../test/axe'
 
 const providers = [
-  { id: 'github', name: 'Github', icon: '/Github-img.png' },
-  { id: 'google', name: 'Gmail', icon: '/Gmail-img.png' },
+  { id: 'github', name: 'Github', icon: '/icons/github.svg' },
+  { id: 'google', name: 'Gmail', icon: '/icons/google.svg' },
 ]
 
 describe('SocialLogin', () => {

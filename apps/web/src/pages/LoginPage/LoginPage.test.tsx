@@ -20,11 +20,11 @@ describe('LoginPage', () => {
     expect(screen.getByRole('button', { name: 'Gmail' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Github' }).querySelector('img')).toHaveAttribute(
       'src',
-      '/Github-img.png',
+      '/icons/github.svg',
     )
     expect(screen.getByRole('button', { name: 'Gmail' }).querySelector('img')).toHaveAttribute(
       'src',
-      '/Gmail-img.png',
+      '/icons/google.svg',
     )
     expect(screen.getByRole('link', { name: 'Crie seu cadastro!' })).toHaveAttribute(
       'href',
