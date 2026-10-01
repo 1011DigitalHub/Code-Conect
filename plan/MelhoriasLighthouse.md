@@ -147,20 +147,22 @@ Criar a seção logo depois de "Accessibility: WCAG 2.2 level AA", no mesmo tom 
   - "Improve image delivery" e "Render-blocking requests" deixam de aparecer;
   - performance fica bem acima de 60.
 
-### Resultado (preencher após medir no Chrome)
+### Resultado
 | Categoria / métrica | Login antes | Login depois | Cadastro antes | Cadastro depois |
 |---|---|---|---|---|
-| Performance | 61 | | 60 | |
-| Acessibilidade | 100 | | 100 | |
-| Boas práticas | 100 | | 100 | |
-| SEO | 83 | | 83 | |
-| Agentic browsing | 2/3 | | 2/3 | |
-| LCP | 5,0 s* | | 6,1 s* | |
-| CLS | 0 | | 0 | |
-| TBT | 0 ms | | 80 ms* | |
+| Performance | 61 | 100 | 60 | 100 |
+| Acessibilidade | 100 | 100 | 100 | 100 |
+| Boas práticas | 100 | 100 | 100 | 100 |
+| SEO | 83 | 100 | 83 | 100 |
+| Agentic browsing | 2/3 | n/a† | 2/3 | n/a† |
+| LCP | 5,0 s* | 0,6 s | 6,1 s* | 0,6 s |
+| CLS | 0 | 0 | 0 | 0 |
+| TBT | 0 ms | 0 ms | 80 ms* | 0 ms |
 
-\* Medido no `vite dev`, com extensão ativa.
+\* "Antes" foi medido no `vite dev`, com extensão ativa. "Depois" é o run representativo do Lighthouse CI no GitHub Actions: run 36913921865, commit `42078f5`, Lighthouse 12.6.1, preset desktop, 3 execuções por rota.
 
-> **Atualização (2026-10-01), Lighthouse no GitHub Actions:** a medição passou a rodar no CI, já que o Lighthouse CLI trava nesta máquina Windows. O workflow `.github/workflows/lighthouse.yml` (pnpm 12, Node 22) gera o build, serve com `vite preview` e roda o `@lhci/cli` 0.15.1 nas rotas de `e2e/routes.ts`: três execuções por rota, com preset desktop. O `apps/web/lighthouserc.cjs` reprova o job se alguma meta do CLAUDE.md não for atingida. O resumo do job mostra a tabela (gerada por `apps/web/lighthouse-summary.mjs`), e os relatórios ficam no artefato `lighthouse-reports`. O LHCI usa o Lighthouse 12, que não tem a categoria Agentic Browsing; o `e2e/seo.e2e.ts` cobre o `llms.txt`. A tabela acima pode ser preenchida com o resultado do primeiro run no CI.
+† O LHCI usa o Lighthouse 12, que não tem a categoria Agentic Browsing. O `llms.txt` é conferido pelo `e2e/seo.e2e.ts`.
+
+> **Atualização (2026-10-01), Lighthouse no GitHub Actions:** a medição passou a rodar no CI, já que o Lighthouse CLI trava nesta máquina Windows. O workflow `.github/workflows/lighthouse.yml` (pnpm 12, Node 22) gera o build, serve com `vite preview` e roda o `@lhci/cli` 0.15.1 nas rotas de `e2e/routes.ts`: três execuções por rota, com preset desktop. O `apps/web/lighthouserc.cjs` reprova o job se alguma meta do CLAUDE.md não for atingida. O resumo do job mostra a tabela (gerada por `apps/web/lighthouse-summary.mjs`), e os relatórios ficam no artefato `lighthouse-reports`. O LHCI usa o Lighthouse 12, que não tem a categoria Agentic Browsing; o `e2e/seo.e2e.ts` cobre o `llms.txt`. A coluna "depois" da tabela acima vem do CI.
 
 > **Atualização (2026-10-01), ícones sociais em SVG:** o primeiro run no CI (run 36912932811) deu 96 em Boas práticas nas duas rotas. A auditoria `image-size-responsive` reprovou o `Gmail-img.png`, que tem 28×28 e é exibido em 32×32. Os dois PNGs (`Gmail-img.png` e `Github-img.png`) foram trocados por `public/icons/google.svg` e `public/icons/github.svg`, como o CLAUDE.md pede para ícones pequenos. O `<img>` do `SocialButton` ganhou `width`/`height`. As outras métricas desse run já batiam as metas: Performance 99–100, Acessibilidade 100, SEO 100; LCP de 0,5 a 0,8 s; CLS de 0 a 0,001; TBT 0 ms.
