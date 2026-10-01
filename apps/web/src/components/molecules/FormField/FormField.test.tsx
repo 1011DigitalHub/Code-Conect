@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { FormField } from './FormField'
+import { expectNoA11yViolations } from '../../../test/axe'
 
 describe('FormField', () => {
   it('associates the label with the input', async () => {
@@ -20,5 +21,11 @@ describe('FormField', () => {
     expect(screen.getByLabelText('Email ou usuário')).toHaveAccessibleDescription(
       'Campo obrigatório',
     )
+  })
+
+  it('has no WCAG 2.2 AA violations', async () => {
+    const { container } = render(<FormField id="login" label="Email ou usuário" error="Campo obrigatório" />)
+
+    await expectNoA11yViolations(container)
   })
 })

@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SocialLogin } from './SocialLogin'
+import { expectNoA11yViolations } from '../../../test/axe'
 
 const providers = [
   { id: 'github', name: 'Github', icon: '/Github-img.png' },
@@ -23,5 +24,11 @@ describe('SocialLogin', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Github' }))
 
     expect(onSelect).toHaveBeenCalledWith('github')
+  })
+
+  it('has no WCAG 2.2 AA violations', async () => {
+    const { container } = render(<SocialLogin providers={providers} onSelect={vi.fn()} />)
+
+    await expectNoA11yViolations(container)
   })
 })

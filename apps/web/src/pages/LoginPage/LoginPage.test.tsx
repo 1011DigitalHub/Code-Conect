@@ -1,6 +1,7 @@
 import { screen } from '@testing-library/react'
 import { renderWithRouter } from '../../test/renderWithRouter'
 import { LoginPage } from './LoginPage'
+import { expectNoA11yViolations } from '../../test/axe'
 
 describe('LoginPage', () => {
   it('renders the login form, social providers and sign-up link', () => {
@@ -24,5 +25,11 @@ describe('LoginPage', () => {
       'href',
       '/cadastro',
     )
+  })
+
+  it('has no WCAG 2.2 AA violations', async () => {
+    const { container } = renderWithRouter(<LoginPage />)
+
+    await expectNoA11yViolations(container)
   })
 })

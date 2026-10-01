@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Button } from './Button'
+import { expectNoA11yViolations } from '../../../test/axe'
 
 describe('Button', () => {
   it('renders its label and calls onClick when clicked', async () => {
@@ -16,5 +17,11 @@ describe('Button', () => {
     render(<Button>Login</Button>)
 
     expect(screen.getByRole('button', { name: 'Login' })).toHaveAttribute('type', 'button')
+  })
+
+  it('has no WCAG 2.2 AA violations', async () => {
+    const { container } = render(<Button>Login</Button>)
+
+    await expectNoA11yViolations(container)
   })
 })

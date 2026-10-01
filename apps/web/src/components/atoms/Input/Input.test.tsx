@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Input } from './Input'
+import { expectNoA11yViolations } from '../../../test/axe'
 
 describe('Input', () => {
   it('accepts typed text', async () => {
@@ -16,5 +17,11 @@ describe('Input', () => {
     render(<Input aria-label="Email" invalid />)
 
     expect(screen.getByRole('textbox', { name: 'Email' })).toBeInvalid()
+  })
+
+  it('has no WCAG 2.2 AA violations', async () => {
+    const { container } = render(<Input aria-label="Email" invalid />)
+
+    await expectNoA11yViolations(container)
   })
 })

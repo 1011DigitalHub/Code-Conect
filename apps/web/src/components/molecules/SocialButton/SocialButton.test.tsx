@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SocialButton } from './SocialButton'
+import { expectNoA11yViolations } from '../../../test/axe'
 
 describe('SocialButton', () => {
   it('shows the provider name as visible text', () => {
@@ -25,5 +26,11 @@ describe('SocialButton', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Github' }))
 
     expect(onClick).toHaveBeenCalledTimes(1)
+  })
+
+  it('has no WCAG 2.2 AA violations', async () => {
+    const { container } = render(<SocialButton name="Github" icon="/Github-img.png" />)
+
+    await expectNoA11yViolations(container)
   })
 })

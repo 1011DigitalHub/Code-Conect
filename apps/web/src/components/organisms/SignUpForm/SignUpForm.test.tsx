@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SignUpForm } from './SignUpForm'
+import { expectNoA11yViolations } from '../../../test/axe'
 
 describe('SignUpForm', () => {
   it('submits the typed data and the remember option', async () => {
@@ -34,5 +35,11 @@ describe('SignUpForm', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Cadastrar' }))
 
     expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('has no WCAG 2.2 AA violations', async () => {
+    const { container } = render(<SignUpForm onSubmit={vi.fn()} />)
+
+    await expectNoA11yViolations(container)
   })
 })

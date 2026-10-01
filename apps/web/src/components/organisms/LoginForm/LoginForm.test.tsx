@@ -2,6 +2,7 @@ import { screen } from '@testing-library/react'
 import { renderWithRouter } from '../../../test/renderWithRouter'
 import userEvent from '@testing-library/user-event'
 import { LoginForm } from './LoginForm'
+import { expectNoA11yViolations } from '../../../test/axe'
 
 describe('LoginForm', () => {
   it('submits the typed credentials and the remember option', async () => {
@@ -36,5 +37,11 @@ describe('LoginForm', () => {
       'href',
       '/recuperar-senha',
     )
+  })
+
+  it('has no WCAG 2.2 AA violations', async () => {
+    const { container } = renderWithRouter(<LoginForm onSubmit={vi.fn()} forgotPasswordHref="/recuperar-senha" />)
+
+    await expectNoA11yViolations(container)
   })
 })

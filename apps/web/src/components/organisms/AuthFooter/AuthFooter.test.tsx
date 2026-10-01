@@ -1,6 +1,7 @@
 import { screen } from '@testing-library/react'
 import { renderWithRouter } from '../../../test/renderWithRouter'
 import { AuthFooter } from './AuthFooter'
+import { expectNoA11yViolations } from '../../../test/axe'
 
 describe('AuthFooter', () => {
   it('renders the question and a link to the other auth page', () => {
@@ -33,5 +34,18 @@ describe('AuthFooter', () => {
 
     expect(screen.getByText('Já tem conta?')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Faça seu login!' })).toHaveAttribute('href', '/login')
+  })
+
+  it('has no WCAG 2.2 AA violations', async () => {
+    const { container } = renderWithRouter(
+      <AuthFooter
+        question="Ainda não tem conta?"
+        linkLabel="Crie seu cadastro!"
+        href="/cadastro"
+        icon="clipboard"
+      />,
+    )
+
+    await expectNoA11yViolations(container)
   })
 })
