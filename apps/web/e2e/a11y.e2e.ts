@@ -1,11 +1,7 @@
 import { AxeBuilder } from '@axe-core/playwright'
 import { expect, test } from '@playwright/test'
 import { WCAG_AA_TAGS, formatViolations } from '../src/test/wcag.ts'
-
-const routes = [
-  { name: 'Login', path: '/login' },
-  { name: 'Cadastro', path: '/cadastro' },
-]
+import { routes } from './routes.ts'
 
 // WCAG 1.4.12 Text Spacing: the user overrides these values and nothing may be cut off.
 const TEXT_SPACING_CSS = `

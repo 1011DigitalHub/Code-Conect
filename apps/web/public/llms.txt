@@ -1,0 +1,8 @@
+# Code Connect
+
+> Comunidade para pessoas desenvolvedoras compartilharem projetos e trocarem conhecimento.
+
+## Páginas
+
+- [Login](/login): entrar na conta com email ou usuário e senha, ou com Github ou Gmail.
+- [Cadastro](/cadastro): criar uma conta com nome, email e senha.
