@@ -9,7 +9,7 @@ export function CheckboxField({ id, label, ...checkboxProps }: CheckboxFieldProp
   return (
     <div className="flex items-center gap-2">
       <Checkbox id={id} {...checkboxProps} />
-      <label htmlFor={id} className="cursor-pointer text-sm text-muted">
+      <label htmlFor={id} className="cursor-pointer text-paragraph-sm text-input">
         {label}
       </label>
     </div>

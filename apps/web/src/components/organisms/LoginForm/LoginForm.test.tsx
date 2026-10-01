@@ -1,11 +1,12 @@
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
+import { renderWithRouter } from '../../../test/renderWithRouter'
 import userEvent from '@testing-library/user-event'
 import { LoginForm } from './LoginForm'
 
 describe('LoginForm', () => {
   it('submits the typed credentials and the remember option', async () => {
     const onSubmit = vi.fn()
-    render(<LoginForm onSubmit={onSubmit} forgotPasswordHref="/recuperar-senha" />)
+    renderWithRouter(<LoginForm onSubmit={onSubmit} forgotPasswordHref="/recuperar-senha" />)
 
     await userEvent.type(screen.getByLabelText('Email ou usuário'), 'usuario123')
     await userEvent.type(screen.getByLabelText('Senha'), 'segredo')
@@ -21,7 +22,7 @@ describe('LoginForm', () => {
 
   it('does not submit while required fields are empty', async () => {
     const onSubmit = vi.fn()
-    render(<LoginForm onSubmit={onSubmit} forgotPasswordHref="/recuperar-senha" />)
+    renderWithRouter(<LoginForm onSubmit={onSubmit} forgotPasswordHref="/recuperar-senha" />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Login' }))
 
@@ -29,7 +30,7 @@ describe('LoginForm', () => {
   })
 
   it('links to password recovery', () => {
-    render(<LoginForm onSubmit={vi.fn()} forgotPasswordHref="/recuperar-senha" />)
+    renderWithRouter(<LoginForm onSubmit={vi.fn()} forgotPasswordHref="/recuperar-senha" />)
 
     expect(screen.getByRole('link', { name: 'Esqueci a senha' })).toHaveAttribute(
       'href',

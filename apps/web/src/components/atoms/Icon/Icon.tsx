@@ -1,6 +1,13 @@
 import type { ReactNode } from 'react'
 
-export type IconName = 'arrow-right' | 'clipboard'
+export type IconName = 'arrow-right' | 'clipboard' | 'login'
+
+type IconSize = 'sm' | 'md'
+
+const sizeClasses: Record<IconSize, string> = {
+  sm: 'size-4.5',
+  md: 'size-6',
+}
 
 const paths: Record<IconName, ReactNode> = {
   'arrow-right': (
@@ -19,15 +26,22 @@ const paths: Record<IconName, ReactNode> = {
       d="M9 2a1 1 0 0 0-1 1v1H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2V3a1 1 0 0 0-1-1H9Zm1 2h4v2h-4V4ZM8 10h8v2H8v-2Zm0 4h8v2H8v-2Z"
     />
   ),
+  login: (
+    <path
+      fill="currentColor"
+      d="M11 7 9.6 8.4l2.6 2.6H2v2h10.2l-2.6 2.6L11 17l5-5-5-5Zm9 12h-8v2h8c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-8v2h8v14Z"
+    />
+  ),
 }
 
 export type IconProps = {
   name: IconName
+  size?: IconSize
 }
 
-export function Icon({ name }: IconProps) {
+export function Icon({ name, size = 'md' }: IconProps) {
   return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className="size-5 shrink-0">
+    <svg aria-hidden="true" viewBox="0 0 24 24" className={`shrink-0 ${sizeClasses[size]}`}>
       {paths[name]}
     </svg>
   )

@@ -3,8 +3,8 @@ import type { ReactNode } from 'react'
 type HeadingLevel = 1 | 2
 
 const levelClasses: Record<HeadingLevel, string> = {
-  1: 'text-4xl font-semibold',
-  2: 'text-2xl font-normal',
+  1: 'text-subtitle font-semibold',
+  2: 'text-paragraph-lg font-normal',
 }
 
 export type HeadingProps = {

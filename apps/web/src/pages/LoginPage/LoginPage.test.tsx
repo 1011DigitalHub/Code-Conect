@@ -1,9 +1,10 @@
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
+import { renderWithRouter } from '../../test/renderWithRouter'
 import { LoginPage } from './LoginPage'
 
 describe('LoginPage', () => {
   it('renders the login form, social providers and sign-up link', () => {
-    render(<LoginPage />)
+    renderWithRouter(<LoginPage />)
 
     expect(screen.getByRole('heading', { level: 1, name: 'Login' })).toBeInTheDocument()
     expect(screen.getByLabelText('Email ou usuário')).toBeInTheDocument()

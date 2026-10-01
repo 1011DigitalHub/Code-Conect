@@ -1,9 +1,10 @@
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
+import { renderWithRouter } from '../../../test/renderWithRouter'
 import { AuthFooter } from './AuthFooter'
 
 describe('AuthFooter', () => {
   it('renders the question and a link to the other auth page', () => {
-    render(
+    renderWithRouter(
       <AuthFooter
         question="Ainda não tem conta?"
         linkLabel="Crie seu cadastro!"

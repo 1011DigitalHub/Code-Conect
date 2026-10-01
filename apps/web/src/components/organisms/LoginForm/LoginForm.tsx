@@ -61,8 +61,8 @@ export function LoginForm({ onSubmit, forgotPasswordHref }: LoginFormProps) {
         />
         <TextLink href={forgotPasswordHref}>Esqueci a senha</TextLink>
       </div>
-      <div className="mt-6">
-        <Button type="submit" fullWidth icon={<Icon name="arrow-right" />}>
+      <div className="mt-4">
+        <Button type="submit" fullWidth icon={<Icon name="arrow-right" size="sm" />}>
           Login
         </Button>
       </div>
