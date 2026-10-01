@@ -42,9 +42,15 @@ export function AuthTemplate({
 
       <div className="relative flex w-full max-w-2xl flex-col gap-8 rounded-4xl border border-page bg-surface px-4 py-8 md:px-20 md:py-14 lg:max-w-5xl lg:flex-row lg:justify-between lg:gap-4">
         <div className="relative aspect-4/5 overflow-hidden sm:aspect-7/6 lg:aspect-auto lg:w-102">
+          {/* The banner is the LCP element: fetch it first. Banners are exported at 1344x896;
+              width/height give the intrinsic ratio, the classes set the rendered size. */}
           <img
             src={bannerSrc}
             alt={bannerAlt}
+            width={1344}
+            height={896}
+            fetchPriority="high"
+            decoding="async"
             className={`absolute inset-0 size-full object-cover ${bannerFocusClasses[bannerFocus]}`}
           />
           <div className="absolute inset-x-0 bottom-8 flex justify-center">
