@@ -21,7 +21,8 @@ pnpm dev               # runs web (vite) and api (nest start --watch) together
 pnpm dev:web | pnpm dev:api
 pnpm build             # builds all apps (web: tsc -b && vite build; api: nest build)
 pnpm lint              # oxlint in every app
-pnpm test:web          # web component tests (*.test.tsx)
+pnpm test:web          # web component tests (*.test.tsx), including axe checks
+pnpm test:web:a11y     # web accessibility suite in a real browser (Playwright, e2e/*.e2e.ts)
 pnpm test:api          # api unit tests (*.spec.ts)
 pnpm test:api:e2e      # api e2e tests (test/*.e2e-spec.ts, separate vitest config)
 pnpm start:api         # node dist/main (needs a build first)
@@ -73,7 +74,51 @@ Rules:
 
 - **Every component needs a test** covering its essential use: it renders with the required props, and its main interaction or behavior works (click calls the callback, input updates, conditional content shows). Don't create a component without its `*.test.tsx`.
 - Test through what the user sees (roles, labels, text), not implementation details or Tailwind classes.
+- Every component test file also has a `has no WCAG 2.2 AA violations` case that renders the component and calls `expectNoA11yViolations(container)` from `src/test/axe.ts` (see Accessibility below).
 - The web app uses Vitest with `jsdom`, `@testing-library/react`, `@testing-library/user-event` and `@testing-library/jest-dom` (configured in `vite.config.ts`, setup file `src/test/setup.ts`, `globals: true`). Run with `pnpm test:web` or `pnpm web test:watch`.
+
+### Accessibility: WCAG 2.2 level AA
+
+The web app must conform to **WCAG 2.2 level AA** (which includes level A). A change that breaks an AA criterion isn't done, even if the feature works.
+
+**Automated tests (two layers, both required):**
+
+1. **Components (Vitest + `axe-core`)**: `expectNoA11yViolations(container)` in `src/test/axe.ts` runs the axe rules tagged `wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa`, `wcag22a` and `wcag22aa` (list in `src/test/wcag.ts`). It fails with one line per violation. jsdom has no layout, so contrast and target size are turned off here and checked in layer 2.
+2. **Pages in a real browser (Playwright + `@axe-core/playwright`)**: `apps/web/e2e/a11y.e2e.ts` runs against the production build (`vite build` + `vite preview`) at three widths: desktop 1440px, tablet 768px and mobile 320px. For each route in its `routes` list it checks:
+   - the full axe AA rule set, including color contrast and target size;
+   - 1.4.10 Reflow: no horizontal scrolling;
+   - 1.4.12 Text Spacing: no text cut off when spacing is increased;
+   - 2.4.2 Page Titled: a title in the form `<Page> | Code Connect`;
+   - 2.1.1 Keyboard and 2.4.7 Focus Visible: every control can be reached with Tab and shows a focus indicator.
+
+   **Every new route must be added to the `routes` list.**
+
+**Rules when building UI:**
+- Semantic HTML first: native `button`, `a`, `input` and `label`, plus headings in order. Use ARIA only when no native element fits.
+- Every control has an accessible name (visible label, `aria-label` only when there is no visible text). Decorative images use `alt=""` or `aria-hidden="true"`; informative ones get a descriptive `alt`.
+- Contrast:
+  - At least **4.5:1** for text and **3:1** for large text (≥24px, or ≥18.66px bold) and for UI parts (borders, icons, focus rings).
+  - Check a new color token against every background it is used on before adding it to `@theme`.
+- Visible keyboard focus on every interactive element (`focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary`). Never remove the outline without a replacement.
+- Targets of at least 24×24px (2.5.8).
+- Each route sets its own `document.title` as `<Page> | Code Connect`.
+- Forms:
+  - Every field has a `<label>`, plus `autoComplete` for personal data (1.3.5).
+  - Errors are shown as text (`role="alert"`) and linked to the field with `aria-describedby` and `aria-invalid`.
+  - Don't rely on color alone to signal an error.
+- Content works at 320px wide and at 200% zoom. Never block zoom in the viewport meta tag.
+
+**Manual checks:** automated tests cover only part of WCAG. Before closing a feature, also:
+- use the page with the keyboard only;
+- test with a screen reader (NVDA on Windows);
+- check it at 200% browser zoom.
+
+Each plan's verification step lists these checks.
+
+**Playwright gotchas on this machine (Windows):**
+- The config uses `channel: 'chromium'` (new headless mode), because the old headless shell stops answering `Tab` key presses.
+- It uses `workers: 1`, because parallel browsers hang.
+- After a failing test, the runner can hang while restarting the browser. To list every failure, run one test at a time with `-g`.
 
 ## Backend architecture (`apps/api`)
 
@@ -133,6 +178,7 @@ Every execution plan for this project lives in `plan/` at the repo root, one Mar
 - Once a plan is approved, save it in `plan/` before implementing it.
 - If the scope changes during or after implementation (a swapped asset, a changed component), update the plan file with a dated note explaining what changed and why. Don't create a new file for the change.
 - Plans follow the structure of `plan/PaginaLogin.md`: context, implementation steps, tests, commits and verification.
+- Web plans include accessibility: the tests step lists the axe case for each new component and the new routes added to `e2e/a11y.e2e.ts`. The verification step runs `pnpm test:web:a11y` and the manual checks (keyboard only, screen reader, 200% zoom).
 - When a plan lists measurements from the design, it also names the Tailwind token each one maps to (for example "407px → `w-102`", "`#81FE88` → `primary`"), following the styling rules above. New colors go in the plan's theme step as `--color-*` tokens.
 
 ## Git: Conventional Commits
