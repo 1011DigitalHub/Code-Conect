@@ -101,7 +101,7 @@ The web app must conform to **WCAG 2.2 level AA** (which includes level A). A ch
   - Check a new color token against every background it is used on before adding it to `@theme`.
 - Visible keyboard focus on every interactive element (`focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary`). Never remove the outline without a replacement.
 - Targets of at least 24×24px (2.5.8).
-- Each route sets its own `document.title` as `<Page> | Code Connect`.
+- Each page calls `usePageTitle('<Page>')` (`src/pages/usePageTitle.ts`), which sets `document.title` to `<Page> | Code Connect`. Don't use React 19's `<title>` element: `index.html` already has a `<title>`, and the browser keeps showing the first one.
 - Forms:
   - Every field has a `<label>`, plus `autoComplete` for personal data (1.3.5).
   - Errors are shown as text (`role="alert"`) and linked to the field with `aria-describedby` and `aria-invalid`.

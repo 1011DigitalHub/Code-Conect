@@ -3,6 +3,8 @@
 ## Contexto
 O projeto precisa atender à **WCAG 2.2 nível AA** (que inclui o nível A). Até aqui, as páginas de Login e Cadastro foram feitas pensando em acessibilidade (labels, `alt`, foco visível), mas nada verificava isso automaticamente. Este primeiro passo cria os testes automatizados para levantar os problemas. As correções ficam para um passo seguinte, que será registrado neste mesmo arquivo.
 
+> **Atualização (2026-10-01), título corrigido:** o único problema levantado (2.4.2, título igual nas duas rotas) foi corrigido com o hook `src/pages/usePageTitle.ts` (+ teste). Ele define `document.title` como `<Página> | Code Connect`, e `LoginPage` e `SignUpPage` o chamam; os testes das duas páginas conferem o título. Não usamos o `<title>` do React 19, como estava proposto: o `index.html` já tem um `<title>`, e o navegador continuaria mostrando o primeiro. Agora as 30 verificações do navegador passam (2 rotas × 5 verificações × 3 larguras). Por causa dos travamentos do ambiente, elas foram confirmadas rodando um teste por vez.
+
 O jsdom do Vitest não calcula layout nem cores. Por isso, contraste, tamanho de alvo, reflow e foco visível só podem ser medidos num navegador real. Daí as duas camadas abaixo.
 
 ## 1. Camada de componentes (Vitest + axe-core)
@@ -59,6 +61,6 @@ Antes de confiar nos resultados, conferi que as duas camadas reprovam violaçõe
 4. `docs(root): make wcag 2.2 aa the accessibility standard` (`CLAUDE.md`, este plano e o script `test:web:a11y` na raiz)
 
 ## Verificação
-- `pnpm test:web`: 53 testes passam, incluindo os 20 casos axe.
-- `pnpm test:web:a11y`: só o teste de título falha, nas duas rotas, até a correção ser aplicada.
+- `pnpm test:web`: 54 testes passam, incluindo os 20 casos axe e o teste do `usePageTitle`.
+- `pnpm test:web:a11y`: todas as verificações passam depois da correção do título (antes, só o teste de título falhava, nas duas rotas).
 - `pnpm lint` e `pnpm build` passam (o `tsc -b` agora também verifica `e2e/`).
