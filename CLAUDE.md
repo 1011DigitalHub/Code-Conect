@@ -22,7 +22,7 @@ pnpm dev:web | pnpm dev:api
 pnpm build             # builds all apps (web: tsc -b && vite build; api: nest build)
 pnpm lint              # oxlint in every app
 pnpm test:web          # web component tests (*.test.tsx), including axe checks
-pnpm test:web:a11y     # web accessibility suite in a real browser (Playwright, e2e/*.e2e.ts)
+pnpm test:web:a11y     # web browser suites (Playwright, e2e/*.e2e.ts): accessibility and SEO
 pnpm test:api          # api unit tests (*.spec.ts)
 pnpm test:api:e2e      # api e2e tests (test/*.e2e-spec.ts, separate vitest config)
 pnpm start:api         # node dist/main (needs a build first)
@@ -36,6 +36,7 @@ pnpm api test -t "should return"           # filter by test name
 pnpm api test:watch
 pnpm api test:cov
 pnpm api format                            # prettier (api only)
+pnpm web build && pnpm web exec vite preview --host 127.0.0.1 --port 5174   # production build to audit with Lighthouse
 ```
 
 ## Frontend architecture (`apps/web`)
@@ -84,14 +85,14 @@ The web app must conform to **WCAG 2.2 level AA** (which includes level A). A ch
 **Automated tests (two layers, both required):**
 
 1. **Components (Vitest + `axe-core`)**: `expectNoA11yViolations(container)` in `src/test/axe.ts` runs the axe rules tagged `wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa`, `wcag22a` and `wcag22aa` (list in `src/test/wcag.ts`). It fails with one line per violation. jsdom has no layout, so contrast and target size are turned off here and checked in layer 2.
-2. **Pages in a real browser (Playwright + `@axe-core/playwright`)**: `apps/web/e2e/a11y.e2e.ts` runs against the production build (`vite build` + `vite preview`) at three widths: desktop 1440px, tablet 768px and mobile 320px. For each route in its `routes` list it checks:
+2. **Pages in a real browser (Playwright + `@axe-core/playwright`)**: `apps/web/e2e/a11y.e2e.ts` runs against the production build (`vite build` + `vite preview`) at three widths: desktop 1440px, tablet 768px and mobile 320px. For each route in `e2e/routes.ts` it checks:
    - the full axe AA rule set, including color contrast and target size;
    - 1.4.10 Reflow: no horizontal scrolling;
    - 1.4.12 Text Spacing: no text cut off when spacing is increased;
    - 2.4.2 Page Titled: a title in the form `<Page> | Code Connect`;
    - 2.1.1 Keyboard and 2.4.7 Focus Visible: every control can be reached with Tab and shows a focus indicator.
 
-   **Every new route must be added to the `routes` list.**
+   **Every new public route must be added to `e2e/routes.ts`.** The SEO suite (`e2e/seo.e2e.ts`) uses the same list.
 
 **Rules when building UI:**
 - Semantic HTML first: native `button`, `a`, `input` and `label`, plus headings in order. Use ARIA only when no native element fits.
@@ -101,7 +102,7 @@ The web app must conform to **WCAG 2.2 level AA** (which includes level A). A ch
   - Check a new color token against every background it is used on before adding it to `@theme`.
 - Visible keyboard focus on every interactive element (`focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary`). Never remove the outline without a replacement.
 - Targets of at least 24×24px (2.5.8).
-- Each page calls `usePageTitle('<Page>')` (`src/pages/usePageTitle.ts`), which sets `document.title` to `<Page> | Code Connect`. Don't use React 19's `<title>` element: `index.html` already has a `<title>`, and the browser keeps showing the first one.
+- Each page calls `usePageMeta('<Page>', '<description>')` (`src/pages/usePageMeta.ts`), which sets `document.title` to `<Page> | Code Connect` and the page's meta description. Don't use React 19's `<title>` or `<meta>` elements: `index.html` already has a `<title>` and a default description, and the browser keeps showing the first one.
 - Forms:
   - Every field has a `<label>`, plus `autoComplete` for personal data (1.3.5).
   - Errors are shown as text (`role="alert"`) and linked to the field with `aria-describedby` and `aria-invalid`.
@@ -119,6 +120,46 @@ Each plan's verification step lists these checks.
 - The config uses `channel: 'chromium'` (new headless mode), because the old headless shell stops answering `Tab` key presses.
 - It uses `workers: 1`, because parallel browsers hang.
 - After a failing test, the runner can hang while restarting the browser. To list every failure, run one test at a time with `-g`.
+
+### Performance and SEO (Lighthouse)
+
+Every page must pass a Lighthouse audit, not only Login and Cadastro. A page that misses these targets isn't done.
+
+**Targets (Lighthouse desktop, per route):**
+- **100** in Accessibility, Best Practices and SEO; **≥ 90** in Performance.
+- Core Web Vitals: LCP ≤ 2.5 s, CLS ≤ 0.1, TBT ≤ 200 ms.
+- Agentic Browsing: every audit passes (accessibility tree, `llms.txt`, CLS).
+
+**How to measure:**
+- Always audit the production build (`pnpm web build`, then `vite preview`, see Commands). Never audit `vite dev`: its unminified, development-mode bundle (several MB) produces false "Minify JavaScript", "Unused JavaScript" and "Total byte weight" findings and slow FCP/LCP.
+- Use an incognito window without extensions. Extensions such as password managers add long tasks and break the bfcache.
+- Record the scores and LCP/CLS/TBT in the page's plan (see Execution plans).
+
+**Images:**
+- Photos and banners are WebP (or AVIF), never large PNG/JPG. Aim for ≤ ~200 KB per image, exported at the largest size the layout actually renders. Convert once with `pnpm dlx sharp-cli -i <file> -o <dir> -f webp -q 75`.
+- Every `<img>` has `width` and `height` (its intrinsic size), so the browser reserves its space; classes still set the rendered size.
+- The LCP image of a page (usually the banner/hero) gets `fetchPriority="high"` and never `loading="lazy"`. Images below the fold get `loading="lazy"`.
+- Small icons and logos are SVG. Don't keep unused files in `public/`: everything there ships with the build (design references go in `plan/assets/`).
+
+**Fonts:**
+- Self-host fonts with `@fontsource/*`, imported in `src/main.tsx`, only the weights the design uses (today Prompt 400 and 600). No third-party font stylesheets (Google Fonts): they block the first render and add external origins.
+
+**JavaScript and CSS:**
+- Nothing render-blocking in `index.html`: no external stylesheets or synchronous scripts.
+- Check a dependency's size before adding it (prefer small, tree-shakeable packages). When the bundle grows, load heavy routes with `React.lazy` + `Suspense`.
+- Avoid long tasks (> 50 ms) during load; defer non-critical work.
+
+**Layout stability:**
+- No layout shifts: reserve space for images, embeds and late content (`width`/`height`, `aspect-*`), and don't insert content above what is already on screen.
+
+**SEO:**
+- Every page calls `usePageMeta(title, description)`. The description is unique per page, 50 to 160 characters, in pt-BR. `e2e/seo.e2e.ts` checks it for every route.
+- One `h1` per page and headings in order; links are real `<a href>` with descriptive text; `<html lang="pt-BR">` stays.
+- `public/robots.txt` and `public/llms.txt` must exist (otherwise the SPA fallback serves `index.html` and both are reported invalid). Update `llms.txt` (an H1 and links to the public routes) when a public route is added.
+
+**Best practices:**
+- No errors in the browser console; no permission requests (location, notifications) on page load.
+- Security headers (CSP, HSTS, COOP, X-Frame-Options) belong to the hosting setup; add them when the app is deployed.
 
 ## Backend architecture (`apps/api`)
 
@@ -178,7 +219,8 @@ Every execution plan for this project lives in `plan/` at the repo root, one Mar
 - Once a plan is approved, save it in `plan/` before implementing it.
 - If the scope changes during or after implementation (a swapped asset, a changed component), update the plan file with a dated note explaining what changed and why. Don't create a new file for the change.
 - Plans follow the structure of `plan/PaginaLogin.md`: context, implementation steps, tests, commits and verification.
-- Web plans include accessibility: the tests step lists the axe case for each new component and the new routes added to `e2e/a11y.e2e.ts`. The verification step runs `pnpm test:web:a11y` and the manual checks (keyboard only, screen reader, 200% zoom).
+- Web plans include accessibility: the tests step lists the axe case for each new component and the new routes added to `e2e/routes.ts`. The verification step runs `pnpm test:web:a11y` and the manual checks (keyboard only, screen reader, 200% zoom).
+- Web plans for a page also include performance and SEO: the page's meta description, its LCP image and how it is optimized, and, in the verification step, a Lighthouse table (scores per category plus LCP, CLS and TBT) measured on the production build.
 - When a plan lists measurements from the design, it also names the Tailwind token each one maps to (for example "407px → `w-102`", "`#81FE88` → `primary`"), following the styling rules above. New colors go in the plan's theme step as `--color-*` tokens.
 
 ## Git: Conventional Commits

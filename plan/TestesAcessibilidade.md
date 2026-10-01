@@ -5,6 +5,8 @@ O projeto precisa atender à **WCAG 2.2 nível AA** (que inclui o nível A). At�
 
 > **Atualização (2026-10-01), título corrigido:** o único problema levantado (2.4.2, título igual nas duas rotas) foi corrigido com o hook `src/pages/usePageTitle.ts` (+ teste). Ele define `document.title` como `<Página> | Code Connect`, e `LoginPage` e `SignUpPage` o chamam; os testes das duas páginas conferem o título. Não usamos o `<title>` do React 19, como estava proposto: o `index.html` já tem um `<title>`, e o navegador continuaria mostrando o primeiro. Agora as 30 verificações do navegador passam (2 rotas × 5 verificações × 3 larguras). Por causa dos travamentos do ambiente, elas foram confirmadas rodando um teste por vez.
 
+> **Atualização (2026-10-01), `usePageMeta`:** o hook passou a se chamar `usePageMeta(página, descrição)` e também define a meta description (ver `MelhoriasLighthouse.md`). A lista de rotas saiu do `e2e/a11y.e2e.ts` e foi para `e2e/routes.ts`, compartilhada com a nova suíte `e2e/seo.e2e.ts`.
+
 O jsdom do Vitest não calcula layout nem cores. Por isso, contraste, tamanho de alvo, reflow e foco visível só podem ser medidos num navegador real. Daí as duas camadas abaixo.
 
 ## 1. Camada de componentes (Vitest + axe-core)
