@@ -92,7 +92,7 @@ The web app must conform to **WCAG 2.2 level AA** (which includes level A). A ch
    - 2.4.2 Page Titled: a title in the form `<Page> | Code Connect`;
    - 2.1.1 Keyboard and 2.4.7 Focus Visible: every control can be reached with Tab and shows a focus indicator.
 
-   **Every new public route must be added to `e2e/routes.ts`.** The SEO suite (`e2e/seo.e2e.ts`) uses the same list.
+   **Every new public route must be added to `e2e/routes.ts`.** The SEO suite (`e2e/seo.e2e.ts`) and Lighthouse CI (`lighthouserc.cjs`) use the same list.
 
 **Rules when building UI:**
 - Semantic HTML first: native `button`, `a`, `input` and `label`, plus headings in order. Use ARIA only when no native element fits.
@@ -131,6 +131,8 @@ Every page must pass a Lighthouse audit, not only Login and Cadastro. A page tha
 - Agentic Browsing: every audit passes (accessibility tree, `llms.txt`, CLS).
 
 **How to measure:**
+- **CI (main source of truth):** the GitHub Action `.github/workflows/lighthouse.yml` runs Lighthouse CI on every push to `main` and every PR that touches `apps/web`, and can be started by hand (`gh workflow run lighthouse.yml`). It builds the app, serves it with `vite preview`, audits every route in `e2e/routes.ts` three times (desktop preset) and fails if a target below is missed (`apps/web/lighthouserc.cjs`). The job summary shows a table of scores and LCP/CLS/TBT per route, and the JSON/HTML reports are in the `lighthouse-reports` artifact (`gh run download <id> -n lighthouse-reports`). LHCI bundles Lighthouse 12, which has no Agentic Browsing category; `e2e/seo.e2e.ts` covers `llms.txt` and `robots.txt`.
+- Locally, the Lighthouse CLI hangs on this Windows machine; use Chrome DevTools instead.
 - Always audit the production build (`pnpm web build`, then `vite preview`, see Commands). Never audit `vite dev`: its unminified, development-mode bundle (several MB) produces false "Minify JavaScript", "Unused JavaScript" and "Total byte weight" findings and slow FCP/LCP.
 - Use an incognito window without extensions. Extensions such as password managers add long tasks and break the bfcache.
 - Record the scores and LCP/CLS/TBT in the page's plan (see Execution plans).

@@ -160,3 +160,5 @@ Criar a seção logo depois de "Accessibility: WCAG 2.2 level AA", no mesmo tom 
 | TBT | 0 ms | | 80 ms* | |
 
 \* Medido no `vite dev`, com extensão ativa.
+
+> **Atualização (2026-10-01), Lighthouse no GitHub Actions:** a medição passou a rodar no CI, já que o Lighthouse CLI trava nesta máquina Windows. O workflow `.github/workflows/lighthouse.yml` (pnpm 12, Node 22) gera o build, serve com `vite preview` e roda o `@lhci/cli` 0.15.1 nas rotas de `e2e/routes.ts`: três execuções por rota, com preset desktop. O `apps/web/lighthouserc.cjs` reprova o job se alguma meta do CLAUDE.md não for atingida. O resumo do job mostra a tabela (gerada por `apps/web/lighthouse-summary.mjs`), e os relatórios ficam no artefato `lighthouse-reports`. O LHCI usa o Lighthouse 12, que não tem a categoria Agentic Browsing; o `e2e/seo.e2e.ts` cobre o `llms.txt`. A tabela acima pode ser preenchida com o resultado do primeiro run no CI.
