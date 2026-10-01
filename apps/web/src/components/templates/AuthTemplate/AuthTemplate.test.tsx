@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { AuthTemplate } from './AuthTemplate'
 
 describe('AuthTemplate', () => {
-  it('renders the banner, title, subtitle, content and footer', () => {
+  it('renders the banner with the logo, title, subtitle, content and footer', () => {
     render(
       <AuthTemplate
         bannerSrc="/Banner_login_page.png"
@@ -25,5 +25,6 @@ describe('AuthTemplate', () => {
     ).toBeInTheDocument()
     expect(screen.getByText('Conteúdo')).toBeInTheDocument()
     expect(screen.getByText('Rodapé')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Code Connect' })).toBeInTheDocument()
   })
 })

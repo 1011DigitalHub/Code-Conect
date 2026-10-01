@@ -1,39 +1,64 @@
 import type { ReactNode } from 'react'
+import { BrandSymbol } from '../../atoms/BrandSymbol'
 import { Heading } from '../../atoms/Heading'
+import { Logo } from '../../atoms/Logo'
+
+type BannerFocus = 'center' | 'center-right'
+
+const bannerFocusClasses: Record<BannerFocus, string> = {
+  center: 'object-center',
+  'center-right': 'object-[60%_50%]',
+}
 
 export type AuthTemplateProps = {
   bannerSrc: string
   bannerAlt: string
+  bannerFocus?: BannerFocus
   title: string
   subtitle: string
   children: ReactNode
   footer?: ReactNode
 }
 
-// Shared layout for the auth pages (login, sign-up): banner on the left,
-// title and page-specific content on the right.
+// Shared layout for the auth pages (login, sign-up): banner with the logo next to the
+// title and page-specific content on large screens, stacked above it on smaller ones.
 export function AuthTemplate({
   bannerSrc,
   bannerAlt,
+  bannerFocus = 'center',
   title,
   subtitle,
   children,
   footer,
 }: AuthTemplateProps) {
   return (
-    <main className="flex min-h-screen items-center justify-center p-4 md:p-8">
-      <div className="flex w-full max-w-5xl gap-12 rounded-4xl bg-surface p-6 md:p-14">
-        <img
-          src={bannerSrc}
-          alt={bannerAlt}
-          className="hidden w-5/12 shrink-0 rounded-sm object-cover md:block"
-        />
-        <div className="flex flex-1 flex-col gap-8">
-          <header className="flex flex-col gap-6">
-            <Heading level={1}>{title}</Heading>
-            <Heading level={2}>{subtitle}</Heading>
-          </header>
-          {children}
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-3 py-10 md:p-8">
+      <div className="pointer-events-none absolute -top-2 left-[7.4%] w-1/4 max-w-[407px] opacity-30">
+        <BrandSymbol />
+      </div>
+      <div className="pointer-events-none absolute right-[7.4%] bottom-0 w-1/4 max-w-[407px] opacity-30">
+        <BrandSymbol />
+      </div>
+
+      <div className="relative flex w-full max-w-[648px] flex-col gap-8 rounded-4xl border border-page bg-surface px-4 py-8 md:px-20 md:py-14 lg:max-w-[996px] lg:flex-row lg:justify-between lg:gap-4 lg:px-[78px]">
+        <div className="relative aspect-[4/5] overflow-hidden sm:aspect-[7/6] lg:aspect-auto lg:w-[407px]">
+          <img
+            src={bannerSrc}
+            alt={bannerAlt}
+            className={`absolute inset-0 size-full object-cover ${bannerFocusClasses[bannerFocus]}`}
+          />
+          <div className="absolute inset-x-0 bottom-8 flex justify-center">
+            <Logo />
+          </div>
+        </div>
+        <div className="flex flex-col gap-6 lg:w-[410px] lg:shrink-0 lg:px-8">
+          <div className="flex flex-col gap-8">
+            <header className="flex flex-col gap-6">
+              <Heading level={1}>{title}</Heading>
+              <Heading level={2}>{subtitle}</Heading>
+            </header>
+            {children}
+          </div>
           {footer && <footer>{footer}</footer>}
         </div>
       </div>
