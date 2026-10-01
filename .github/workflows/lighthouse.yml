@@ -1,0 +1,69 @@
+name: Lighthouse
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/web/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/lighthouse.yml'
+  pull_request:
+    paths:
+      - 'apps/web/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/lighthouse.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lighthouse-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.6.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+
+      - run: npm install -g @lhci/cli@0.15.1
+
+      # collect, upload and assert run as separate steps so the reports are saved
+      # even when an assertion fails.
+      - name: Collect (production build via vite preview)
+        run: lhci collect
+
+      - name: Save reports
+        if: always()
+        run: lhci upload
+
+      - name: Write summary
+        if: always()
+        run: node lighthouse-summary.mjs >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lighthouse-reports
+          path: apps/web/.lighthouseci/reports
+          if-no-files-found: ignore
+
+      - name: Assert CLAUDE.md targets
+        run: lhci assert
