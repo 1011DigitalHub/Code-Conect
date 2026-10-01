@@ -19,7 +19,7 @@ export function LoginPage() {
 
   return (
     <AuthTemplate
-      bannerSrc="/Banner_login_page.png"
+      bannerSrc="/Banner_login_page.webp"
       bannerAlt="Pessoa programando em frente a telas com código"
       title="Login"
       subtitle="Boas-vindas! Faça seu login."

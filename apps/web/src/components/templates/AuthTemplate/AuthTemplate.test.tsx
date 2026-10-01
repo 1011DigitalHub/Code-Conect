@@ -6,7 +6,7 @@ describe('AuthTemplate', () => {
   it('renders the banner with the logo, title, subtitle, content and footer', () => {
     render(
       <AuthTemplate
-        bannerSrc="/Banner_login_page.png"
+        bannerSrc="/Banner_login_page.webp"
         bannerAlt="Pessoa programando"
         title="Login"
         subtitle="Boas-vindas! Faça seu login."
@@ -18,7 +18,7 @@ describe('AuthTemplate', () => {
 
     expect(screen.getByRole('img', { name: 'Pessoa programando' })).toHaveAttribute(
       'src',
-      '/Banner_login_page.png',
+      '/Banner_login_page.webp',
     )
     expect(screen.getByRole('heading', { level: 1, name: 'Login' })).toBeInTheDocument()
     expect(
@@ -32,7 +32,7 @@ describe('AuthTemplate', () => {
   it('has no WCAG 2.2 AA violations', async () => {
     const { container } = render(
       <AuthTemplate
-        bannerSrc="/Banner_login_page.png"
+        bannerSrc="/Banner_login_page.webp"
         bannerAlt="Pessoa programando"
         title="Login"
         subtitle="Boas-vindas! Faça seu login."

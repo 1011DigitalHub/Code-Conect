@@ -19,7 +19,7 @@ export function SignUpPage() {
 
   return (
     <AuthTemplate
-      bannerSrc="/Banner_cadastro_page.png"
+      bannerSrc="/Banner_cadastro_page.webp"
       bannerAlt="Pessoa programando em frente a telas com código"
       bannerFocus="center-right"
       title="Cadastro"

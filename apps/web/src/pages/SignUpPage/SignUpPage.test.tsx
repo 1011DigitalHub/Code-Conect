@@ -11,7 +11,7 @@ describe('SignUpPage', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Cadastro' })).toBeInTheDocument()
     expect(screen.getByRole('img', { name: /Pessoa programando/ })).toHaveAttribute(
       'src',
-      '/Banner_cadastro_page.png',
+      '/Banner_cadastro_page.webp',
     )
     expect(screen.getByLabelText('Nome')).toBeInTheDocument()
     expect(screen.getByLabelText('Email')).toBeInTheDocument()

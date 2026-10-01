@@ -11,6 +11,8 @@ Assets em `public/`, usados por URL absoluta (`/Banner_login_page.png`, `/Github
 
 > **Atualização (2026-10-01), tokens no lugar de valores arbitrários:** as classes não usam mais valores arbitrários (`w-[...]`, `bg-[#...]`). Os tamanhos vão para o passo mais próximo da escala do Tailwind e as cores só usam nomes da paleta do projeto (regra registrada no `CLAUDE.md`). Nesta página, o erro do `FormField` e o contorno do `Input` inválido trocaram `red-400` pelo novo token `--color-danger` (passo 2). As mudanças de layout estão no plano `PaginaCadastro.md`.
 
+> **Atualização (2026-10-01), assets otimizados:** `Banner_login_page.png` virou `Banner_login_page.webp` (de 1,29 MB para 55 KB) e o mockup `Group 2086.png` saiu de `public/` para `plan/assets/`, porque não é usado pela aplicação. Detalhes em `MelhoriasLighthouse.md`.
+
 ## 1. Test runner (exigido pelo CLAUDE.md antes de criar componentes)
 - devDeps em `apps/web`: `vitest`, `jsdom`, `@testing-library/react`, `@testing-library/user-event`, `@testing-library/jest-dom`.
 - `vite.config.ts`: bloco `test` com `environment: 'jsdom'`, `globals: true`, `setupFiles: './src/test/setup.ts'` (esse arquivo importa `@testing-library/jest-dom/vitest`). Usar `/// <reference types="vitest/config" />`.
