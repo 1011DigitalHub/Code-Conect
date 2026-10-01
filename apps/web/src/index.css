@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 @theme {
+  /* Project palette. Extends Tailwind's default colors; components use only these names. */
   --color-page: #00090e;
   --color-surface: #171d1f;
   --color-primary: #81fe88;
@@ -8,6 +9,7 @@
   --color-offwhite: #e1e1e1;
   --color-muted: #bcbcbc;
   --color-ink: #132e35;
+  --color-danger: var(--color-red-400);
 
   --font-sans: "Prompt", sans-serif;
 
@@ -20,6 +22,11 @@
   --text-paragraph-sm--line-height: 1.5;
   --text-label: 0.78125rem;
   --text-label--line-height: 1.5;
+}
+
+/* Banner crop slightly right of center, as in the Figma sign-up frame. */
+@utility object-center-right {
+  object-position: 60% 50%;
 }
 
 @layer base {

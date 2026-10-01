@@ -1,16 +1,16 @@
-// "code connect" logo, assembled from the three Figma SVG parts at their original positions.
+// "code connect" logo, assembled from the three Figma SVG parts. Positions and sizes are the
+// Figma coordinates inside the 127.258×40 frame, so the parts never need arbitrary classes.
 export function Logo() {
   return (
-    <div role="img" aria-label="Code Connect" className="relative h-10 w-[127.258px] shrink-0">
-      <span className="absolute inset-[35.48%_88.04%_6.09%_0]">
-        <img src="/logo/logo-mark-bottom.svg" alt="" className="block size-full" />
-      </span>
-      <span className="absolute inset-[15.11%_78.6%_26.47%_9.43%]">
-        <img src="/logo/logo-mark-top.svg" alt="" className="block size-full" />
-      </span>
-      <span className="absolute inset-[0_0_0_26.88%]">
-        <img src="/logo/logo-wordmark.svg" alt="" className="block size-full" />
-      </span>
-    </div>
+    <svg
+      role="img"
+      aria-label="Code Connect"
+      viewBox="0 0 127.258 40"
+      className="h-10 w-32 shrink-0"
+    >
+      <image href="/logo/logo-mark-bottom.svg" x="0" y="14.192" width="15.2264" height="23.372" />
+      <image href="/logo/logo-mark-top.svg" x="12" y="6.044" width="15.2264" height="23.3683" />
+      <image href="/logo/logo-wordmark.svg" x="34.2048" y="0" width="93.0532" height="39.9986" />
+    </svg>
   )
 }
