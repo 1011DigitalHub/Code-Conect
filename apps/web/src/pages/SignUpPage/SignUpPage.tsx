@@ -3,10 +3,13 @@ import { SignUpForm, type SignUpFormValues } from '../../components/organisms/Si
 import { SocialLogin } from '../../components/organisms/SocialLogin'
 import { AuthTemplate } from '../../components/templates/AuthTemplate'
 import { socialProviders } from '../socialProviders'
-import { usePageTitle } from '../usePageTitle'
+import { usePageMeta } from '../usePageMeta'
 
 export function SignUpPage() {
-  usePageTitle('Cadastro')
+  usePageMeta(
+    'Cadastro',
+    'Crie sua conta no Code Connect e participe da comunidade de pessoas desenvolvedoras que compartilham código.',
+  )
 
   // TODO: call the API once the auth endpoints exist.
   function handleSignUp(values: SignUpFormValues) {

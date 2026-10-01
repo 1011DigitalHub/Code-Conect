@@ -3,10 +3,13 @@ import { LoginForm, type LoginFormValues } from '../../components/organisms/Logi
 import { SocialLogin } from '../../components/organisms/SocialLogin'
 import { AuthTemplate } from '../../components/templates/AuthTemplate'
 import { socialProviders } from '../socialProviders'
-import { usePageTitle } from '../usePageTitle'
+import { usePageMeta } from '../usePageMeta'
 
 export function LoginPage() {
-  usePageTitle('Login')
+  usePageMeta(
+    'Login',
+    'Entre no Code Connect e continue trocando conhecimento com a comunidade de pessoas desenvolvedoras.',
+  )
 
   // TODO: call the API once the auth endpoints exist.
   function handleLogin(values: LoginFormValues) {

@@ -8,6 +8,10 @@ describe('LoginPage', () => {
     renderWithRouter(<LoginPage />)
 
     expect(document.title).toBe('Login | Code Connect')
+    expect(document.querySelector('meta[name="description"]')).toHaveAttribute(
+      'content',
+      expect.stringContaining('Entre no Code Connect'),
+    )
     expect(screen.getByRole('heading', { level: 1, name: 'Login' })).toBeInTheDocument()
     expect(screen.getByLabelText('Email ou usuário')).toBeInTheDocument()
     expect(screen.getByLabelText('Senha')).toBeInTheDocument()

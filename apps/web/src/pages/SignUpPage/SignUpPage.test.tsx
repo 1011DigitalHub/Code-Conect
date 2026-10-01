@@ -8,6 +8,10 @@ describe('SignUpPage', () => {
     renderWithRouter(<SignUpPage />)
 
     expect(document.title).toBe('Cadastro | Code Connect')
+    expect(document.querySelector('meta[name="description"]')).toHaveAttribute(
+      'content',
+      expect.stringContaining('Crie sua conta no Code Connect'),
+    )
     expect(screen.getByRole('heading', { level: 1, name: 'Cadastro' })).toBeInTheDocument()
     expect(screen.getByRole('img', { name: /Pessoa programando/ })).toHaveAttribute(
       'src',
