@@ -19,4 +19,19 @@ describe('AuthFooter', () => {
       '/cadastro',
     )
   })
+
+  it('renders the inline layout with the question and the link', () => {
+    renderWithRouter(
+      <AuthFooter
+        question="Já tem conta?"
+        linkLabel="Faça seu login!"
+        href="/login"
+        icon="login"
+        layout="inline"
+      />,
+    )
+
+    expect(screen.getByText('Já tem conta?')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Faça seu login!' })).toHaveAttribute('href', '/login')
+  })
 })

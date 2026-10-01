@@ -40,26 +40,28 @@ export function LoginForm({ onSubmit, forgotPasswordHref }: LoginFormProps) {
         value={values.login}
         onChange={(event) => setValues({ ...values, login: event.target.value })}
       />
-      <FormField
-        id="password"
-        name="password"
-        type="password"
-        label="Senha"
-        placeholder="******"
-        autoComplete="current-password"
-        required
-        value={values.password}
-        onChange={(event) => setValues({ ...values, password: event.target.value })}
-      />
-      <div className="flex items-center justify-between">
-        <CheckboxField
-          id="remember"
-          name="remember"
-          label="Lembrar-me"
-          checked={values.remember}
-          onChange={(event) => setValues({ ...values, remember: event.target.checked })}
+      <div className="flex flex-col gap-2">
+        <FormField
+          id="password"
+          name="password"
+          type="password"
+          label="Senha"
+          placeholder="******"
+          autoComplete="current-password"
+          required
+          value={values.password}
+          onChange={(event) => setValues({ ...values, password: event.target.value })}
         />
-        <TextLink href={forgotPasswordHref}>Esqueci a senha</TextLink>
+        <div className="flex items-center justify-between">
+          <CheckboxField
+            id="remember"
+            name="remember"
+            label="Lembrar-me"
+            checked={values.remember}
+            onChange={(event) => setValues({ ...values, remember: event.target.checked })}
+          />
+          <TextLink href={forgotPasswordHref}>Esqueci a senha</TextLink>
+        </div>
       </div>
       <div className="mt-4">
         <Button type="submit" fullWidth icon={<Icon name="arrow-right" size="sm" />}>

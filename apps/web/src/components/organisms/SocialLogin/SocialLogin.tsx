@@ -19,7 +19,7 @@ export function SocialLogin({
   label = 'ou entre com outras contas',
 }: SocialLoginProps) {
   return (
-    <section className="flex flex-col gap-3">
+    <section className="flex flex-col gap-2">
       <TextDivider>{label}</TextDivider>
       <ul className="flex justify-center gap-6">
         {providers.map((provider) => (
