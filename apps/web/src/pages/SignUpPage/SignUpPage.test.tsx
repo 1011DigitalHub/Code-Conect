@@ -7,6 +7,7 @@ describe('SignUpPage', () => {
   it('renders the sign-up form, social providers and login link', () => {
     renderWithRouter(<SignUpPage />)
 
+    expect(document.title).toBe('Cadastro | Code Connect')
     expect(screen.getByRole('heading', { level: 1, name: 'Cadastro' })).toBeInTheDocument()
     expect(screen.getByRole('img', { name: /Pessoa programando/ })).toHaveAttribute(
       'src',

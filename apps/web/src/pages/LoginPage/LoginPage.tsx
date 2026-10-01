@@ -3,8 +3,11 @@ import { LoginForm, type LoginFormValues } from '../../components/organisms/Logi
 import { SocialLogin } from '../../components/organisms/SocialLogin'
 import { AuthTemplate } from '../../components/templates/AuthTemplate'
 import { socialProviders } from '../socialProviders'
+import { usePageTitle } from '../usePageTitle'
 
 export function LoginPage() {
+  usePageTitle('Login')
+
   // TODO: call the API once the auth endpoints exist.
   function handleLogin(values: LoginFormValues) {
     console.info('login', { login: values.login, remember: values.remember })

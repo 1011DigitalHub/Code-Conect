@@ -3,8 +3,11 @@ import { SignUpForm, type SignUpFormValues } from '../../components/organisms/Si
 import { SocialLogin } from '../../components/organisms/SocialLogin'
 import { AuthTemplate } from '../../components/templates/AuthTemplate'
 import { socialProviders } from '../socialProviders'
+import { usePageTitle } from '../usePageTitle'
 
 export function SignUpPage() {
+  usePageTitle('Cadastro')
+
   // TODO: call the API once the auth endpoints exist.
   function handleSignUp(values: SignUpFormValues) {
     console.info('sign up', { name: values.name, email: values.email, remember: values.remember })
