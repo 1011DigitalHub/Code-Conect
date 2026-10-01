@@ -1,12 +1,8 @@
 import { AuthFooter } from '../../components/organisms/AuthFooter'
 import { LoginForm, type LoginFormValues } from '../../components/organisms/LoginForm'
-import { SocialLogin, type SocialProvider } from '../../components/organisms/SocialLogin'
+import { SocialLogin } from '../../components/organisms/SocialLogin'
 import { AuthTemplate } from '../../components/templates/AuthTemplate'
-
-const socialProviders: SocialProvider[] = [
-  { id: 'github', name: 'Github', icon: '/Github-img.png' },
-  { id: 'google', name: 'Gmail', icon: '/Gmail-img.png' },
-]
+import { socialProviders } from '../socialProviders'
 
 export function LoginPage() {
   // TODO: call the API once the auth endpoints exist.
