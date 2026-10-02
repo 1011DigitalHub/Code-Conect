@@ -1,11 +1,13 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
+import { configureApp } from './app.setup.js';
+import { setupSwagger } from './swagger.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-// Listar todas as variaveis de ambiente disponíveis
-//  console.log('Variaveis do ambiente:', process.env);
+  configureApp(app);
+  setupSwagger(app);
 
   await app.listen(process.env.PORT ?? 3000);
 }
