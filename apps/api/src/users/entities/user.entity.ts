@@ -1,13 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
+import type { User } from '../../generated/prisma/client.js';
 
-// Internal record kept by UsersService. Never sent to clients.
-export interface StoredUser {
-  id: number;
-  name: string;
-  email: string;
-  passwordHash: string;
-  createdAt: Date;
-}
+// Database record read by UsersService. Never sent to clients.
+export type StoredUser = User;
 
 export class UserLinks {
   @ApiProperty({ example: '/users/1' })

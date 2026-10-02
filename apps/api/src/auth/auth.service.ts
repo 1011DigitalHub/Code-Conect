@@ -14,7 +14,7 @@ export class AuthService {
   ) {}
 
   async signIn(email: string, password: string): Promise<TokenResponseDto> {
-    const user = this.usersService.findByEmail(email);
+    const user = await this.usersService.findByEmail(email);
     // Same message for unknown email and wrong password.
     if (!user || !(await verifyPassword(password, user.passwordHash))) {
       throw new UnauthorizedException('Email ou senha inválidos');

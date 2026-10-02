@@ -1,6 +1,7 @@
 import { UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { UsersService } from '../users/users.service.js';
+import { hashPassword } from '../users/password.js';
+import type { UsersService } from '../users/users.service.js';
 import { AuthService } from './auth.service.js';
 
 describe('AuthService', () => {
@@ -8,14 +9,23 @@ describe('AuthService', () => {
   let jwtService: JwtService;
 
   beforeEach(async () => {
-    const usersService = new UsersService();
-    await usersService.create({
+    const maria = {
+      id: 1,
       name: 'Maria',
       email: 'maria@exemplo.com',
-      password: 'senha-segura-123',
-    });
+      passwordHash: await hashPassword('senha-segura-123'),
+      createdAt: new Date(),
+    };
+    const usersService = {
+      findByEmail: vi.fn((email: string) =>
+        Promise.resolve(email === maria.email ? maria : null),
+      ),
+    };
     jwtService = new JwtService({ secret: 'test-secret' });
-    service = new AuthService(usersService, jwtService);
+    service = new AuthService(
+      usersService as unknown as UsersService,
+      jwtService,
+    );
   });
 
   it('returns a verifiable token for valid credentials', async () => {

@@ -51,9 +51,9 @@ export class AuthController {
   @ApiOperation({ summary: 'Dados do usuário logado' })
   @ApiOkResponse({ type: UserEntity })
   @ApiUnauthorizedResponse({ type: ErrorResponseDto })
-  me(@Req() req: AuthenticatedRequest): UserEntity {
+  async me(@Req() req: AuthenticatedRequest): Promise<UserEntity> {
     try {
-      return this.usersService.findById(req.user.sub);
+      return await this.usersService.findById(req.user.sub);
     } catch (error) {
       // A valid token for a user that no longer exists is not authenticated.
       if (error instanceof NotFoundException) {
