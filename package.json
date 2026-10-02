@@ -19,6 +19,10 @@
     "test:api": "pnpm --filter api test",
     "test:api:e2e": "pnpm --filter api test:e2e",
     "preview:web": "pnpm --filter web preview",
-    "start:api": "pnpm --filter api start:prod"
+    "start:api": "pnpm --filter api start:prod",
+    "db:up": "docker compose up -d --wait",
+    "db:down": "docker compose down",
+    "db:migrate": "pnpm --filter api exec prisma migrate dev",
+    "db:studio": "pnpm --filter api exec prisma studio"
   }
 }
