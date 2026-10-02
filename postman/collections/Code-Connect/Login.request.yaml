@@ -9,8 +9,8 @@ body:
   type: json
   content: |-
     {
-      "email": "maria@exemplo.com",
-      "password": "senha-segura-123"
+      "email": "MariaJulia2@exemplo.com",
+      "password": "senha-segura-1234"
     }
 scripts:
   - type: afterResponse
