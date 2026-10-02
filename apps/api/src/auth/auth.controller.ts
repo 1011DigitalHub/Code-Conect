@@ -16,9 +16,12 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { ErrorResponseDto } from '../common/dto/error-response.dto.js';
+import { LOGIN_THROTTLE } from '../common/throttle.constants.js';
 import { UserEntity } from '../users/entities/user.entity.js';
 import { UsersService } from '../users/users.service.js';
 import { AuthGuard } from './auth.guard.js';
@@ -35,12 +38,18 @@ export class AuthController {
     private readonly usersService: UsersService,
   ) {}
 
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: LOGIN_THROTTLE })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Autentica o usuário e devolve um JWT' })
   @ApiOkResponse({ type: TokenResponseDto })
   @ApiBadRequestResponse({ type: ErrorResponseDto })
   @ApiUnauthorizedResponse({ type: ErrorResponseDto })
+  @ApiTooManyRequestsResponse({
+    type: ErrorResponseDto,
+    description: 'Muitas tentativas; veja o header Retry-After',
+  })
   login(@Body() dto: LoginDto): Promise<TokenResponseDto> {
     return this.authService.signIn(dto.email, dto.password);
   }

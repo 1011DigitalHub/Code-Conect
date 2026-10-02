@@ -184,6 +184,10 @@ describe('Auth (e2e)', () => {
         expect.arrayContaining(['/users', '/auth/login', '/auth/me']),
       );
       expect(res.body.components.securitySchemes).toHaveProperty('bearer');
+      expect(res.body.paths['/auth/login'].post.responses).toHaveProperty(
+        '429',
+      );
+      expect(res.body.paths['/users'].post.responses).toHaveProperty('429');
     });
   });
 });

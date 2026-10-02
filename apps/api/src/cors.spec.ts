@@ -16,7 +16,10 @@ describe('cors', () => {
   });
 
   it('parses CORS_ORIGINS, ignoring spaces and empty items', () => {
-    vi.stubEnv('CORS_ORIGINS', ' https://a.exemplo.com , ,https://b.exemplo.com,');
+    vi.stubEnv(
+      'CORS_ORIGINS',
+      ' https://a.exemplo.com , ,https://b.exemplo.com,',
+    );
     expect(getCorsOrigins()).toEqual([
       'https://a.exemplo.com',
       'https://b.exemplo.com',

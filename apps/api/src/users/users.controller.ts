@@ -1,13 +1,16 @@
-import { Body, Controller, Post, Res } from '@nestjs/common';
+import { Body, Controller, Post, Res, UseGuards } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiOperation,
   ApiTags,
+  ApiTooManyRequestsResponse,
 } from '@nestjs/swagger';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { ErrorResponseDto } from '../common/dto/error-response.dto.js';
+import { SIGN_UP_THROTTLE } from '../common/throttle.constants.js';
 import { CreateUserDto } from './dto/create-user.dto.js';
 import { UserEntity } from './entities/user.entity.js';
 import { UsersService } from './users.service.js';
@@ -17,11 +20,17 @@ import { UsersService } from './users.service.js';
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: SIGN_UP_THROTTLE })
   @Post()
   @ApiOperation({ summary: 'Cadastra um usuário' })
   @ApiCreatedResponse({ type: UserEntity })
   @ApiBadRequestResponse({ type: ErrorResponseDto })
   @ApiConflictResponse({ type: ErrorResponseDto })
+  @ApiTooManyRequestsResponse({
+    type: ErrorResponseDto,
+    description: 'Muitas tentativas; veja o header Retry-After',
+  })
   async create(
     @Body() dto: CreateUserDto,
     @Res({ passthrough: true }) res: Response,
