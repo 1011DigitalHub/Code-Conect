@@ -1,4 +1,7 @@
 packages:
   - "apps/*"
 allowBuilds:
+  '@prisma/engines': true
   '@scarf/scarf': false
+  esbuild: false
+  prisma: true
