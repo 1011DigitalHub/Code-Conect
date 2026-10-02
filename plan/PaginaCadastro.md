@@ -29,6 +29,8 @@ Também é a hora de adicionar o `react-router`, como o plano do Login já previ
 >
 > Cores: o vermelho de erro (`red-400`) virou o token `--color-danger` (ver `PaginaLogin.md`, passo 2).
 
+> **Atualização (2026-10-02), ligação com a API:** o formulário ganhou `submitting` e `error`, limites `maxLength`/`minLength` iguais aos do DTO e a dica "Mínimo de 8 caracteres" na senha. A página chama `POST /users`, faz login automático e vai para `/perfil`. Detalhes em `IntegracaoFrontBack.md`.
+
 > **Atualização (2026-10-01), assets otimizados:** `Banner_cadastro_page.png` e `Banner_login_page.png` viraram `.webp` (42 KB e 55 KB) e o mockup `Group 2086.png` agora fica em `plan/assets/`. Detalhes em `MelhoriasLighthouse.md`.
 
 ### Diferenças entre o implementado e o Figma (valem para Login e Cadastro)

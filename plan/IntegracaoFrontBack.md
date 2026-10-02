@@ -191,3 +191,10 @@ src/api/
   9. Swagger (`/api/docs`): login e cadastro mostram a resposta `429`.
 - Acessibilidade: usar Login, Cadastro e Perfil só com o teclado, testar com o NVDA (erros e "Carregando..." anunciados) e conferir zoom de 200%.
 - Lighthouse (DevTools, build de produção, aba anônima) em `/login` e `/cadastro`: registrar a tabela (Performance, Acessibilidade, Boas práticas, SEO, LCP, CLS, TBT) e confirmar que o Axios não derrubou a Performance abaixo de 90.
+
+## Notas de execução (2026-10-02)
+- `CenteredTemplate` recebeu a prop `title` (o `h1` da página), em vez de só `children`, para garantir um único `h1`.
+- `ProfileCard` define o próprio tipo de usuário, para não importar de `src/api/` (regra: componentes não falam com a API).
+- Os specs de controller que usam `ThrottlerGuard` o substituem por um guard liberado; o limite é coberto por `test/throttle.e2e-spec.ts`.
+- A API já usa Prisma/Postgres (não mais array em memória); isso não alterou o plano.
+- Pendências manuais: medir o Lighthouse em `/login` e `/cadastro` (build de produção, DevTools) e fazer os testes com NVDA e zoom de 200%.

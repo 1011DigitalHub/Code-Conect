@@ -13,6 +13,8 @@ Assets em `public/`, usados por URL absoluta (`/Banner_login_page.png`, `/Github
 
 > **Atualização (2026-10-01), assets otimizados:** `Banner_login_page.png` virou `Banner_login_page.webp` (de 1,29 MB para 55 KB) e o mockup `Group 2086.png` saiu de `public/` para `plan/assets/`, porque não é usado pela aplicação. Detalhes em `MelhoriasLighthouse.md`.
 
+> **Atualização (2026-10-02), ligação com a API:** o campo "Email ou usuário" virou "Email" (`type="email"`), porque `POST /auth/login` só aceita email. O formulário ganhou `submitting` e `error`, e a página chama a API com Axios e vai para `/perfil`. Detalhes em `IntegracaoFrontBack.md`.
+
 ## 1. Test runner (exigido pelo CLAUDE.md antes de criar componentes)
 - devDeps em `apps/web`: `vitest`, `jsdom`, `@testing-library/react`, `@testing-library/user-event`, `@testing-library/jest-dom`.
 - `vite.config.ts`: bloco `test` com `environment: 'jsdom'`, `globals: true`, `setupFiles: './src/test/setup.ts'` (esse arquivo importa `@testing-library/jest-dom/vitest`). Usar `/// <reference types="vitest/config" />`.

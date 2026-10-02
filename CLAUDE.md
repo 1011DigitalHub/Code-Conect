@@ -60,7 +60,15 @@ Components live in `src/components/`, one level per folder:
 Rules:
 - A component imports only from its own level or lower levels (a molecule never imports an organism).
 - Each component has its own folder: `ComponentName/ComponentName.tsx`, `ComponentName/ComponentName.test.tsx` and an `index.ts` that re-exports it.
-- Keep API calls out of `components/`. Pages (or hooks they use) fetch data and pass it down as props.
+- Keep API calls out of `components/`. Pages (or hooks they use) fetch data and pass it down as props. Components never import from `src/api/`.
+
+### API layer: Axios (`src/api/`)
+
+- `client.ts` is the only Axios instance. `baseURL` comes from `VITE_API_URL` (default `http://localhost:3000`, see `.env.example`). A request interceptor adds `Authorization: Bearer <token>`; a response interceptor drops the token on a `401` for a request that carried one.
+- One file per resource (`auth.ts`, `users.ts`) with typed functions that return `response.data`. Types in `types.ts` mirror the Swagger document.
+- `tokenStorage.ts` holds the JWT: `localStorage` when "Lembrar-me" is checked, `sessionStorage` otherwise. Storage access is guarded with try/catch. Never log the token.
+- Pages turn failures into messages with `getErrorMessage` (`errors.ts`, pt-BR, by status; `429` reads `Retry-After`) and show them with `FormError`. Don't show the API's own messages.
+- Private pages (`/perfil`) redirect to `/login` without a token and are not added to `e2e/routes.ts`; they get their own browser suite (`e2e/profile.e2e.ts`) with a fake API through `page.route`.
 
 ### Styling: Tailwind CSS
 
@@ -239,7 +247,9 @@ Auth lives in `src/auth/` (`AuthGuard`, JWT) and users in `src/users/`. Users ar
 - Responses return response DTOs or entities, never raw stored records. `ValidationPipe` with `whitelist` and `forbidNonWhitelisted` stops mass assignment (a client can't set `id` or `role`).
 - Errors keep Nest's default shape and don't leak stack traces, SQL or internal messages.
 - Read secrets and settings from environment variables (`JWT_SECRET`, `JWT_EXPIRES_IN`, `PORT`, `DATABASE_URL`). Keep `.env` files out of git and commit a `.env.example` next to each one (`.gitignore` ignores `.env.*` except `.env.example`).
-- Before the web app calls the API from the browser, enable CORS only for the known origins (`app.enableCors({ origin: [...] })`), never `*` together with credentials. Add rate limiting (`@nestjs/throttler`) to `POST /auth/login` and `POST /users` before deploying. Security headers (`helmet`) are added with the rest of the hosting setup.
+- **CORS** is set in `configureApp` through `getCorsOptions()` (`src/cors.ts`). Allowed origins come from `CORS_ORIGINS` (comma-separated; dev default is the Vite origins; in production, without it, every origin is refused). Never `*`, and no credentials: the token travels in the `Authorization` header. `Location` and `Retry-After` are exposed to the browser.
+- **Rate limiting** (`@nestjs/throttler`, in-memory, per IP) applies only where `ThrottlerGuard` is used: `POST /auth/login` (5/min) and `POST /users` (3/min), with values in `common/throttle.constants.ts`. Excess requests get `429` with `Retry-After`; document `@ApiTooManyRequestsResponse` on any new limited route.
+- Still to do at deploy time: `app.set('trust proxy', ...)` behind a reverse proxy (otherwise every user shares one IP for rate limiting), security headers (`helmet`), and a shared store (Redis) if there is more than one instance.
 - Run `pnpm audit` when adding auth-related dependencies.
 
 ### Database: PostgreSQL + Prisma
