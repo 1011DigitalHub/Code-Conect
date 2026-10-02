@@ -207,8 +207,48 @@ Every endpoint must follow REST principles:
 - **Collections.** Filtering, sorting and pagination go in query params (`?page=1&limit=20&sort=-createdAt&authorId=1`). Paginated responses include the data plus pagination metadata and links (`self`, `next`, `prev`).
 - **Hypermedia.** Resources include links to themselves and to related resources where useful (for example a post links to its comments).
 - **Consistent errors.** Keep Nest's default error shape (`statusCode`, `message`, `error`) across the whole API. Don't invent per-endpoint formats.
-- **Validation.** Validate every body, param and query with DTOs and a global `ValidationPipe` (`whitelist: true`, `forbidNonWhitelisted: true`, `transform: true`). Use `ParseIntPipe`/`ParseUUIDPipe` for ids. `class-validator`/`class-transformer` aren't installed yet; add them when the first DTO is needed.
+- **Validation.** Validate every body, param and query with DTOs and a global `ValidationPipe` (`whitelist: true`, `forbidNonWhitelisted: true`, `transform: true`). Use `ParseIntPipe`/`ParseUUIDPipe` for ids. The pipe is set up in `configureApp` (`src/app.setup.ts`), which `main.ts` and the e2e tests both call, so tests run with the same validation as production.
 - **Caching and concurrency.** `GET` responses may use `ETag`/`Cache-Control`. Don't make `GET` responses uncacheable by mixing in side effects.
+
+### Security: authentication and authorization
+
+Auth lives in `src/auth/` (`AuthGuard`, JWT) and users in `src/users/`. The first version keeps users in an in-memory array (see `plan/AutenticacaoUsuario.md`).
+
+**JWT:**
+- Sign and verify with `@nestjs/jwt`. The secret comes from `JWT_SECRET` (see `getJwtSecret()` in `auth/auth.constants.ts`). Never hard-code a secret, never commit one, and never log tokens. In production the API must refuse to start without `JWT_SECRET`.
+- Tokens are short-lived (`JWT_EXPIRES_IN`, in seconds, default 1 hour). The payload holds only what the guard needs (`sub` = user id, `email`). Never put a password, hash or other sensitive data in it: a JWT is signed, not encrypted.
+- The token travels only in `Authorization: Bearer <token>`. Don't accept it in the URL or query string, and keep the API stateless.
+- The login response is `{ accessToken, tokenType, expiresIn }`.
+
+**Auth Guard:**
+- Follow the NestJS "Authentication" guide: an `AuthGuard` implementing `CanActivate` that reads the Bearer header, calls `JwtService.verifyAsync` with the secret, and stores the payload in `request.user`. Any missing, malformed, expired or invalid token throws `UnauthorizedException`, with no detail about why.
+- Protect each route explicitly with `@UseGuards(AuthGuard)` and `@ApiBearerAuth()`, or register the guard globally and mark public routes with a decorator. Never leave a route unprotected by accident: a new endpoint that returns user data must have a guard and an e2e test for the `401` case.
+- Derive the user from the token (`request.user.sub`), never from an id sent by the client. A valid token for a user that no longer exists is a `401`.
+- Use the typed `JwtPayload` and `AuthenticatedRequest` in `auth/auth.types.ts`, not `any`.
+
+**Passwords and credentials:**
+- Hash passwords with `scrypt` + a random salt and compare with `timingSafeEqual` (`users/password.ts`), or another adaptive hash (argon2, bcrypt). Never store, log or return a plain password or hash. Responses use `UserEntity`, which has no password field.
+- Login failures return the same `401` message for an unknown email and a wrong password, so the API doesn't reveal which emails are registered.
+- Passwords are 8 to 72 characters. Normalize emails (trim, lowercase) before comparing or storing them.
+
+**General:**
+- Responses return response DTOs or entities, never raw stored records. `ValidationPipe` with `whitelist` and `forbidNonWhitelisted` stops mass assignment (a client can't set `id` or `role`).
+- Errors keep Nest's default shape and don't leak stack traces, SQL or internal messages.
+- Read secrets and settings from environment variables (`JWT_SECRET`, `JWT_EXPIRES_IN`, `PORT`). When a `.env` file is added, keep it out of git and commit a `.env.example`.
+- Before the web app calls the API from the browser, enable CORS only for the known origins (`app.enableCors({ origin: [...] })`), never `*` together with credentials. Add rate limiting (`@nestjs/throttler`) to `POST /auth/login` and `POST /users` before deploying. Security headers (`helmet`) are added with the rest of the hosting setup.
+- Run `pnpm audit` when adding auth-related dependencies.
+
+### API documentation: Swagger (OpenAPI)
+
+The Swagger setup is in `src/swagger.ts` (`setupSwagger`, called from `main.ts` and the e2e tests): UI at `/docs`, JSON at `/docs-json`. Every endpoint must be documented, and a change to an endpoint isn't done until its Swagger is updated.
+
+- **No CLI plugin.** Vitest doesn't go through `nest build`, so document explicitly. Every DTO and entity field has `@ApiProperty({ example, description })`, with `minLength`/`maxLength`/`enum`/`format` when they apply, matching the `class-validator` rules.
+- Each controller has `@ApiTags('<resource>')`. Each handler has `@ApiOperation({ summary })` (in pt-BR, short) and one response decorator for the success code (`@ApiOkResponse`, `@ApiCreatedResponse`, ...), with `type` set to a response class (arrays use `type: [X]`).
+- Document every error the endpoint can return (`@ApiBadRequestResponse`, `@ApiUnauthorizedResponse`, `@ApiConflictResponse`, `@ApiNotFoundResponse`, ...) with `type: ErrorResponseDto` (`common/dto/error-response.dto.ts`), which mirrors Nest's default error shape.
+- Protected routes carry `@ApiBearerAuth()`, so Swagger UI sends the token after "Authorize". Public routes don't.
+- Document inputs through DTO classes (`@Body`, `@Query`, `@Param`), not inline types, because only classes reach the OpenAPI document. Response types must be classes too.
+- Swagger examples never contain real data or real secrets. Use obvious fakes (`maria@exemplo.com`, `senha-segura-123`).
+- Each feature's e2e test asserts that its paths appear in `GET /docs-json` (see `test/auth.e2e-spec.ts`). Before deploying, decide whether `/docs` stays public; if not, disable it or protect it in production.
 
 ### Tests
 
