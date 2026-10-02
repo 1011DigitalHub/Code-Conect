@@ -147,10 +147,10 @@ describe('Auth (e2e)', () => {
     });
   });
 
-  describe('GET /docs-json', () => {
+  describe('GET /api/docs-json', () => {
     it('documents the three endpoints and the bearer scheme', async () => {
       const res = await request(app.getHttpServer())
-        .get('/docs-json')
+        .get('/api/docs-json')
         .expect(200);
       expect(Object.keys(res.body.paths)).toEqual(
         expect.arrayContaining(['/users', '/auth/login', '/auth/me']),

@@ -25,7 +25,7 @@ Decisões:
 ## 2. Setup compartilhado da aplicação
 - Novo `src/app.setup.ts` com `configureApp(app: INestApplication)`:
   - `app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))`.
-- Novo `src/swagger.ts` com `setupSwagger(app)`: `DocumentBuilder` (título "Code Connect API", versão, `addBearerAuth()`), `SwaggerModule.setup('docs', app, document)` → UI em `/docs`, JSON em `/docs-json`.
+- Novo `src/swagger.ts` com `setupSwagger(app)`: `DocumentBuilder` (título "Code Connect API", versão, `addBearerAuth()`), `SwaggerModule.setup('api/docs', app, document)` → UI em `/api/docs`, JSON em `/api/docs-json`.
 - `src/main.ts`: chama `configureApp(app)` e `setupSwagger(app)` antes do `listen` (e remove o comentário de debug das variáveis de ambiente).
 - Os testes e2e chamam o mesmo `configureApp`, assim validação e status codes batem com a produção.
 
@@ -90,7 +90,7 @@ dto/token-response.dto.ts
 - `POST /users` com email repetido → `409`; com body inválido ou campo extra → `400` no formato `{ statusCode, message, error }`.
 - `POST /auth/login` correto → `200` com `accessToken` e `tokenType: 'Bearer'`; senha errada → `401`.
 - `GET /auth/me` sem token → `401`; com token inválido → `401`; com o token do login → `200` com os dados do usuário cadastrado.
-- `GET /docs-json` → `200` e o documento contém `/users`, `/auth/login`, `/auth/me` e o esquema `bearer`.
+- `GET /api/docs-json` → `200` e o documento contém `/users`, `/auth/login`, `/auth/me` e o esquema `bearer`.
 
 ## 7. Commits (Conventional Commits)
 1. `docs(root): add user authentication plan`
@@ -103,5 +103,5 @@ dto/token-response.dto.ts
 ## Verificação
 - `pnpm test:api` e `pnpm test:api:e2e`: todos passam.
 - `pnpm lint` (oxlint type-aware, sem `no-floating-promises`) e `pnpm build`.
-- `pnpm dev:api` e abrir `http://localhost:3000/docs`: conferir inputs e outputs dos três endpoints, cadastrar um usuário, fazer login, clicar em "Authorize" com o token e chamar `GET /auth/me`.
+- `pnpm dev:api` e abrir `http://localhost:3000/api/docs`: conferir inputs e outputs dos três endpoints, cadastrar um usuário, fazer login, clicar em "Authorize" com o token e chamar `GET /auth/me`.
 - Fora do escopo (próximo plano): ligar o `LoginForm`/`SignUpForm` do web nestes endpoints (vai exigir `app.enableCors` para a origem do Vite) e trocar o array por um banco.

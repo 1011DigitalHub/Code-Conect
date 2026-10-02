@@ -240,7 +240,7 @@ Auth lives in `src/auth/` (`AuthGuard`, JWT) and users in `src/users/`. The firs
 
 ### API documentation: Swagger (OpenAPI)
 
-The Swagger setup is in `src/swagger.ts` (`setupSwagger`, called from `main.ts` and the e2e tests): UI at `/docs`, JSON at `/docs-json`. Every endpoint must be documented, and a change to an endpoint isn't done until its Swagger is updated.
+The Swagger setup is in `src/swagger.ts` (`setupSwagger`, called from `main.ts` and the e2e tests): UI at `/api/docs`, JSON at `/api/docs-json`. Every endpoint must be documented, and a change to an endpoint isn't done until its Swagger is updated.
 
 - **No CLI plugin.** Vitest doesn't go through `nest build`, so document explicitly. Every DTO and entity field has `@ApiProperty({ example, description })`, with `minLength`/`maxLength`/`enum`/`format` when they apply, matching the `class-validator` rules.
 - Each controller has `@ApiTags('<resource>')`. Each handler has `@ApiOperation({ summary })` (in pt-BR, short) and one response decorator for the success code (`@ApiOkResponse`, `@ApiCreatedResponse`, ...), with `type` set to a response class (arrays use `type: [X]`).
@@ -248,7 +248,7 @@ The Swagger setup is in `src/swagger.ts` (`setupSwagger`, called from `main.ts` 
 - Protected routes carry `@ApiBearerAuth()`, so Swagger UI sends the token after "Authorize". Public routes don't.
 - Document inputs through DTO classes (`@Body`, `@Query`, `@Param`), not inline types, because only classes reach the OpenAPI document. Response types must be classes too.
 - Swagger examples never contain real data or real secrets. Use obvious fakes (`maria@exemplo.com`, `senha-segura-123`).
-- Each feature's e2e test asserts that its paths appear in `GET /docs-json` (see `test/auth.e2e-spec.ts`). Before deploying, decide whether `/docs` stays public; if not, disable it or protect it in production.
+- Each feature's e2e test asserts that its paths appear in `GET /api/docs-json` (see `test/auth.e2e-spec.ts`). Before deploying, decide whether `/api/docs` stays public; if not, disable it or protect it in production.
 
 ### Tests
 
