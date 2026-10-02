@@ -5,6 +5,7 @@ import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module.js';
 import { configureApp } from './../src/app.setup.js';
 import { setupSwagger } from './../src/swagger.js';
+import { resetDatabase } from './db.js';
 
 const newUser = {
   name: 'Maria Silva',
@@ -12,19 +13,25 @@ const newUser = {
   password: 'senha-segura-123',
 };
 
+async function createApp(): Promise<INestApplication<App>> {
+  const moduleFixture: TestingModule = await Test.createTestingModule({
+    imports: [AppModule],
+  }).compile();
+
+  const app = moduleFixture.createNestApplication<INestApplication<App>>();
+  configureApp(app);
+  setupSwagger(app);
+  await app.init();
+  return app;
+}
+
 describe('Auth (e2e)', () => {
   let app: INestApplication<App>;
 
-  // A fresh app per test, so the in-memory users array starts empty.
+  // A fresh app and an empty test database per test, so ids start at 1.
   beforeEach(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    app = moduleFixture.createNestApplication();
-    configureApp(app);
-    setupSwagger(app);
-    await app.init();
+    app = await createApp();
+    await resetDatabase(app);
   });
 
   afterEach(async () => {
@@ -144,6 +151,27 @@ describe('Auth (e2e)', () => {
         email: 'maria@exemplo.com',
       });
       expect(JSON.stringify(res.body)).not.toMatch(/password/i);
+    });
+  });
+
+  describe('persistence', () => {
+    it('keeps users after the app restarts', async () => {
+      await request(app.getHttpServer())
+        .post('/users')
+        .send(newUser)
+        .expect(201);
+      await app.close();
+
+      // A new app instance, like restarting the API.
+      app = await createApp();
+      await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ email: newUser.email, password: newUser.password })
+        .expect(200);
+      await request(app.getHttpServer())
+        .post('/users')
+        .send(newUser)
+        .expect(409);
     });
   });
 
