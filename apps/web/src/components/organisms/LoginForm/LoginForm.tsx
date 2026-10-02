@@ -1,12 +1,13 @@
 import { useState, type FormEvent } from 'react'
 import { Button } from '../../atoms/Button'
+import { FormError } from '../../atoms/FormError'
 import { Icon } from '../../atoms/Icon'
 import { TextLink } from '../../atoms/TextLink'
 import { CheckboxField } from '../../molecules/CheckboxField'
 import { FormField } from '../../molecules/FormField'
 
 export type LoginFormValues = {
-  login: string
+  email: string
   password: string
   remember: boolean
 }
@@ -14,11 +15,18 @@ export type LoginFormValues = {
 export type LoginFormProps = {
   onSubmit: (values: LoginFormValues) => void
   forgotPasswordHref: string
+  submitting?: boolean
+  error?: string
 }
 
-export function LoginForm({ onSubmit, forgotPasswordHref }: LoginFormProps) {
+export function LoginForm({
+  onSubmit,
+  forgotPasswordHref,
+  submitting = false,
+  error,
+}: LoginFormProps) {
   const [values, setValues] = useState<LoginFormValues>({
-    login: '',
+    email: '',
     password: '',
     remember: false,
   })
@@ -31,14 +39,15 @@ export function LoginForm({ onSubmit, forgotPasswordHref }: LoginFormProps) {
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       <FormField
-        id="login"
-        name="login"
-        label="Email ou usuário"
-        placeholder="usuario123"
-        autoComplete="username"
+        id="email"
+        name="email"
+        type="email"
+        label="Email"
+        placeholder="Digite seu email"
+        autoComplete="email"
         required
-        value={values.login}
-        onChange={(event) => setValues({ ...values, login: event.target.value })}
+        value={values.email}
+        onChange={(event) => setValues({ ...values, email: event.target.value })}
       />
       <div className="flex flex-col gap-2">
         <FormField
@@ -63,9 +72,15 @@ export function LoginForm({ onSubmit, forgotPasswordHref }: LoginFormProps) {
           <TextLink href={forgotPasswordHref}>Esqueci a senha</TextLink>
         </div>
       </div>
-      <div className="mt-4">
-        <Button type="submit" fullWidth icon={<Icon name="arrow-right" size="sm" />}>
-          Login
+      <div className="mt-4 flex flex-col gap-4">
+        <FormError message={error} />
+        <Button
+          type="submit"
+          fullWidth
+          disabled={submitting}
+          icon={<Icon name="arrow-right" size="sm" />}
+        >
+          {submitting ? 'Entrando...' : 'Login'}
         </Button>
       </div>
     </form>

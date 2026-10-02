@@ -9,13 +9,13 @@ describe('LoginForm', () => {
     const onSubmit = vi.fn()
     renderWithRouter(<LoginForm onSubmit={onSubmit} forgotPasswordHref="/recuperar-senha" />)
 
-    await userEvent.type(screen.getByLabelText('Email ou usuário'), 'usuario123')
+    await userEvent.type(screen.getByLabelText('Email'), 'ana@exemplo.com')
     await userEvent.type(screen.getByLabelText('Senha'), 'segredo')
     await userEvent.click(screen.getByRole('checkbox', { name: 'Lembrar-me' }))
     await userEvent.click(screen.getByRole('button', { name: 'Login' }))
 
     expect(onSubmit).toHaveBeenCalledWith({
-      login: 'usuario123',
+      email: 'ana@exemplo.com',
       password: 'segredo',
       remember: true,
     })
@@ -30,6 +30,24 @@ describe('LoginForm', () => {
     expect(onSubmit).not.toHaveBeenCalled()
   })
 
+  it('disables the button and shows progress while submitting', () => {
+    renderWithRouter(<LoginForm onSubmit={vi.fn()} forgotPasswordHref="/recuperar-senha" submitting />)
+
+    expect(screen.getByRole('button', { name: 'Entrando...' })).toBeDisabled()
+  })
+
+  it('shows the error as an alert', () => {
+    renderWithRouter(
+      <LoginForm
+        onSubmit={vi.fn()}
+        forgotPasswordHref="/recuperar-senha"
+        error="Email ou senha inválidos."
+      />,
+    )
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Email ou senha inválidos.')
+  })
+
   it('links to password recovery', () => {
     renderWithRouter(<LoginForm onSubmit={vi.fn()} forgotPasswordHref="/recuperar-senha" />)
 
@@ -40,7 +58,9 @@ describe('LoginForm', () => {
   })
 
   it('has no WCAG 2.2 AA violations', async () => {
-    const { container } = renderWithRouter(<LoginForm onSubmit={vi.fn()} forgotPasswordHref="/recuperar-senha" />)
+    const { container } = renderWithRouter(
+      <LoginForm onSubmit={vi.fn()} forgotPasswordHref="/recuperar-senha" error="Email ou senha inválidos." />,
+    )
 
     await expectNoA11yViolations(container)
   })

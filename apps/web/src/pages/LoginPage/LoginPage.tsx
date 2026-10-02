@@ -13,7 +13,7 @@ export function LoginPage() {
 
   // TODO: call the API once the auth endpoints exist.
   function handleLogin(values: LoginFormValues) {
-    console.info('login', { login: values.login, remember: values.remember })
+    console.info('login', { email: values.email, remember: values.remember })
   }
 
   function handleSocialLogin(providerId: string) {

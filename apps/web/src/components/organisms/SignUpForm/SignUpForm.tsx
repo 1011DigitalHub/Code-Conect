@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Button } from '../../atoms/Button'
+import { FormError } from '../../atoms/FormError'
 import { Icon } from '../../atoms/Icon'
 import { CheckboxField } from '../../molecules/CheckboxField'
 import { FormField } from '../../molecules/FormField'
@@ -13,9 +14,11 @@ export type SignUpFormValues = {
 
 export type SignUpFormProps = {
   onSubmit: (values: SignUpFormValues) => void
+  submitting?: boolean
+  error?: string
 }
 
-export function SignUpForm({ onSubmit }: SignUpFormProps) {
+export function SignUpForm({ onSubmit, submitting = false, error }: SignUpFormProps) {
   const [values, setValues] = useState<SignUpFormValues>({
     name: '',
     email: '',
@@ -36,6 +39,7 @@ export function SignUpForm({ onSubmit }: SignUpFormProps) {
         label="Nome"
         placeholder="Nome completo"
         autoComplete="name"
+        maxLength={100}
         required
         value={values.name}
         onChange={(event) => setValues({ ...values, name: event.target.value })}
@@ -59,6 +63,9 @@ export function SignUpForm({ onSubmit }: SignUpFormProps) {
           label="Senha"
           placeholder="******"
           autoComplete="new-password"
+          minLength={8}
+          maxLength={72}
+          hint="Mínimo de 8 caracteres"
           required
           value={values.password}
           onChange={(event) => setValues({ ...values, password: event.target.value })}
@@ -71,9 +78,15 @@ export function SignUpForm({ onSubmit }: SignUpFormProps) {
           onChange={(event) => setValues({ ...values, remember: event.target.checked })}
         />
       </div>
-      <div className="mt-4">
-        <Button type="submit" fullWidth icon={<Icon name="arrow-right" size="sm" />}>
-          Cadastrar
+      <div className="mt-4 flex flex-col gap-4">
+        <FormError message={error} />
+        <Button
+          type="submit"
+          fullWidth
+          disabled={submitting}
+          icon={<Icon name="arrow-right" size="sm" />}
+        >
+          {submitting ? 'Cadastrando...' : 'Cadastrar'}
         </Button>
       </div>
     </form>
