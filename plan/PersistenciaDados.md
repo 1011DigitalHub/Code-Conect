@@ -138,3 +138,26 @@ Chamadores que precisam de `await`:
 6. `pnpm db:down` seguido de `pnpm db:up`: os dados continuam lá, porque estão no volume `pgdata`. `docker compose down -v` apagaria tudo e só deve ser usado de propósito.
 7. `pnpm db:studio` abre o Prisma Studio, onde os usuários aparecem com `password_hash` e nunca com a senha em texto.
 8. `http://localhost:3000/api/docs`: o Swagger continua igual.
+
+## Notas de implementação (2026-10-02)
+O que mudou em relação ao plano acima durante a implementação, e por quê:
+- **Versão do Prisma fixada em `^7.10.0`:** a tag `latest` do `prisma` no npm aponta para uma pré-versão (`8.0.0-rc.19`), que veio com dependências desnecessárias (`workerd`, `alchemy`) e não batia com o `@prisma/client` 7.10.0. CLI e client ficam na mesma versão.
+- **`allowBuilds` no `pnpm-workspace.yaml`:** `prisma` e `@prisma/engines` liberados (baixam o schema engine das migrações). `esbuild` fica bloqueado, porque não é necessário.
+- **`.env` carregado em `src/load-env.ts`, não no corpo do `main.ts`:** em ESM os imports rodam antes do corpo do módulo, e `auth.constants.ts` lê `JWT_EXPIRES_IN` no carregamento. O `load-env.ts` é o primeiro import do `main.ts`.
+- **`.gitignore`:** a regra `.env.*` também ignorava os `.env.example`; ganhou a exceção `!.env.example`.
+- **`prisma.config.ts`:** usa `process.env.DATABASE_URL ?? ''` em vez de `env('DATABASE_URL')`, para o `prisma generate` do `postinstall` funcionar sem `.env` (gerar o client não precisa de banco).
+- **`tsconfig.build.json` não precisou mudar:** ele já inclui só `src/`, então o `prisma.config.ts` fica fora do build.
+- **Senha local do Postgres:** gerada aleatoriamente e gravada no `.env` da raiz e no `apps/api/.env`, ambos fora do git.
+
+## Resultados da verificação (2026-10-02)
+| Verificação | Resultado |
+|---|---|
+| `pnpm db:up` | container `code-connect-postgres` `healthy`; bancos `codeconnect` e `codeconnect_test` criados |
+| `pnpm db:migrate` | migração `20261002184701_create_users` aplicada |
+| `pnpm test:api` | 8 arquivos, 22 testes passando |
+| `pnpm test:api:e2e` | 2 arquivos, 11 testes passando (inclui "keeps users after the app restarts") |
+| `pnpm lint:api` / `pnpm build:api` | sem erros |
+| API real (porta 3001): cadastrar → reiniciar a API → login e `/auth/me` | `201` → `200` → `200`; cadastro repetido após o restart → `409` |
+| `docker compose down` + `up` | registro continua no volume `code-connect-pgdata` |
+
+Pendente (manual): rodar a coleção do Postman com `pnpm dev:api` e abrir o `pnpm db:studio`.

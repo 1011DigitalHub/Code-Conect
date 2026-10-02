@@ -23,9 +23,13 @@ pnpm build             # builds all apps (web: tsc -b && vite build; api: nest b
 pnpm lint              # oxlint in every app
 pnpm test:web          # web component tests (*.test.tsx), including axe checks
 pnpm test:web:a11y     # web browser suites (Playwright, e2e/*.e2e.ts): accessibility and SEO
-pnpm test:api          # api unit tests (*.spec.ts)
-pnpm test:api:e2e      # api e2e tests (test/*.e2e-spec.ts, separate vitest config)
+pnpm test:api          # api unit tests (*.spec.ts), no database needed
+pnpm test:api:e2e      # api e2e tests (test/*.e2e-spec.ts, separate vitest config); needs pnpm db:up
 pnpm start:api         # node dist/main (needs a build first)
+pnpm db:up             # start PostgreSQL in Docker (docker-compose.yml) and wait until healthy
+pnpm db:down           # stop it; data stays in the code-connect-pgdata volume
+pnpm db:migrate        # prisma migrate dev: apply migrations / create one after editing schema.prisma
+pnpm db:studio         # Prisma Studio, to browse the data
 ```
 
 To run any other app script: `pnpm api <script>` / `pnpm web <script>`. Examples:
@@ -212,7 +216,7 @@ Every endpoint must follow REST principles:
 
 ### Security: authentication and authorization
 
-Auth lives in `src/auth/` (`AuthGuard`, JWT) and users in `src/users/`. The first version keeps users in an in-memory array (see `plan/AutenticacaoUsuario.md`).
+Auth lives in `src/auth/` (`AuthGuard`, JWT) and users in `src/users/`. Users are stored in PostgreSQL through Prisma (see Database below and `plan/PersistenciaDados.md`).
 
 **JWT:**
 - Sign and verify with `@nestjs/jwt`. The secret comes from `JWT_SECRET` (see `getJwtSecret()` in `auth/auth.constants.ts`). Never hard-code a secret, never commit one, and never log tokens. In production the API must refuse to start without `JWT_SECRET`.
@@ -234,9 +238,21 @@ Auth lives in `src/auth/` (`AuthGuard`, JWT) and users in `src/users/`. The firs
 **General:**
 - Responses return response DTOs or entities, never raw stored records. `ValidationPipe` with `whitelist` and `forbidNonWhitelisted` stops mass assignment (a client can't set `id` or `role`).
 - Errors keep Nest's default shape and don't leak stack traces, SQL or internal messages.
-- Read secrets and settings from environment variables (`JWT_SECRET`, `JWT_EXPIRES_IN`, `PORT`). When a `.env` file is added, keep it out of git and commit a `.env.example`.
+- Read secrets and settings from environment variables (`JWT_SECRET`, `JWT_EXPIRES_IN`, `PORT`, `DATABASE_URL`). Keep `.env` files out of git and commit a `.env.example` next to each one (`.gitignore` ignores `.env.*` except `.env.example`).
 - Before the web app calls the API from the browser, enable CORS only for the known origins (`app.enableCors({ origin: [...] })`), never `*` together with credentials. Add rate limiting (`@nestjs/throttler`) to `POST /auth/login` and `POST /users` before deploying. Security headers (`helmet`) are added with the rest of the hosting setup.
 - Run `pnpm audit` when adding auth-related dependencies.
+
+### Database: PostgreSQL + Prisma
+
+- **PostgreSQL 18 in Docker**, defined in `docker-compose.yml` at the repo root. Data lives in the named volume `code-connect-pgdata`, so it survives `docker compose down`. `docker compose down -v` deletes it; only run that on purpose. The port is bound to `127.0.0.1` only. `docker/postgres/init/` runs only when the volume is created empty and creates the `codeconnect_test` database.
+- **Prisma 7** (`prisma-client` generator, `@prisma/adapter-pg`). Chosen over Drizzle, TypeORM and MikroORM; the reasons are in `plan/PersistenciaDados.md`.
+  - Schema: `apps/api/prisma/schema.prisma`. Models are PascalCase singular in code and mapped to snake_case plural tables/columns (`@@map("users")`, `@map("password_hash")`).
+  - After changing the schema, run `pnpm db:migrate --name <change>` and commit the generated folder under `prisma/migrations/`. Never edit a migration that is already committed.
+  - The client is generated into `apps/api/src/generated/prisma` (git-ignored, also ignored by oxlint and Prettier) by `postinstall` and `build`. Import it as `../generated/prisma/client.js`.
+  - Keep `prisma` and `@prisma/client` on the same version. The npm `latest` tag of `prisma` may point at a prerelease, so add or upgrade with an explicit version.
+- **Access**: inject `PrismaService` (`src/prisma/`, global module) into services only, never into controllers. Map Prisma errors to Nest exceptions in the service (unique violation `P2002` → `ConflictException`). Never return a Prisma record directly; wrap it in the response entity (`UserEntity`).
+- **Environment**: `apps/api/.env` holds `DATABASE_URL` and `TEST_DATABASE_URL`; the root `.env` holds `POSTGRES_PASSWORD` for Docker Compose. Both are git-ignored; copy them from the `.env.example` files. `src/load-env.ts` loads `apps/api/.env` with `process.loadEnvFile()` and must stay the first import of `main.ts`.
+- **Tests**: unit tests mock `PrismaService` (or the service that uses it) and need no database. E2E tests run against `TEST_DATABASE_URL`: `test/global-setup.ts` refuses to run if it equals `DATABASE_URL` and runs `prisma migrate deploy`, and `resetDatabase(app)` (`test/db.ts`) truncates the tables before each test. Test files run sequentially (`fileParallelism: false`).
 
 ### API documentation: Swagger (OpenAPI)
 

@@ -1,5 +1,7 @@
 # Plano: Autenticação de Usuário (apps/api)
 
+> **Nota (2026-10-02):** o armazenamento em memória descrito abaixo foi substituído por PostgreSQL + Prisma. Ver `plan/PersistenciaDados.md`. Os endpoints e o contrato HTTP não mudaram.
+
 ## Contexto
 O `apps/api` hoje só tem o `AppController` de exemplo ("Hello World!"). As páginas de Login e Cadastro do `apps/web` já existem, mas os handlers são stubs com `console.info` porque não há endpoints de auth. Este plano cria os três endpoints que faltam, documentados no Swagger:
 
