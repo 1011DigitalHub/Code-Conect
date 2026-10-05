@@ -16,5 +16,69 @@ model User {
   passwordHash String   @map("password_hash")
   createdAt    DateTime @default(now()) @map("created_at")
 
+  posts    Post[]
+  comments Comment[]
+  likes    Like[]
+
   @@map("users")
+}
+
+model Post {
+  id           Int      @id @default(autoincrement())
+  slug         String   @unique @db.VarChar(160)
+  title        String   @db.VarChar(120)
+  excerpt      String   @db.VarChar(160)
+  content      String
+  thumbnailUrl String?  @map("thumbnail_url") @db.VarChar(500)
+  authorId     Int      @map("author_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Generated tsvector column for the Portuguese full-text search. Prisma
+  // cannot express GENERATED ALWAYS AS, so the DDL for this column is written
+  // by hand in the migration (see 20261005_create_posts_comments_likes).
+  // It is declared here only so `migrate dev` does not read the column as
+  // drift and try to drop it. Optional on purpose: that keeps it out of the
+  // generated create/update inputs, which is right for a generated column.
+  searchVector Unsupported("tsvector")? @map("search_vector")
+
+  author   User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  comments Comment[]
+  likes    Like[]
+
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
+  @@index([authorId])
+  @@index([searchVector], type: Gin, map: "posts_search_vector_idx")
+  @@map("posts")
+}
+
+model Comment {
+  id        Int      @id @default(autoincrement())
+  body      String   @db.VarChar(1000)
+  postId    Int      @map("post_id")
+  authorId  Int      @map("author_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  post   Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([postId, createdAt])
+  @@index([authorId])
+  @@map("comments")
+}
+
+// Composite primary key instead of a synthetic id: it gives the uniqueness
+// constraint and the lookup index for free, and a like has no identity of its
+// own. The column is user_id, not author_id — a like is not authored.
+model Like {
+  postId    Int      @map("post_id")
+  userId    Int      @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([postId, userId])
+  @@index([userId])
+  @@map("likes")
 }
