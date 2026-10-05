@@ -25,17 +25,18 @@ describe('CORS (e2e)', () => {
     await app.close();
   });
 
-  it('answers the preflight for an allowed origin', async () => {
+  it('answers the preflight for an allowed origin, with credentials allowed', async () => {
     const res = await request(app.getHttpServer())
       .options('/auth/login')
       .set('Origin', allowedOrigin)
       .set('Access-Control-Request-Method', 'POST')
-      .set('Access-Control-Request-Headers', 'content-type,authorization')
+      .set('Access-Control-Request-Headers', 'content-type,x-csrf-token')
       .expect(204);
 
     expect(res.headers['access-control-allow-origin']).toBe(allowedOrigin);
+    expect(res.headers['access-control-allow-credentials']).toBe('true');
     expect(res.headers['access-control-allow-headers']).toMatch(
-      /authorization/i,
+      /x-csrf-token/i,
     );
   });
 
@@ -45,10 +46,15 @@ describe('CORS (e2e)', () => {
       .set('Origin', 'http://site-desconhecido.com')
       .set('Access-Control-Request-Method', 'POST');
 
+    // This is the actual security boundary: without a matching
+    // Access-Control-Allow-Origin, the browser discards the response and
+    // never exposes it to script, regardless of Allow-Credentials (which the
+    // `cors` package sets unconditionally whenever credentials: true is
+    // configured — it isn't origin-gated, because it doesn't need to be).
     expect(res.headers['access-control-allow-origin']).toBeUndefined();
   });
 
-  it('exposes Location to an allowed origin', async () => {
+  it('exposes Location to an allowed origin and echoes it with Vary: Origin', async () => {
     const res = await request(app.getHttpServer())
       .post('/users')
       .set('Origin', allowedOrigin)
@@ -60,6 +66,8 @@ describe('CORS (e2e)', () => {
       .expect(201);
 
     expect(res.headers['access-control-allow-origin']).toBe(allowedOrigin);
+    expect(res.headers['access-control-allow-credentials']).toBe('true');
+    expect(res.headers.vary).toMatch(/Origin/i);
     expect(res.headers['access-control-expose-headers']).toMatch(/Location/);
   });
 });

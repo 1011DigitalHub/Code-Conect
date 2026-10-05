@@ -32,10 +32,17 @@ describe('cors', () => {
     expect(getCorsOrigins()).toEqual([]);
   });
 
-  it('never uses a wildcard or credentials, and exposes Location and Retry-After', () => {
+  it('never uses a wildcard, and allows credentials only for the listed origins', () => {
     const options = getCorsOptions();
     expect(options.origin).not.toContain('*');
-    expect(options.credentials).toBe(false);
+    expect(options.credentials).toBe(true);
     expect(options.exposedHeaders).toEqual(['Location', 'Retry-After']);
+  });
+
+  it('allows the csrf header alongside content-type and the bridge-phase bearer header', () => {
+    const options = getCorsOptions();
+    expect(options.allowedHeaders).toContain('X-CSRF-Token');
+    expect(options.allowedHeaders).toContain('Content-Type');
+    expect(options.allowedHeaders).toContain('Authorization');
   });
 });
