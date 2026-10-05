@@ -6,7 +6,7 @@ import { AppModule } from './../src/app.module.js';
 import { configureApp } from './../src/app.setup.js';
 import { setupSwagger } from './../src/swagger.js';
 import { isCookieSecure } from './../src/auth/cookie.constants.js';
-import { cookieValue, setCookie } from './cookies.js';
+import { cookieValue, fetchCsrfToken, setCookie } from './cookies.js';
 import { resetDatabase } from './db.js';
 
 const newUser = {
@@ -50,8 +50,11 @@ describe('Auth (e2e)', () => {
 
   describe('POST /users', () => {
     it('creates a user: 201, Location and body without password', async () => {
-      const res = await request(app.getHttpServer())
+      const agent = request.agent(app.getHttpServer());
+      const csrfToken = await fetchCsrfToken(agent);
+      const res = await agent
         .post('/users')
+        .set('X-CSRF-Token', csrfToken)
         .send(newUser)
         .expect(201);
 
@@ -66,21 +69,32 @@ describe('Auth (e2e)', () => {
       expect(JSON.stringify(res.body)).not.toMatch(/password/i);
     });
 
+    it('requires a csrf token (it is a @Public() route, but still an unsafe method)', () => {
+      return request(app.getHttpServer()).post('/users').send(newUser).expect(403);
+    });
+
     it('returns 409 for a duplicated email', async () => {
-      await request(app.getHttpServer())
+      const agent = request.agent(app.getHttpServer());
+      const csrfToken = await fetchCsrfToken(agent);
+      await agent
         .post('/users')
+        .set('X-CSRF-Token', csrfToken)
         .send(newUser)
         .expect(201);
-      const res = await request(app.getHttpServer())
+      const res = await agent
         .post('/users')
+        .set('X-CSRF-Token', csrfToken)
         .send(newUser)
         .expect(409);
       expect(res.body).toMatchObject({ statusCode: 409, error: 'Conflict' });
     });
 
     it('returns 400 for an invalid body or an extra field', async () => {
-      const invalid = await request(app.getHttpServer())
+      const agent = request.agent(app.getHttpServer());
+      const csrfToken = await fetchCsrfToken(agent);
+      const invalid = await agent
         .post('/users')
+        .set('X-CSRF-Token', csrfToken)
         .send({ ...newUser, email: 'not-an-email', password: '123' })
         .expect(400);
       expect(invalid.body).toMatchObject({
@@ -89,24 +103,39 @@ describe('Auth (e2e)', () => {
       });
       expect(Array.isArray(invalid.body.message)).toBe(true);
 
-      await request(app.getHttpServer())
+      await agent
         .post('/users')
+        .set('X-CSRF-Token', csrfToken)
         .send({ ...newUser, admin: true })
         .expect(400);
     });
   });
 
   describe('POST /auth/login', () => {
+    let agent: ReturnType<typeof request.agent>;
+    let csrfToken: string;
+
     beforeEach(async () => {
-      await request(app.getHttpServer())
+      agent = request.agent(app.getHttpServer());
+      csrfToken = await fetchCsrfToken(agent);
+      await agent
         .post('/users')
+        .set('X-CSRF-Token', csrfToken)
         .send(newUser)
         .expect(201);
     });
 
-    it('returns 200 with a bearer token', async () => {
-      const res = await request(app.getHttpServer())
+    it('requires a csrf token (it is a @Public() route, but still an unsafe method)', () => {
+      return request(app.getHttpServer())
         .post('/auth/login')
+        .send({ email: newUser.email, password: newUser.password })
+        .expect(403);
+    });
+
+    it('returns 200 with a bearer token', async () => {
+      const res = await agent
+        .post('/auth/login')
+        .set('X-CSRF-Token', csrfToken)
         .send({ email: newUser.email, password: newUser.password })
         .expect(200);
       expect(res.body).toMatchObject({
@@ -117,8 +146,9 @@ describe('Auth (e2e)', () => {
     });
 
     it('also sets the session as an httpOnly, SameSite=Strict cookie', async () => {
-      const res = await request(app.getHttpServer())
+      const res = await agent
         .post('/auth/login')
+        .set('X-CSRF-Token', csrfToken)
         .send({ email: newUser.email, password: newUser.password })
         .expect(200);
 
@@ -133,8 +163,9 @@ describe('Auth (e2e)', () => {
     });
 
     it('sets a persistent cookie, matching the longer ttl, when remember is true', async () => {
-      const res = await request(app.getHttpServer())
+      const res = await agent
         .post('/auth/login')
+        .set('X-CSRF-Token', csrfToken)
         .send({ email: newUser.email, password: newUser.password, remember: true })
         .expect(200);
 
@@ -144,16 +175,18 @@ describe('Auth (e2e)', () => {
     });
 
     it('returns 401 for a wrong password', async () => {
-      const res = await request(app.getHttpServer())
+      const res = await agent
         .post('/auth/login')
+        .set('X-CSRF-Token', csrfToken)
         .send({ email: newUser.email, password: 'errada-errada' })
         .expect(401);
       expect(res.body).toMatchObject({ statusCode: 401 });
     });
 
     it('returns 400 for a malformed body', async () => {
-      await request(app.getHttpServer())
+      await agent
         .post('/auth/login')
+        .set('X-CSRF-Token', csrfToken)
         .send({ email: 'not-an-email' })
         .expect(400);
     });
@@ -169,12 +202,16 @@ describe('Auth (e2e)', () => {
     });
 
     it('returns the logged user with the login token', async () => {
-      await request(app.getHttpServer())
+      const agent = request.agent(app.getHttpServer());
+      const csrfToken = await fetchCsrfToken(agent);
+      await agent
         .post('/users')
+        .set('X-CSRF-Token', csrfToken)
         .send(newUser)
         .expect(201);
-      const login = await request(app.getHttpServer())
+      const login = await agent
         .post('/auth/login')
+        .set('X-CSRF-Token', csrfToken)
         .send({ email: newUser.email, password: newUser.password })
         .expect(200);
 
@@ -194,9 +231,15 @@ describe('Auth (e2e)', () => {
       // One cookie jar for the whole flow: supertest's agent captures
       // Set-Cookie from the login response and replays it automatically.
       const agent = request.agent(app.getHttpServer());
-      await agent.post('/users').send(newUser).expect(201);
+      const csrfToken = await fetchCsrfToken(agent);
+      await agent
+        .post('/users')
+        .set('X-CSRF-Token', csrfToken)
+        .send(newUser)
+        .expect(201);
       await agent
         .post('/auth/login')
+        .set('X-CSRF-Token', csrfToken)
         .send({ email: newUser.email, password: newUser.password })
         .expect(200);
 
@@ -220,9 +263,15 @@ describe('Auth (e2e)', () => {
 
     it('rejects a session request with no csrf token', async () => {
       const agent = request.agent(app.getHttpServer());
-      await agent.post('/users').send(newUser).expect(201);
+      const csrfToken = await fetchCsrfToken(agent);
+      await agent
+        .post('/users')
+        .set('X-CSRF-Token', csrfToken)
+        .send(newUser)
+        .expect(201);
       await agent
         .post('/auth/login')
+        .set('X-CSRF-Token', csrfToken)
         .send({ email: newUser.email, password: newUser.password })
         .expect(200);
       await agent.post('/auth/logout').expect(403);
@@ -230,9 +279,15 @@ describe('Auth (e2e)', () => {
 
     it('rejects a csrf header that does not match the cookie', async () => {
       const agent = request.agent(app.getHttpServer());
-      await agent.post('/users').send(newUser).expect(201);
+      const csrfToken = await fetchCsrfToken(agent);
+      await agent
+        .post('/users')
+        .set('X-CSRF-Token', csrfToken)
+        .send(newUser)
+        .expect(201);
       await agent
         .post('/auth/login')
+        .set('X-CSRF-Token', csrfToken)
         .send({ email: newUser.email, password: newUser.password })
         .expect(200);
       await agent
@@ -243,15 +298,21 @@ describe('Auth (e2e)', () => {
 
     it('clears the session cookie and the next /auth/me is unauthorized', async () => {
       const agent = request.agent(app.getHttpServer());
-      await agent.post('/users').send(newUser).expect(201);
+      const signUpCsrfToken = await fetchCsrfToken(agent);
+      await agent
+        .post('/users')
+        .set('X-CSRF-Token', signUpCsrfToken)
+        .send(newUser)
+        .expect(201);
       const login = await agent
         .post('/auth/login')
+        .set('X-CSRF-Token', signUpCsrfToken)
         .send({ email: newUser.email, password: newUser.password })
         .expect(200);
       await agent.get('/auth/me').expect(200);
 
       // Logout is a protected, unsafe (POST) route, so it needs the matching
-      // CSRF pair. Login already minted one bound to this session.
+      // CSRF pair. Login already rotated one bound to this session.
       const csrfToken = cookieValue(setCookie(login, 'csrf_token'));
       const logout = await agent
         .post('/auth/logout')
@@ -274,9 +335,15 @@ describe('Auth (e2e)', () => {
       // column or a denylist, which costs a database round trip on every
       // authenticated request.
       const agent = request.agent(app.getHttpServer());
-      await agent.post('/users').send(newUser).expect(201);
+      const signUpCsrfToken = await fetchCsrfToken(agent);
+      await agent
+        .post('/users')
+        .set('X-CSRF-Token', signUpCsrfToken)
+        .send(newUser)
+        .expect(201);
       const login = await agent
         .post('/auth/login')
+        .set('X-CSRF-Token', signUpCsrfToken)
         .send({ email: newUser.email, password: newUser.password })
         .expect(200);
       const capturedToken = login.body.accessToken as string;
@@ -296,20 +363,30 @@ describe('Auth (e2e)', () => {
 
   describe('persistence', () => {
     it('keeps users after the app restarts', async () => {
-      await request(app.getHttpServer())
+      const agent = request.agent(app.getHttpServer());
+      const csrfToken = await fetchCsrfToken(agent);
+      await agent
         .post('/users')
+        .set('X-CSRF-Token', csrfToken)
         .send(newUser)
         .expect(201);
       await app.close();
 
       // A new app instance, like restarting the API.
       app = await createApp();
-      await request(app.getHttpServer())
+      const newAgent = request.agent(app.getHttpServer());
+      const loginCsrfToken = await fetchCsrfToken(newAgent);
+      await newAgent
         .post('/auth/login')
+        .set('X-CSRF-Token', loginCsrfToken)
         .send({ email: newUser.email, password: newUser.password })
         .expect(200);
-      await request(app.getHttpServer())
+      // Login rotates the csrf_token cookie to bind it to the new session,
+      // so the pre-login token above no longer matches what's in the jar.
+      const postLoginCsrfToken = await fetchCsrfToken(newAgent);
+      await newAgent
         .post('/users')
+        .set('X-CSRF-Token', postLoginCsrfToken)
         .send(newUser)
         .expect(409);
     });

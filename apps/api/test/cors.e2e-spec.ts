@@ -4,6 +4,7 @@ import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { AppModule } from './../src/app.module.js';
 import { configureApp } from './../src/app.setup.js';
+import { fetchCsrfToken } from './cookies.js';
 import { resetDatabase } from './db.js';
 
 const allowedOrigin = 'http://localhost:5173';
@@ -55,9 +56,12 @@ describe('CORS (e2e)', () => {
   });
 
   it('exposes Location to an allowed origin and echoes it with Vary: Origin', async () => {
-    const res = await request(app.getHttpServer())
+    const agent = request.agent(app.getHttpServer());
+    const csrfToken = await fetchCsrfToken(agent);
+    const res = await agent
       .post('/users')
       .set('Origin', allowedOrigin)
+      .set('X-CSRF-Token', csrfToken)
       .send({
         name: 'Maria Silva',
         email: 'maria@exemplo.com',

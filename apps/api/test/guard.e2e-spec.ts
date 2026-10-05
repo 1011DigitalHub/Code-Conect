@@ -3,6 +3,7 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { AppModule } from './../src/app.module.js';
+import { fetchCsrfToken } from './cookies.js';
 import { resetDatabase } from './db.js';
 
 // The global AuthGuard (APP_GUARD, registered in AuthModule) must protect
@@ -31,9 +32,12 @@ describe('Global AuthGuard (e2e)', () => {
     return request(app.getHttpServer()).get('/').expect(200).expect('Hello World!');
   });
 
-  it('keeps sign-up public', () => {
-    return request(app.getHttpServer())
+  it('keeps sign-up public (no auth needed, just the csrf pair every unsafe method needs)', async () => {
+    const agent = request.agent(app.getHttpServer());
+    const csrfToken = await fetchCsrfToken(agent);
+    return agent
       .post('/users')
+      .set('X-CSRF-Token', csrfToken)
       .send({
         name: 'Maria Silva',
         email: 'maria@exemplo.com',
@@ -42,14 +46,17 @@ describe('Global AuthGuard (e2e)', () => {
       .expect(201);
   });
 
-  it('keeps login public', async () => {
-    await request(app.getHttpServer()).post('/users').send({
+  it('keeps login public (no auth needed, just the csrf pair every unsafe method needs)', async () => {
+    const agent = request.agent(app.getHttpServer());
+    const csrfToken = await fetchCsrfToken(agent);
+    await agent.post('/users').set('X-CSRF-Token', csrfToken).send({
       name: 'Maria Silva',
       email: 'maria@exemplo.com',
       password: 'senha-segura-123',
     });
-    return request(app.getHttpServer())
+    return agent
       .post('/auth/login')
+      .set('X-CSRF-Token', csrfToken)
       .send({ email: 'maria@exemplo.com', password: 'senha-segura-123' })
       .expect(200);
   });

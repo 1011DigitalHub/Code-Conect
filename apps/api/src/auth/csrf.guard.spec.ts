@@ -37,10 +37,15 @@ describe('CsrfGuard', () => {
     expect(guard.canActivate(contextFor({ method: 'POST', headers: {} }))).toBe(true);
   });
 
-  it('lets a @Public() route through for now (bridge phase)', () => {
+  it('still enforces csrf on a @Public() unsafe route (login, sign-up)', () => {
+    // SameSite=Strict alone doesn't stop login CSRF: a cross-site POST's
+    // Set-Cookie response is still stored by the browser. @Public() exempts
+    // AuthGuard, not CsrfGuard.
     const { guard, metadata } = build();
     metadata.set(IS_PUBLIC_KEY, true);
-    expect(guard.canActivate(contextFor({ method: 'POST', headers: {} }))).toBe(true);
+    expect(() =>
+      guard.canActivate(contextFor({ method: 'POST', headers: {} })),
+    ).toThrow(ForbiddenException);
   });
 
   it('rejects a protected unsafe request with no csrf cookie or header', () => {

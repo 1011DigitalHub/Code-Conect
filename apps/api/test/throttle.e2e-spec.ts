@@ -8,6 +8,7 @@ import {
   LOGIN_THROTTLE,
   SIGN_UP_THROTTLE,
 } from './../src/common/throttle.constants.js';
+import { fetchCsrfToken } from './cookies.js';
 import { resetDatabase } from './db.js';
 
 const newUser = {
@@ -35,15 +36,22 @@ describe('Rate limiting (e2e)', () => {
   });
 
   it('limits POST /auth/login: 401 until the limit, then 429 with Retry-After', async () => {
+    // Fetched once: the csrf_token cookie isn't rotated by a failed login,
+    // so the same pair is valid for every attempt below the limit.
+    const agent = request.agent(app.getHttpServer());
+    const csrfToken = await fetchCsrfToken(agent);
+
     for (let i = 0; i < LOGIN_THROTTLE.limit; i++) {
-      await request(app.getHttpServer())
+      await agent
         .post('/auth/login')
+        .set('X-CSRF-Token', csrfToken)
         .send({ email: newUser.email, password: 'senha-errada-123' })
         .expect(401);
     }
 
-    const res = await request(app.getHttpServer())
+    const res = await agent
       .post('/auth/login')
+      .set('X-CSRF-Token', csrfToken)
       .send({ email: newUser.email, password: 'senha-errada-123' })
       .expect(429);
 
@@ -52,16 +60,25 @@ describe('Rate limiting (e2e)', () => {
   });
 
   it('limits POST /users: 201 and 409 until the limit, then 429', async () => {
-    await request(app.getHttpServer()).post('/users').send(newUser).expect(201);
+    const agent = request.agent(app.getHttpServer());
+    const csrfToken = await fetchCsrfToken(agent);
+
+    await agent
+      .post('/users')
+      .set('X-CSRF-Token', csrfToken)
+      .send(newUser)
+      .expect(201);
     for (let i = 1; i < SIGN_UP_THROTTLE.limit; i++) {
-      await request(app.getHttpServer())
+      await agent
         .post('/users')
+        .set('X-CSRF-Token', csrfToken)
         .send(newUser)
         .expect(409);
     }
 
-    const res = await request(app.getHttpServer())
+    const res = await agent
       .post('/users')
+      .set('X-CSRF-Token', csrfToken)
       .send(newUser)
       .expect(429);
     expect(res.body).toMatchObject({ statusCode: 429 });
