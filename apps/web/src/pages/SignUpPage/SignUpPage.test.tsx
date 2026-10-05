@@ -4,7 +4,6 @@ import { AxiosError, AxiosHeaders, type AxiosResponse } from 'axios'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { vi } from 'vitest'
 import { login } from '../../api/auth'
-import { clearToken, getToken } from '../../api/tokenStorage'
 import { createUser } from '../../api/users'
 import { renderWithRouter } from '../../test/renderWithRouter'
 import { SignUpPage } from './SignUpPage'
@@ -49,7 +48,6 @@ async function fillAndSubmit() {
 describe('SignUpPage', () => {
   afterEach(() => {
     vi.resetAllMocks()
-    clearToken()
   })
 
   it('renders the sign-up form, social providers and login link', () => {
@@ -77,9 +75,9 @@ describe('SignUpPage', () => {
     )
   })
 
-  it('creates the account, signs in and goes to the profile', async () => {
+  it('creates the account, signs in and goes to the profile; no token is stored locally', async () => {
     vi.mocked(createUser).mockResolvedValue(createdUser)
-    vi.mocked(login).mockResolvedValue({ accessToken: 'jwt', tokenType: 'Bearer', expiresIn: 3600 })
+    vi.mocked(login).mockResolvedValue({ tokenType: 'Bearer', expiresIn: 3600 })
     renderSignUpRoutes()
 
     await fillAndSubmit()
@@ -90,8 +88,11 @@ describe('SignUpPage', () => {
       email: 'ana@exemplo.com',
       password: 'segredo-123',
     })
-    expect(login).toHaveBeenCalledWith({ email: 'ana@exemplo.com', password: 'segredo-123' })
-    expect(getToken()).toBe('jwt')
+    expect(login).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'ana@exemplo.com', password: 'segredo-123' }),
+    )
+    expect(localStorage.length).toBe(0)
+    expect(sessionStorage.length).toBe(0)
   })
 
   it('shows the error and does not sign in when the email is already registered', async () => {
@@ -113,7 +114,6 @@ describe('SignUpPage', () => {
     await fillAndSubmit()
 
     expect(await screen.findByText('Tela de login')).toBeInTheDocument()
-    expect(getToken()).toBeNull()
   })
 
   it('has no WCAG 2.2 AA violations', async () => {

@@ -1,16 +1,22 @@
 import { useEffect, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router'
-import { getMe } from '../../api/auth'
+import { getMe, logout } from '../../api/auth'
 import { getErrorMessage, isUnauthorized } from '../../api/errors'
-import { clearToken, getToken } from '../../api/tokenStorage'
 import type { User } from '../../api/types'
 import { FormError } from '../../components/atoms/FormError'
 import { ProfileCard } from '../../components/organisms/ProfileCard'
 import { CenteredTemplate } from '../../components/templates/CenteredTemplate'
 import { usePageMeta } from '../usePageMeta'
 
-// Private page: without a token it goes straight to the login. With one, it loads the
-// logged-in user from GET /auth/me; a 401 means the token expired, so it is dropped.
+type SessionStatus = 'loading' | 'authenticated' | 'anonymous'
+
+// Private page. The session lives in an httpOnly cookie, invisible to JS, so
+// there is no synchronous "is there a token" check to gate the render on
+// anymore: every visit optimistically probes GET /auth/me and renders a
+// loading status (role="status", already covered by the a11y suite) while
+// it waits. A 401 means there is no valid session — redirect to login. Any
+// other failure keeps the page up with an error, so a flaky network request
+// doesn't bounce a logged-in person out.
 export function ProfilePage() {
   usePageMeta(
     'Perfil',
@@ -18,35 +24,40 @@ export function ProfilePage() {
   )
 
   const navigate = useNavigate()
-  const hasToken = getToken() !== null
+  const [status, setStatus] = useState<SessionStatus>('loading')
   const [user, setUser] = useState<User>()
   const [error, setError] = useState<string>()
 
   useEffect(() => {
-    if (!hasToken) return
-
     const controller = new AbortController()
     getMe(controller.signal)
-      .then(setUser)
+      .then((fetchedUser) => {
+        setUser(fetchedUser)
+        setStatus('authenticated')
+      })
       .catch((meError: unknown) => {
         if (controller.signal.aborted) return
         if (isUnauthorized(meError)) {
-          clearToken()
-          void navigate('/login', { replace: true })
+          setStatus('anonymous')
           return
         }
         setError(getErrorMessage(meError))
       })
 
     return () => controller.abort()
-  }, [hasToken, navigate])
+  }, [])
 
-  function handleLogout() {
-    clearToken()
+  async function handleLogout() {
+    try {
+      await logout()
+    } catch {
+      // Best-effort: even if the request fails, the short-lived session
+      // cookie bounds the exposure, so still send the person to login.
+    }
     void navigate('/login')
   }
 
-  if (!hasToken) {
+  if (status === 'anonymous') {
     return <Navigate to="/login" replace />
   }
 

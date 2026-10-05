@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { login } from '../../api/auth'
 import { getErrorMessage } from '../../api/errors'
-import { saveToken } from '../../api/tokenStorage'
 import { createUser } from '../../api/users'
 import { AuthFooter } from '../../components/organisms/AuthFooter'
 import { SignUpForm, type SignUpFormValues } from '../../components/organisms/SignUpForm'
@@ -34,8 +33,13 @@ export function SignUpPage() {
     }
 
     try {
-      const { accessToken } = await login({ email: values.email, password: values.password })
-      saveToken(accessToken, values.remember)
+      // The server sets the session cookie on this response; there is
+      // nothing left for the client to store.
+      await login({
+        email: values.email,
+        password: values.password,
+        remember: values.remember,
+      })
     } catch {
       // The account exists; only the automatic sign-in failed.
       await navigate('/login')

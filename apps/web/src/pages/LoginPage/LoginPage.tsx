@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { login } from '../../api/auth'
 import { getErrorMessage } from '../../api/errors'
-import { saveToken } from '../../api/tokenStorage'
 import { AuthFooter } from '../../components/organisms/AuthFooter'
 import { LoginForm, type LoginFormValues } from '../../components/organisms/LoginForm'
 import { SocialLogin } from '../../components/organisms/SocialLogin'
@@ -24,8 +23,13 @@ export function LoginPage() {
     setSubmitting(true)
     setError(undefined)
     try {
-      const { accessToken } = await login({ email: values.email, password: values.password })
-      saveToken(accessToken, values.remember)
+      // The server sets the session cookie on this response; there is
+      // nothing left for the client to store.
+      await login({
+        email: values.email,
+        password: values.password,
+        remember: values.remember,
+      })
     } catch (loginError) {
       setError(getErrorMessage(loginError))
       setSubmitting(false)

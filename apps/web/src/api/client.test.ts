@@ -1,6 +1,5 @@
 import { AxiosError, type InternalAxiosRequestConfig } from 'axios'
 import { api } from './client'
-import { clearToken, getToken, saveToken } from './tokenStorage'
 
 const originalAdapter = api.defaults.adapter
 
@@ -28,7 +27,6 @@ function clearAllCookies() {
 describe('api client', () => {
   afterEach(() => {
     api.defaults.adapter = originalAdapter
-    clearToken()
     clearAllCookies()
   })
 
@@ -36,39 +34,15 @@ describe('api client', () => {
     expect(api.defaults.withCredentials).toBe(true)
   })
 
-  it('sends the Bearer token when there is one', async () => {
-    saveToken('abc', false)
-    const requests = fakeServer(200)
+  it('never writes anything to localStorage or sessionStorage', async () => {
+    document.cookie = 'csrf_token=nonce.mac; path=/'
+    fakeServer(200)
 
     await api.get('/auth/me')
-
-    expect(requests[0].headers.get('Authorization')).toBe('Bearer abc')
-  })
-
-  it('sends no Authorization header without a token', async () => {
-    const requests = fakeServer(200)
-
     await api.post('/auth/login', {})
 
-    expect(requests[0].headers.has('Authorization')).toBe(false)
-  })
-
-  it('forgets the token on a 401 for a request that carried it', async () => {
-    saveToken('expired', true)
-    fakeServer(401)
-
-    await expect(api.get('/auth/me')).rejects.toMatchObject({ response: { status: 401 } })
-
-    expect(getToken()).toBeNull()
-  })
-
-  it('keeps the token on other errors', async () => {
-    saveToken('abc', true)
-    fakeServer(500)
-
-    await expect(api.get('/auth/me')).rejects.toBeDefined()
-
-    expect(getToken()).toBe('abc')
+    expect(localStorage.length).toBe(0)
+    expect(sessionStorage.length).toBe(0)
   })
 
   it('sends the csrf_token cookie value as X-CSRF-Token on an unsafe method', async () => {
@@ -91,7 +65,6 @@ describe('api client', () => {
 
   it('bootstraps a csrf token before an unsafe request when none is set', async () => {
     let bootstrapped = false
-    const originalAdapter2 = api.defaults.adapter
     const requests: string[] = []
     api.defaults.adapter = async (config) => {
       requests.push(`${config.method} ${config.url}`)
@@ -106,13 +79,11 @@ describe('api client', () => {
 
     expect(bootstrapped).toBe(true)
     expect(requests).toEqual(['get /auth/csrf', 'post /auth/login'])
-    api.defaults.adapter = originalAdapter2
   })
 
   it('retries exactly once after a 403, then forwards the second failure', async () => {
     document.cookie = 'csrf_token=stale.mac; path=/'
     let calls = 0
-    const originalAdapter2 = api.defaults.adapter
     api.defaults.adapter = async (config) => {
       calls += 1
       if (config.url === '/auth/csrf') {
@@ -127,8 +98,8 @@ describe('api client', () => {
       response: { status: 403 },
     })
     // logout (403) -> csrf bootstrap -> logout retried (403 again, forwarded)
+    // Exactly 3, not an unbounded loop: a 4th+ call would mean the
+    // "already retried" flag didn't survive axios's config merge on retry.
     expect(calls).toBe(3)
-
-    api.defaults.adapter = originalAdapter2
   })
 })

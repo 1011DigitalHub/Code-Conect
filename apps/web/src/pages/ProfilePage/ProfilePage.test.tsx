@@ -3,12 +3,11 @@ import userEvent from '@testing-library/user-event'
 import { AxiosError, AxiosHeaders, type AxiosResponse } from 'axios'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { vi } from 'vitest'
-import { getMe } from '../../api/auth'
-import { clearToken, getToken, saveToken } from '../../api/tokenStorage'
+import { getMe, logout } from '../../api/auth'
 import { expectNoA11yViolations } from '../../test/axe'
 import { ProfilePage } from './ProfilePage'
 
-vi.mock('../../api/auth', () => ({ getMe: vi.fn() }))
+vi.mock('../../api/auth', () => ({ getMe: vi.fn(), logout: vi.fn() }))
 
 const user = {
   id: 1,
@@ -38,18 +37,20 @@ function renderProfileRoutes() {
 describe('ProfilePage', () => {
   afterEach(() => {
     vi.resetAllMocks()
-    clearToken()
   })
 
-  it('goes to the login page when there is no token', () => {
+  it('probes the session and goes to the login page when /auth/me answers 401', async () => {
+    vi.mocked(getMe).mockRejectedValue(apiError(401))
     renderProfileRoutes()
 
-    expect(screen.getByText('Tela de login')).toBeInTheDocument()
-    expect(getMe).not.toHaveBeenCalled()
+    // There is no readable token anymore, so the page always probes the
+    // server — it can no longer skip the call the way a synchronous
+    // "is there a token" check used to.
+    expect(getMe).toHaveBeenCalled()
+    expect(await screen.findByText('Tela de login')).toBeInTheDocument()
   })
 
   it('shows a loading status, then the logged-in user', async () => {
-    saveToken('jwt', false)
     vi.mocked(getMe).mockResolvedValue(user)
     renderProfileRoutes()
 
@@ -62,37 +63,36 @@ describe('ProfilePage', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
-  it('drops the token and goes to the login page when it has expired', async () => {
-    saveToken('expired', false)
-    vi.mocked(getMe).mockRejectedValue(apiError(401))
-    renderProfileRoutes()
-
-    expect(await screen.findByText('Tela de login')).toBeInTheDocument()
-    expect(getToken()).toBeNull()
-  })
-
-  it('shows an error and keeps the token when the server fails', async () => {
-    saveToken('jwt', false)
+  it('shows an error and stays on the page when the server fails for another reason', async () => {
     vi.mocked(getMe).mockRejectedValue(apiError(500))
     renderProfileRoutes()
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Algo deu errado. Tente novamente.')
-    expect(getToken()).toBe('jwt')
+    expect(screen.queryByText('Tela de login')).not.toBeInTheDocument()
   })
 
-  it('signs out: clears the token and goes to the login page', async () => {
-    saveToken('jwt', true)
+  it('signs out: calls the logout endpoint and goes to the login page', async () => {
     vi.mocked(getMe).mockResolvedValue(user)
+    vi.mocked(logout).mockResolvedValue(undefined)
     renderProfileRoutes()
 
     await userEvent.click(await screen.findByRole('button', { name: 'Sair' }))
 
-    expect(screen.getByText('Tela de login')).toBeInTheDocument()
-    expect(getToken()).toBeNull()
+    expect(logout).toHaveBeenCalled()
+    expect(await screen.findByText('Tela de login')).toBeInTheDocument()
+  })
+
+  it('still goes to the login page when the logout request itself fails', async () => {
+    vi.mocked(getMe).mockResolvedValue(user)
+    vi.mocked(logout).mockRejectedValue(apiError(500))
+    renderProfileRoutes()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Sair' }))
+
+    expect(await screen.findByText('Tela de login')).toBeInTheDocument()
   })
 
   it('has no WCAG 2.2 AA violations', async () => {
-    saveToken('jwt', false)
     vi.mocked(getMe).mockResolvedValue(user)
     const { container } = renderProfileRoutes()
     await screen.findByText('Ana Souza')
