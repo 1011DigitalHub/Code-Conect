@@ -61,7 +61,11 @@ export function PostCard({
         </TextLink>
       </h2>
 
-      <p className="text-paragraph-sm line-clamp-3 text-muted">{post.excerpt}</p>
+      {/* No line-clamp: a fixed-height clip hides text when the WCAG 1.4.12
+          text-spacing override grows the line height past what the clamp
+          allows, which the browser accessibility suite catches as content
+          loss. Cards are simply uneven in height instead. */}
+      <p className="text-paragraph-sm text-muted">{post.excerpt}</p>
 
       <PostMeta authorName={post.author.name} createdAt={post.createdAt} now={now} />
 
@@ -83,13 +87,14 @@ export function PostCard({
           />
         )}
 
+        {/* Spelled out visibly rather than with a sr-only suffix: hidden text
+            is indistinguishable, to the browser suite's text-spacing check,
+            from text a fixed box is clipping — and visible text serves
+            everyone, not just assistive technology, anyway. */}
         <p className="flex items-center gap-2 text-paragraph-sm text-muted">
           <Icon name="comment" size="sm" />
           <span>
-            {post.commentCount}
-            <span className="sr-only">
-              {post.commentCount === 1 ? ' comentário' : ' comentários'}
-            </span>
+            {post.commentCount} {post.commentCount === 1 ? 'comentário' : 'comentários'}
           </span>
         </p>
       </div>

@@ -72,7 +72,9 @@ describe('PostList', () => {
       />,
     )
 
-    const disabled = screen.getAllByRole('button').filter((button) => button.disabled)
+    const disabled = screen
+      .getAllByRole('button')
+      .filter((button) => (button as HTMLButtonElement).disabled)
     expect(disabled).toHaveLength(1)
     expect(disabled[0].getAttribute('aria-label')).toContain('Post número 2')
   })
