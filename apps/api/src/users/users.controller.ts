@@ -9,6 +9,7 @@ import {
 } from '@nestjs/swagger';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import type { Response } from 'express';
+import { Public } from '../auth/public.decorator.js';
 import { ErrorResponseDto } from '../common/dto/error-response.dto.js';
 import { SIGN_UP_THROTTLE } from '../common/throttle.constants.js';
 import { CreateUserDto } from './dto/create-user.dto.js';
@@ -20,6 +21,7 @@ import { UsersService } from './users.service.js';
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
+  @Public()
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: SIGN_UP_THROTTLE })
   @Post()

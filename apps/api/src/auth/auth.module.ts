@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { UsersModule } from '../users/users.module.js';
 import { AuthController } from './auth.controller.js';
@@ -7,6 +8,7 @@ import {
   JWT_ALGORITHM,
   JWT_EXPIRES_IN_SECONDS,
 } from './auth.constants.js';
+import { AuthGuard } from './auth.guard.js';
 import { AuthService } from './auth.service.js';
 
 @Module({
@@ -20,6 +22,10 @@ import { AuthService } from './auth.service.js';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService],
+  providers: [
+    AuthService,
+    // Global guard: every route is protected unless it carries @Public().
+    { provide: APP_GUARD, useClass: AuthGuard },
+  ],
 })
 export class AuthModule {}

@@ -6,7 +6,6 @@ import {
   HttpStatus,
   NotFoundException,
   Post,
-  Req,
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
@@ -24,11 +23,12 @@ import { ErrorResponseDto } from '../common/dto/error-response.dto.js';
 import { LOGIN_THROTTLE } from '../common/throttle.constants.js';
 import { UserEntity } from '../users/entities/user.entity.js';
 import { UsersService } from '../users/users.service.js';
-import { AuthGuard } from './auth.guard.js';
 import { AuthService } from './auth.service.js';
-import type { AuthenticatedRequest } from './auth.types.js';
+import { CurrentUser } from './current-user.decorator.js';
+import type { JwtPayload } from './auth.types.js';
 import { LoginDto } from './dto/login.dto.js';
 import { TokenResponseDto } from './dto/token-response.dto.js';
+import { Public } from './public.decorator.js';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -38,6 +38,7 @@ export class AuthController {
     private readonly usersService: UsersService,
   ) {}
 
+  @Public()
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: LOGIN_THROTTLE })
   @Post('login')
@@ -54,15 +55,14 @@ export class AuthController {
     return this.authService.signIn(dto.email, dto.password);
   }
 
-  @UseGuards(AuthGuard)
   @Get('me')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Dados do usuário logado' })
   @ApiOkResponse({ type: UserEntity })
   @ApiUnauthorizedResponse({ type: ErrorResponseDto })
-  async me(@Req() req: AuthenticatedRequest): Promise<UserEntity> {
+  async me(@CurrentUser() user: JwtPayload): Promise<UserEntity> {
     try {
-      return await this.usersService.findById(req.user.sub);
+      return await this.usersService.findById(user.sub);
     } catch (error) {
       // A valid token for a user that no longer exists is not authenticated.
       if (error instanceof NotFoundException) {

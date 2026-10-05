@@ -1,4 +1,5 @@
 import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { getJwtSecret } from './auth.constants.js';
 import { AuthGuard } from './auth.guard.js';
@@ -6,20 +7,41 @@ import { AuthGuard } from './auth.guard.js';
 function contextFor(request: object): ExecutionContext {
   return {
     switchToHttp: () => ({ getRequest: () => request }),
+    getHandler: () => (() => undefined) as unknown as () => void,
+    getClass: () => class {},
   } as unknown as ExecutionContext;
 }
 
 describe('AuthGuard', () => {
   const jwtService = new JwtService({ secret: getJwtSecret() });
-  const guard = new AuthGuard(jwtService);
+  let reflector: Reflector;
+  let guard: AuthGuard;
+
+  beforeEach(() => {
+    reflector = new Reflector();
+    guard = new AuthGuard(jwtService, reflector);
+  });
+
+  function mockPublic(isPublic: boolean) {
+    vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue(isPublic);
+  }
+
+  it('lets a @Public() route through with no token at all', async () => {
+    mockPublic(true);
+    await expect(guard.canActivate(contextFor({ headers: {} }))).resolves.toBe(
+      true,
+    );
+  });
 
   it('rejects a request without Authorization header', async () => {
+    mockPublic(false);
     await expect(
       guard.canActivate(contextFor({ headers: {} })),
     ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
   it('rejects a scheme other than Bearer', async () => {
+    mockPublic(false);
     const request = { headers: { authorization: 'Basic abc' } };
     await expect(guard.canActivate(contextFor(request))).rejects.toBeInstanceOf(
       UnauthorizedException,
@@ -27,6 +49,7 @@ describe('AuthGuard', () => {
   });
 
   it('rejects an invalid token', async () => {
+    mockPublic(false);
     const request = { headers: { authorization: 'Bearer not-a-jwt' } };
     await expect(guard.canActivate(contextFor(request))).rejects.toBeInstanceOf(
       UnauthorizedException,
@@ -34,6 +57,7 @@ describe('AuthGuard', () => {
   });
 
   it('accepts a valid token and fills request.user', async () => {
+    mockPublic(false);
     const token = await jwtService.signAsync({ sub: 1, email: 'a@b.com' });
     const request: Record<string, unknown> = {
       headers: { authorization: `Bearer ${token}` },
@@ -43,6 +67,7 @@ describe('AuthGuard', () => {
   });
 
   it('rejects a token signed with a different algorithm', async () => {
+    mockPublic(false);
     // alg: none, unsigned — the classic JWT bypass. base64url(header).base64url(payload).
     const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString(
       'base64url',
@@ -57,6 +82,7 @@ describe('AuthGuard', () => {
   });
 
   it('rejects a token signed with a different secret', async () => {
+    mockPublic(false);
     const otherService = new JwtService({ secret: 'a-completely-different-secret' });
     const token = await otherService.signAsync({ sub: 1, email: 'a@b.com' });
     const request = { headers: { authorization: `Bearer ${token}` } };
@@ -66,6 +92,7 @@ describe('AuthGuard', () => {
   });
 
   it('rejects an expired token', async () => {
+    mockPublic(false);
     const token = await jwtService.signAsync(
       { sub: 1, email: 'a@b.com' },
       { expiresIn: '-1s' },
