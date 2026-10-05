@@ -1,13 +1,19 @@
+import { cva, type VariantProps } from 'class-variance-authority'
 import type { ReactNode } from 'react'
 
 export type IconName = 'arrow-right' | 'clipboard' | 'login'
 
-type IconSize = 'sm' | 'md'
-
-const sizeClasses: Record<IconSize, string> = {
-  sm: 'size-4.5',
-  md: 'size-6',
-}
+const icon = cva('shrink-0', {
+  variants: {
+    size: {
+      sm: 'size-4.5',
+      md: 'size-6',
+    },
+  },
+  defaultVariants: {
+    size: 'md',
+  },
+})
 
 const paths: Record<IconName, ReactNode> = {
   'arrow-right': (
@@ -36,12 +42,11 @@ const paths: Record<IconName, ReactNode> = {
 
 export type IconProps = {
   name: IconName
-  size?: IconSize
-}
+} & VariantProps<typeof icon>
 
-export function Icon({ name, size = 'md' }: IconProps) {
+export function Icon({ name, size }: IconProps) {
   return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className={`shrink-0 ${sizeClasses[size]}`}>
+    <svg aria-hidden="true" viewBox="0 0 24 24" className={icon({ size })}>
       {paths[name]}
     </svg>
   )

@@ -1,24 +1,29 @@
+import { cva, type VariantProps } from 'class-variance-authority'
 import { Icon, type IconName } from '../../atoms/Icon'
 import { TextLink } from '../../atoms/TextLink'
 
-type AuthFooterLayout = 'stacked' | 'inline'
+const authFooter = cva('flex gap-2 text-offwhite', {
+  variants: {
+    layout: {
+      stacked: 'flex-col items-center text-paragraph-sm',
+      inline: 'flex-col items-start text-lg sm:flex-row sm:items-center',
+    },
+  },
+  defaultVariants: {
+    layout: 'stacked',
+  },
+})
 
-const layoutClasses: Record<AuthFooterLayout, string> = {
-  stacked: 'flex-col items-center text-paragraph-sm',
-  inline: 'flex-col items-start text-lg sm:flex-row sm:items-center',
-}
-
-export type AuthFooterProps = {
+export type AuthFooterProps = VariantProps<typeof authFooter> & {
   question: string
   linkLabel: string
   href: string
   icon?: IconName
-  layout?: AuthFooterLayout
 }
 
-export function AuthFooter({ question, linkLabel, href, icon, layout = 'stacked' }: AuthFooterProps) {
+export function AuthFooter({ question, linkLabel, href, icon, layout }: AuthFooterProps) {
   return (
-    <p className={`flex gap-2 text-offwhite ${layoutClasses[layout]}`}>
+    <p className={authFooter({ layout })}>
       {question}
       <TextLink href={href} variant="primary">
         {linkLabel}

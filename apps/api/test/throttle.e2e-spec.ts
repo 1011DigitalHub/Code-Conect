@@ -5,6 +5,7 @@ import type { App } from 'supertest/types.js';
 import { AppModule } from './../src/app.module.js';
 import { configureApp } from './../src/app.setup.js';
 import {
+  DEFAULT_THROTTLE,
   LOGIN_THROTTLE,
   SIGN_UP_THROTTLE,
 } from './../src/common/throttle.constants.js';
@@ -85,9 +86,24 @@ describe('Rate limiting (e2e)', () => {
     expect(res.headers['retry-after']).toBeDefined();
   });
 
-  it('does not limit GET /auth/me', async () => {
+  it('does not limit GET /auth/me below the default global limit', async () => {
     for (let i = 0; i < LOGIN_THROTTLE.limit + 3; i++) {
       await request(app.getHttpServer()).get('/auth/me').expect(401);
     }
+  });
+
+  it('limits GET /auth/me too, past the default global limit: ThrottlerGuard runs before AuthGuard', async () => {
+    // Proves the guard order declared in AppModule actually holds: if
+    // AuthGuard ran first, it would reject every one of these with 401 and
+    // short-circuit the chain, so ThrottlerGuard would never even see them
+    // (a guard that throws stops the rest from running) — the count would
+    // never advance and this would never 429.
+    for (let i = 0; i < DEFAULT_THROTTLE.limit; i++) {
+      await request(app.getHttpServer()).get('/auth/me').expect(401);
+    }
+
+    const res = await request(app.getHttpServer()).get('/auth/me').expect(429);
+    expect(res.body).toMatchObject({ statusCode: 429 });
+    expect(Number(res.headers['retry-after'])).toBeGreaterThan(0);
   });
 });
