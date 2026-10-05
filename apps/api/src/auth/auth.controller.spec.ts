@@ -49,7 +49,9 @@ describe('AuthController', () => {
       'senha-segura-123',
       false,
     );
-    expect(result.accessToken).toBe('token');
+    // The raw token must never reach the response body — only the cookie.
+    expect(result).toStrictEqual({ tokenType: 'Bearer', expiresIn: 3600 });
+    expect(result).not.toHaveProperty('accessToken');
     expect(cookie).toHaveBeenCalledWith(
       'access_token',
       'token',

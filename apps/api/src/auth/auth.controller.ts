@@ -13,7 +13,6 @@ import {
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
-  ApiBearerAuth,
   ApiCookieAuth,
   ApiForbiddenResponse,
   ApiNoContentResponse,
@@ -43,7 +42,7 @@ import { readCookie } from './cookies.js';
 import { CurrentUser } from './current-user.decorator.js';
 import { mintCsrfToken, sessionKey } from './csrf.js';
 import { LoginDto } from './dto/login.dto.js';
-import { TokenResponseDto } from './dto/token-response.dto.js';
+import { LoginResponseDto } from './dto/login-response.dto.js';
 import { NoCsrf } from './no-csrf.decorator.js';
 import { Public } from './public.decorator.js';
 
@@ -75,8 +74,8 @@ export class AuthController {
   @Throttle({ default: LOGIN_THROTTLE })
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Autentica o usuário e devolve um JWT' })
-  @ApiOkResponse({ type: TokenResponseDto })
+  @ApiOperation({ summary: 'Autentica o usuário e inicia a sessão em um cookie httpOnly' })
+  @ApiOkResponse({ type: LoginResponseDto })
   @ApiBadRequestResponse({ type: ErrorResponseDto })
   @ApiUnauthorizedResponse({ type: ErrorResponseDto })
   @ApiTooManyRequestsResponse({
@@ -86,11 +85,9 @@ export class AuthController {
   async login(
     @Body() dto: LoginDto,
     @Res({ passthrough: true }) res: Response,
-  ): Promise<TokenResponseDto> {
+  ): Promise<LoginResponseDto> {
     const remember = dto.remember ?? false;
     const result = await this.authService.signIn(dto.email, dto.password, remember);
-    // Bridge phase: the token still travels in the body too (accessToken),
-    // for the web app until it switches to reading only the cookie.
     res.cookie(
       ACCESS_TOKEN_COOKIE,
       result.accessToken,
@@ -102,13 +99,14 @@ export class AuthController {
     // validate against the session that was just created.
     const csrfToken = mintCsrfToken(sessionKey(result.accessToken));
     res.cookie(CSRF_COOKIE, csrfToken, getCsrfCookieOptions(remember, result.expiresIn));
-    return result;
+    // The session itself stays in the cookie; the body never carries the
+    // raw token (see LoginResponseDto and SignInResult's doc comment).
+    return { tokenType: result.tokenType, expiresIn: result.expiresIn };
   }
 
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiCookieAuth('cookie')
-  @ApiBearerAuth()
   @ApiSecurity('csrf')
   @ApiOperation({ summary: 'Encerra a sessão, limpando os cookies' })
   @ApiNoContentResponse()
@@ -124,7 +122,6 @@ export class AuthController {
 
   @Get('me')
   @ApiCookieAuth('cookie')
-  @ApiBearerAuth()
   @ApiOperation({ summary: 'Dados do usuário logado' })
   @ApiOkResponse({ type: UserEntity })
   @ApiUnauthorizedResponse({ type: ErrorResponseDto })

@@ -6,7 +6,6 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Reflector } from '@nestjs/core';
-import type { Request } from 'express';
 import { getJwtSecret, JWT_ALGORITHM } from './auth.constants.js';
 import { ACCESS_TOKEN_COOKIE } from './cookie.constants.js';
 import { readCookie } from './cookies.js';
@@ -32,7 +31,9 @@ export class AuthGuard implements CanActivate {
     if (isPublic) return true;
 
     const request = context.switchToHttp().getRequest<MaybeAuthenticatedRequest>();
-    const token = this.extractToken(request);
+    // The session lives only in the httpOnly access_token cookie now; the
+    // Authorization: Bearer bridge that used to fall back to is retired.
+    const token = readCookie(request, ACCESS_TOKEN_COOKIE);
     if (!token) {
       throw new UnauthorizedException();
     }
@@ -45,16 +46,5 @@ export class AuthGuard implements CanActivate {
       throw new UnauthorizedException();
     }
     return true;
-  }
-
-  // Bridge phase: prefer the httpOnly session cookie, fall back to the
-  // Authorization header. The Bearer path is temporary — it exists only so
-  // the API and the web app don't have to switch in the same commit — and
-  // is removed once the web app moves to the cookie (see CLAUDE.md).
-  private extractToken(request: Request): string | undefined {
-    const fromCookie = readCookie(request, ACCESS_TOKEN_COOKIE);
-    if (fromCookie) return fromCookie;
-    const [type, token] = request.headers.authorization?.split(' ') ?? [];
-    return type === 'Bearer' ? token : undefined;
   }
 }

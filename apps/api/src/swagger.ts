@@ -7,10 +7,7 @@ export function setupSwagger(app: INestApplication): void {
     .setTitle('Code Connect API')
     .setDescription('Cadastro, login e dados do usuário logado.')
     .setVersion('1.0')
-    // Bridge phase: Authorization: Bearer <token> still works (see
-    // AuthGuard), removed once the web app fully adopts the cookie session.
-    .addBearerAuth()
-    // The real session: an httpOnly cookie set by POST /auth/login.
+    // The session: an httpOnly cookie set by POST /auth/login.
     .addCookieAuth(
       ACCESS_TOKEN_COOKIE,
       { type: 'apiKey', in: 'cookie', name: ACCESS_TOKEN_COOKIE },

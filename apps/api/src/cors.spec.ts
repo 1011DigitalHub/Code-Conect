@@ -39,10 +39,11 @@ describe('cors', () => {
     expect(options.exposedHeaders).toEqual(['Location', 'Retry-After']);
   });
 
-  it('allows the csrf header alongside content-type and the bridge-phase bearer header', () => {
+  it('allows the csrf header alongside content-type, and no longer allows Authorization', () => {
     const options = getCorsOptions();
     expect(options.allowedHeaders).toContain('X-CSRF-Token');
     expect(options.allowedHeaders).toContain('Content-Type');
-    expect(options.allowedHeaders).toContain('Authorization');
+    // The Bearer bridge is gone: the session travels only in the cookie now.
+    expect(options.allowedHeaders).not.toContain('Authorization');
   });
 });

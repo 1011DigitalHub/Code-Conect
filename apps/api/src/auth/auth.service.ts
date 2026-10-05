@@ -3,8 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { verifyPassword } from '../users/password.js';
 import { UsersService } from '../users/users.service.js';
 import { JWT_EXPIRES_IN_SECONDS, REMEMBER_ME_EXPIRES_IN_SECONDS } from './auth.constants.js';
-import type { JwtPayload } from './auth.types.js';
-import { TokenResponseDto } from './dto/token-response.dto.js';
+import type { JwtPayload, SignInResult } from './auth.types.js';
 
 @Injectable()
 export class AuthService {
@@ -17,7 +16,7 @@ export class AuthService {
     email: string,
     password: string,
     remember = false,
-  ): Promise<TokenResponseDto> {
+  ): Promise<SignInResult> {
     const user = await this.usersService.findByEmail(email);
     // Same message for unknown email and wrong password.
     if (!user || !(await verifyPassword(password, user.passwordHash))) {

@@ -132,17 +132,17 @@ describe('Auth (e2e)', () => {
         .expect(403);
     });
 
-    it('returns 200 with a bearer token', async () => {
+    it('returns 200 with the session metadata, and never the raw token', async () => {
       const res = await agent
         .post('/auth/login')
         .set('X-CSRF-Token', csrfToken)
         .send({ email: newUser.email, password: newUser.password })
         .expect(200);
-      expect(res.body).toMatchObject({
+      expect(res.body).toStrictEqual({
         tokenType: 'Bearer',
         expiresIn: expect.any(Number),
       });
-      expect(res.body.accessToken).toEqual(expect.any(String));
+      expect(res.body).not.toHaveProperty('accessToken');
     });
 
     it('also sets the session as an httpOnly, SameSite=Strict cookie', async () => {
@@ -193,15 +193,18 @@ describe('Auth (e2e)', () => {
   });
 
   describe('GET /auth/me', () => {
-    it('returns 401 without a token and with an invalid one', async () => {
+    it('returns 401 without a cookie, and an Authorization header is simply ignored', async () => {
       await request(app.getHttpServer()).get('/auth/me').expect(401);
+      // The Bearer bridge was removed: AuthGuard no longer reads this
+      // header at all, so a token here (even a valid one, see the e2e
+      // below) does not authenticate the request.
       await request(app.getHttpServer())
         .get('/auth/me')
         .set('Authorization', 'Bearer invalid')
         .expect(401);
     });
 
-    it('returns the logged user with the login token', async () => {
+    it('rejects a valid token sent only via Authorization, with no cookie', async () => {
       const agent = request.agent(app.getHttpServer());
       const csrfToken = await fetchCsrfToken(agent);
       await agent
@@ -214,20 +217,15 @@ describe('Auth (e2e)', () => {
         .set('X-CSRF-Token', csrfToken)
         .send({ email: newUser.email, password: newUser.password })
         .expect(200);
+      const capturedToken = cookieValue(setCookie(login, 'access_token'));
 
-      const res = await request(app.getHttpServer())
+      await request(app.getHttpServer())
         .get('/auth/me')
-        .set('Authorization', `Bearer ${login.body.accessToken}`)
-        .expect(200);
-      expect(res.body).toMatchObject({
-        id: 1,
-        name: 'Maria Silva',
-        email: 'maria@exemplo.com',
-      });
-      expect(JSON.stringify(res.body)).not.toMatch(/password/i);
+        .set('Authorization', `Bearer ${capturedToken}`)
+        .expect(401);
     });
 
-    it('returns the logged user with just the session cookie, no Authorization header', async () => {
+    it('returns the logged user with just the session cookie', async () => {
       // One cookie jar for the whole flow: supertest's agent captures
       // Set-Cookie from the login response and replays it automatically.
       const agent = request.agent(app.getHttpServer());
@@ -245,6 +243,7 @@ describe('Auth (e2e)', () => {
 
       const res = await agent.get('/auth/me').expect(200);
       expect(res.body).toMatchObject({ id: 1, email: newUser.email });
+      expect(JSON.stringify(res.body)).not.toMatch(/password/i);
     });
   });
 
@@ -346,14 +345,14 @@ describe('Auth (e2e)', () => {
         .set('X-CSRF-Token', signUpCsrfToken)
         .send({ email: newUser.email, password: newUser.password })
         .expect(200);
-      const capturedToken = login.body.accessToken as string;
+      const capturedToken = cookieValue(setCookie(login, 'access_token'));
       const csrfToken = cookieValue(setCookie(login, 'csrf_token'));
 
       await agent.post('/auth/logout').set('X-CSRF-Token', csrfToken).expect(204);
 
       // Replayed by hand (not through the agent, whose jar already cleared
-      // the cookie) so this keeps proving the point once the Bearer bridge
-      // is removed later.
+      // the cookie) to prove the point: the token itself, independent of
+      // transport, is unaffected by logout.
       await request(app.getHttpServer())
         .get('/auth/me')
         .set('Cookie', `access_token=${capturedToken}`)
@@ -393,7 +392,7 @@ describe('Auth (e2e)', () => {
   });
 
   describe('GET /api/docs-json', () => {
-    it('documents the three endpoints and the bearer scheme', async () => {
+    it('documents every endpoint and the cookie/csrf schemes, with no bearer scheme left', async () => {
       const res = await request(app.getHttpServer())
         .get('/api/docs-json')
         .expect(200);
@@ -406,11 +405,9 @@ describe('Auth (e2e)', () => {
           '/auth/csrf',
         ]),
       );
-      // Bridge phase: both schemes are documented. 'bearer' goes away once
-      // the Bearer fallback is removed from AuthGuard.
-      expect(res.body.components.securitySchemes).toHaveProperty('bearer');
       expect(res.body.components.securitySchemes).toHaveProperty('cookie');
       expect(res.body.components.securitySchemes).toHaveProperty('csrf');
+      expect(res.body.components.securitySchemes).not.toHaveProperty('bearer');
       expect(res.body.paths['/auth/login'].post.responses).toHaveProperty(
         '429',
       );

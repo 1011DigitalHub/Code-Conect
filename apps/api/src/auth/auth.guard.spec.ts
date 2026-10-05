@@ -33,16 +33,17 @@ describe('AuthGuard', () => {
     );
   });
 
-  it('rejects a request without Authorization header', async () => {
+  it('rejects a request with no access_token cookie at all', async () => {
     mockPublic(false);
     await expect(
       guard.canActivate(contextFor({ headers: {} })),
     ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
-  it('rejects a scheme other than Bearer', async () => {
+  it('rejects an Authorization: Bearer header — the bridge was removed, it is no longer read', async () => {
     mockPublic(false);
-    const request = { headers: { authorization: 'Basic abc' } };
+    const token = await jwtService.signAsync({ sub: 1, email: 'a@b.com' });
+    const request = { headers: { authorization: `Bearer ${token}` } };
     await expect(guard.canActivate(contextFor(request))).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
@@ -50,20 +51,13 @@ describe('AuthGuard', () => {
 
   it('rejects an invalid token', async () => {
     mockPublic(false);
-    const request = { headers: { authorization: 'Bearer not-a-jwt' } };
+    const request: Record<string, unknown> = {
+      headers: {},
+      cookies: { access_token: 'not-a-jwt' },
+    };
     await expect(guard.canActivate(contextFor(request))).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
-  });
-
-  it('accepts a valid token and fills request.user', async () => {
-    mockPublic(false);
-    const token = await jwtService.signAsync({ sub: 1, email: 'a@b.com' });
-    const request: Record<string, unknown> = {
-      headers: { authorization: `Bearer ${token}` },
-    };
-    await expect(guard.canActivate(contextFor(request))).resolves.toBe(true);
-    expect(request.user).toMatchObject({ sub: 1, email: 'a@b.com' });
   });
 
   it('accepts a token from the access_token cookie (pre-parsed req.cookies)', async () => {
@@ -87,17 +81,6 @@ describe('AuthGuard', () => {
     expect(request.user).toMatchObject({ sub: 1, email: 'a@b.com' });
   });
 
-  it('prefers the cookie over the Authorization header when both are present', async () => {
-    mockPublic(false);
-    const cookieToken = await jwtService.signAsync({ sub: 1, email: 'cookie@b.com' });
-    const headerToken = await jwtService.signAsync({ sub: 2, email: 'header@b.com' });
-    const request: Record<string, unknown> = {
-      headers: { authorization: `Bearer ${headerToken}`, cookie: `access_token=${cookieToken}` },
-    };
-    await expect(guard.canActivate(contextFor(request))).resolves.toBe(true);
-    expect(request.user).toMatchObject({ sub: 1, email: 'cookie@b.com' });
-  });
-
   it('rejects a token signed with a different algorithm', async () => {
     mockPublic(false);
     // alg: none, unsigned — the classic JWT bypass. base64url(header).base64url(payload).
@@ -107,7 +90,10 @@ describe('AuthGuard', () => {
     const payload = Buffer.from(JSON.stringify({ sub: 1, email: 'a@b.com' })).toString(
       'base64url',
     );
-    const request = { headers: { authorization: `Bearer ${header}.${payload}.` } };
+    const request: Record<string, unknown> = {
+      headers: {},
+      cookies: { access_token: `${header}.${payload}.` },
+    };
     await expect(guard.canActivate(contextFor(request))).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
@@ -117,7 +103,10 @@ describe('AuthGuard', () => {
     mockPublic(false);
     const otherService = new JwtService({ secret: 'a-completely-different-secret' });
     const token = await otherService.signAsync({ sub: 1, email: 'a@b.com' });
-    const request = { headers: { authorization: `Bearer ${token}` } };
+    const request: Record<string, unknown> = {
+      headers: {},
+      cookies: { access_token: token },
+    };
     await expect(guard.canActivate(contextFor(request))).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
@@ -129,7 +118,10 @@ describe('AuthGuard', () => {
       { sub: 1, email: 'a@b.com' },
       { expiresIn: '-1s' },
     );
-    const request = { headers: { authorization: `Bearer ${token}` } };
+    const request: Record<string, unknown> = {
+      headers: {},
+      cookies: { access_token: token },
+    };
     await expect(guard.canActivate(contextFor(request))).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
