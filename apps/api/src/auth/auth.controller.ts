@@ -9,7 +9,6 @@ import {
   Req,
   Res,
   UnauthorizedException,
-  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
@@ -23,7 +22,7 @@ import {
   ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { ErrorResponseDto } from '../common/dto/error-response.dto.js';
 import { LOGIN_THROTTLE } from '../common/throttle.constants.js';
@@ -69,8 +68,11 @@ export class AuthController {
     res.cookie(CSRF_COOKIE, token, getCsrfCookieOptions(false, 0));
   }
 
+  // ThrottlerGuard itself is global now (see AppModule); @Throttle just
+  // overrides the 'default' named throttler's limit for this route — adding
+  // @UseGuards(ThrottlerGuard) here too would run the guard twice per
+  // request and double-count against that same limit.
   @Public()
-  @UseGuards(ThrottlerGuard)
   @Throttle({ default: LOGIN_THROTTLE })
   @Post('login')
   @HttpCode(HttpStatus.OK)
