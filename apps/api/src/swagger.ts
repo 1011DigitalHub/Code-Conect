@@ -5,7 +5,7 @@ import { ACCESS_TOKEN_COOKIE, CSRF_HEADER } from './auth/cookie.constants.js';
 export function setupSwagger(app: INestApplication): void {
   const config = new DocumentBuilder()
     .setTitle('Code Connect API')
-    .setDescription('Cadastro, login e dados do usuário logado.')
+    .setDescription('Cadastro, login, dados do usuário logado e feed de posts com busca, curtidas e comentários.')
     .setVersion('1.0')
     // The session: an httpOnly cookie set by POST /auth/login.
     .addCookieAuth(
