@@ -1,9 +1,57 @@
-import { screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { AxiosError, AxiosHeaders, type AxiosResponse } from 'axios'
+import { MemoryRouter, Route, Routes } from 'react-router'
+import { vi } from 'vitest'
+import { login } from '../../api/auth'
+import { clearToken, getToken } from '../../api/tokenStorage'
+import { createUser } from '../../api/users'
 import { renderWithRouter } from '../../test/renderWithRouter'
 import { SignUpPage } from './SignUpPage'
 import { expectNoA11yViolations } from '../../test/axe'
 
+vi.mock('../../api/auth', () => ({ login: vi.fn() }))
+vi.mock('../../api/users', () => ({ createUser: vi.fn() }))
+
+const createdUser = {
+  id: 1,
+  name: 'Ana Souza',
+  email: 'ana@exemplo.com',
+  createdAt: '2026-10-02T12:00:00.000Z',
+  links: { self: '/users/1' },
+}
+
+function apiError(status: number) {
+  const config = { headers: new AxiosHeaders() }
+  const response = { data: {}, status, statusText: '', headers: {}, config } as AxiosResponse
+  return new AxiosError('failed', AxiosError.ERR_BAD_REQUEST, config, null, response)
+}
+
+function renderSignUpRoutes() {
+  return render(
+    <MemoryRouter initialEntries={['/cadastro']}>
+      <Routes>
+        <Route path="/cadastro" element={<SignUpPage />} />
+        <Route path="/login" element={<p>Tela de login</p>} />
+        <Route path="/perfil" element={<p>Tela de perfil</p>} />
+      </Routes>
+    </MemoryRouter>,
+  )
+}
+
+async function fillAndSubmit() {
+  await userEvent.type(screen.getByLabelText('Nome'), 'Ana Souza')
+  await userEvent.type(screen.getByLabelText('Email'), 'ana@exemplo.com')
+  await userEvent.type(screen.getByLabelText('Senha'), 'segredo-123')
+  await userEvent.click(screen.getByRole('button', { name: 'Cadastrar' }))
+}
+
 describe('SignUpPage', () => {
+  afterEach(() => {
+    vi.resetAllMocks()
+    clearToken()
+  })
+
   it('renders the sign-up form, social providers and login link', () => {
     renderWithRouter(<SignUpPage />)
 
@@ -27,6 +75,45 @@ describe('SignUpPage', () => {
       'href',
       '/login',
     )
+  })
+
+  it('creates the account, signs in and goes to the profile', async () => {
+    vi.mocked(createUser).mockResolvedValue(createdUser)
+    vi.mocked(login).mockResolvedValue({ accessToken: 'jwt', tokenType: 'Bearer', expiresIn: 3600 })
+    renderSignUpRoutes()
+
+    await fillAndSubmit()
+
+    expect(await screen.findByText('Tela de perfil')).toBeInTheDocument()
+    expect(createUser).toHaveBeenCalledWith({
+      name: 'Ana Souza',
+      email: 'ana@exemplo.com',
+      password: 'segredo-123',
+    })
+    expect(login).toHaveBeenCalledWith({ email: 'ana@exemplo.com', password: 'segredo-123' })
+    expect(getToken()).toBe('jwt')
+  })
+
+  it('shows the error and does not sign in when the email is already registered', async () => {
+    vi.mocked(createUser).mockRejectedValue(apiError(409))
+    renderSignUpRoutes()
+
+    await fillAndSubmit()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Este email já está cadastrado.')
+    expect(login).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Cadastrar' })).toBeEnabled()
+  })
+
+  it('goes to the login page when the account is created but the sign-in fails', async () => {
+    vi.mocked(createUser).mockResolvedValue(createdUser)
+    vi.mocked(login).mockRejectedValue(apiError(500))
+    renderSignUpRoutes()
+
+    await fillAndSubmit()
+
+    expect(await screen.findByText('Tela de login')).toBeInTheDocument()
+    expect(getToken()).toBeNull()
   })
 
   it('has no WCAG 2.2 AA violations', async () => {

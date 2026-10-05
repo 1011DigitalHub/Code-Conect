@@ -1,4 +1,5 @@
 import { Test } from '@nestjs/testing';
+import { ThrottlerGuard } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { UserEntity } from './entities/user.entity.js';
 import { UsersController } from './users.controller.js';
@@ -21,7 +22,11 @@ describe('UsersController', () => {
     const module = await Test.createTestingModule({
       controllers: [UsersController],
       providers: [{ provide: UsersService, useValue: usersService }],
-    }).compile();
+    })
+      // Rate limiting is covered by test/throttle.e2e-spec.ts.
+      .overrideGuard(ThrottlerGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
     controller = module.get(UsersController);
   });
 

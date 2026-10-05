@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { App } from 'supertest/types';
+import type { App } from 'supertest/types.js';
 import { AppModule } from './../src/app.module.js';
 import { configureApp } from './../src/app.setup.js';
 import { setupSwagger } from './../src/swagger.js';
@@ -184,6 +184,10 @@ describe('Auth (e2e)', () => {
         expect.arrayContaining(['/users', '/auth/login', '/auth/me']),
       );
       expect(res.body.components.securitySchemes).toHaveProperty('bearer');
+      expect(res.body.paths['/auth/login'].post.responses).toHaveProperty(
+        '429',
+      );
+      expect(res.body.paths['/users'].post.responses).toHaveProperty('429');
     });
   });
 });

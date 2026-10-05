@@ -1,3 +1,9 @@
+import { useState } from 'react'
+import { useNavigate } from 'react-router'
+import { login } from '../../api/auth'
+import { getErrorMessage } from '../../api/errors'
+import { saveToken } from '../../api/tokenStorage'
+import { createUser } from '../../api/users'
 import { AuthFooter } from '../../components/organisms/AuthFooter'
 import { SignUpForm, type SignUpFormValues } from '../../components/organisms/SignUpForm'
 import { SocialLogin } from '../../components/organisms/SocialLogin'
@@ -11,9 +17,31 @@ export function SignUpPage() {
     'Crie sua conta no Code Connect e participe da comunidade de pessoas desenvolvedoras que compartilham código.',
   )
 
-  // TODO: call the API once the auth endpoints exist.
-  function handleSignUp(values: SignUpFormValues) {
-    console.info('sign up', { name: values.name, email: values.email, remember: values.remember })
+  const navigate = useNavigate()
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string>()
+
+  // Creates the account and signs in with the same credentials.
+  async function handleSignUp(values: SignUpFormValues) {
+    setSubmitting(true)
+    setError(undefined)
+    try {
+      await createUser({ name: values.name, email: values.email, password: values.password })
+    } catch (signUpError) {
+      setError(getErrorMessage(signUpError))
+      setSubmitting(false)
+      return
+    }
+
+    try {
+      const { accessToken } = await login({ email: values.email, password: values.password })
+      saveToken(accessToken, values.remember)
+    } catch {
+      // The account exists; only the automatic sign-in failed.
+      await navigate('/login')
+      return
+    }
+    await navigate('/perfil')
   }
 
   function handleSocialSignUp(providerId: string) {
@@ -37,7 +65,7 @@ export function SignUpPage() {
         />
       }
     >
-      <SignUpForm onSubmit={handleSignUp} />
+      <SignUpForm onSubmit={handleSignUp} submitting={submitting} error={error} />
       <SocialLogin providers={socialProviders} onSelect={handleSocialSignUp} />
     </AuthTemplate>
   )

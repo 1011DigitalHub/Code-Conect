@@ -1,3 +1,8 @@
+import { useState } from 'react'
+import { useNavigate } from 'react-router'
+import { login } from '../../api/auth'
+import { getErrorMessage } from '../../api/errors'
+import { saveToken } from '../../api/tokenStorage'
 import { AuthFooter } from '../../components/organisms/AuthFooter'
 import { LoginForm, type LoginFormValues } from '../../components/organisms/LoginForm'
 import { SocialLogin } from '../../components/organisms/SocialLogin'
@@ -11,9 +16,22 @@ export function LoginPage() {
     'Entre no Code Connect e continue trocando conhecimento com a comunidade de pessoas desenvolvedoras.',
   )
 
-  // TODO: call the API once the auth endpoints exist.
-  function handleLogin(values: LoginFormValues) {
-    console.info('login', { login: values.login, remember: values.remember })
+  const navigate = useNavigate()
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string>()
+
+  async function handleLogin(values: LoginFormValues) {
+    setSubmitting(true)
+    setError(undefined)
+    try {
+      const { accessToken } = await login({ email: values.email, password: values.password })
+      saveToken(accessToken, values.remember)
+    } catch (loginError) {
+      setError(getErrorMessage(loginError))
+      setSubmitting(false)
+      return
+    }
+    await navigate('/perfil')
   }
 
   function handleSocialLogin(providerId: string) {
@@ -35,7 +53,12 @@ export function LoginPage() {
         />
       }
     >
-      <LoginForm onSubmit={handleLogin} forgotPasswordHref="/recuperar-senha" />
+      <LoginForm
+        onSubmit={handleLogin}
+        forgotPasswordHref="/recuperar-senha"
+        submitting={submitting}
+        error={error}
+      />
       <SocialLogin providers={socialProviders} onSelect={handleSocialLogin} />
     </AuthTemplate>
   )
