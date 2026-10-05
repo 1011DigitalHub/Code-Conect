@@ -28,9 +28,46 @@ describe('AuthGuard', () => {
 
   it('lets a @Public() route through with no token at all', async () => {
     mockPublic(true);
-    await expect(guard.canActivate(contextFor({ headers: {} }))).resolves.toBe(
-      true,
+    const request = { headers: {} } as { headers: object; user?: unknown };
+    await expect(guard.canActivate(contextFor(request))).resolves.toBe(true);
+    expect(request.user).toBeUndefined();
+  });
+
+  // A @Public() route is optionally authenticated: the public feed needs to
+  // know whether the current viewer already liked each post.
+  it('populates request.user on a @Public() route when the session cookie is valid', async () => {
+    mockPublic(true);
+    const token = await jwtService.signAsync({ sub: 7, email: 'ana@exemplo.com' });
+    const request = {
+      headers: { cookie: `access_token=${token}` },
+    } as { headers: object; user?: { sub: number; email: string } };
+
+    await expect(guard.canActivate(contextFor(request))).resolves.toBe(true);
+    expect(request.user).toMatchObject({ sub: 7, email: 'ana@exemplo.com' });
+  });
+
+  it('lets a @Public() route through with an expired cookie and leaves request.user unset', async () => {
+    mockPublic(true);
+    const token = await jwtService.signAsync(
+      { sub: 7, email: 'ana@exemplo.com' },
+      { expiresIn: '-1s' },
     );
+    const request = {
+      headers: { cookie: `access_token=${token}` },
+    } as { headers: object; user?: unknown };
+
+    await expect(guard.canActivate(contextFor(request))).resolves.toBe(true);
+    expect(request.user).toBeUndefined();
+  });
+
+  it('lets a @Public() route through with a malformed cookie and leaves request.user unset', async () => {
+    mockPublic(true);
+    const request = {
+      headers: { cookie: 'access_token=not-a-jwt' },
+    } as { headers: object; user?: unknown };
+
+    await expect(guard.canActivate(contextFor(request))).resolves.toBe(true);
+    expect(request.user).toBeUndefined();
   });
 
   it('rejects a request with no access_token cookie at all', async () => {
