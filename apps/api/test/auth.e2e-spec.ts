@@ -329,7 +329,11 @@ describe('Auth (e2e)', () => {
           '/auth/csrf',
         ]),
       );
+      // Bridge phase: both schemes are documented. 'bearer' goes away once
+      // the Bearer fallback is removed from AuthGuard.
       expect(res.body.components.securitySchemes).toHaveProperty('bearer');
+      expect(res.body.components.securitySchemes).toHaveProperty('cookie');
+      expect(res.body.components.securitySchemes).toHaveProperty('csrf');
       expect(res.body.paths['/auth/login'].post.responses).toHaveProperty(
         '429',
       );

@@ -14,9 +14,12 @@ import {
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiCookieAuth,
+  ApiForbiddenResponse,
   ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiSecurity,
   ApiTags,
   ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
@@ -104,16 +107,23 @@ export class AuthController {
 
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiCookieAuth('cookie')
   @ApiBearerAuth()
+  @ApiSecurity('csrf')
   @ApiOperation({ summary: 'Encerra a sessão, limpando os cookies' })
   @ApiNoContentResponse()
   @ApiUnauthorizedResponse({ type: ErrorResponseDto })
+  @ApiForbiddenResponse({
+    type: ErrorResponseDto,
+    description: 'Token CSRF ausente ou inválido',
+  })
   logout(@Res({ passthrough: true }) res: Response): void {
     res.clearCookie(ACCESS_TOKEN_COOKIE, getClearCookieOptions());
     res.clearCookie(CSRF_COOKIE, getClearCookieOptions());
   }
 
   @Get('me')
+  @ApiCookieAuth('cookie')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Dados do usuário logado' })
   @ApiOkResponse({ type: UserEntity })
