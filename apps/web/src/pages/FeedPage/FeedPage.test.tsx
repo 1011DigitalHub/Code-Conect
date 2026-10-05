@@ -168,7 +168,9 @@ describe('FeedPage', () => {
     renderFeedRoutes()
     await screen.findByRole('heading', { level: 1, name: 'Feed' })
 
-    expect(document.title).toBe('Feed | Code Connect')
+    // usePageMeta sets the title in its own effect, which can still be
+    // pending in the tick right after the heading commits.
+    await waitFor(() => expect(document.title).toBe('Feed | Code Connect'))
   })
 
   it('has no WCAG 2.2 AA violations', async () => {

@@ -155,7 +155,11 @@ describe('PostPage', () => {
     renderPostRoutes()
     await screen.findByRole('heading', { level: 1, name: post.title })
 
-    expect(document.title).toBe(`${post.title} | Code Connect`)
+    // usePageMeta runs in its own effect, which can still be pending in the
+    // tick right after the heading commits — first with the loading
+    // fallback title, then again with the post's real title once data
+    // arrives. waitFor lets both flush before asserting the final value.
+    await waitFor(() => expect(document.title).toBe(`${post.title} | Code Connect`))
     expect(
       document.querySelector('meta[name="description"]')?.getAttribute('content'),
     ).toBe(post.excerpt)
