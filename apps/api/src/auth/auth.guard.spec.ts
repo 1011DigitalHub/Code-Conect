@@ -41,4 +41,38 @@ describe('AuthGuard', () => {
     await expect(guard.canActivate(contextFor(request))).resolves.toBe(true);
     expect(request.user).toMatchObject({ sub: 1, email: 'a@b.com' });
   });
+
+  it('rejects a token signed with a different algorithm', async () => {
+    // alg: none, unsigned — the classic JWT bypass. base64url(header).base64url(payload).
+    const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString(
+      'base64url',
+    );
+    const payload = Buffer.from(JSON.stringify({ sub: 1, email: 'a@b.com' })).toString(
+      'base64url',
+    );
+    const request = { headers: { authorization: `Bearer ${header}.${payload}.` } };
+    await expect(guard.canActivate(contextFor(request))).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+  });
+
+  it('rejects a token signed with a different secret', async () => {
+    const otherService = new JwtService({ secret: 'a-completely-different-secret' });
+    const token = await otherService.signAsync({ sub: 1, email: 'a@b.com' });
+    const request = { headers: { authorization: `Bearer ${token}` } };
+    await expect(guard.canActivate(contextFor(request))).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+  });
+
+  it('rejects an expired token', async () => {
+    const token = await jwtService.signAsync(
+      { sub: 1, email: 'a@b.com' },
+      { expiresIn: '-1s' },
+    );
+    const request = { headers: { authorization: `Bearer ${token}` } };
+    await expect(guard.canActivate(contextFor(request))).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+  });
 });
