@@ -66,6 +66,38 @@ describe('AuthGuard', () => {
     expect(request.user).toMatchObject({ sub: 1, email: 'a@b.com' });
   });
 
+  it('accepts a token from the access_token cookie (pre-parsed req.cookies)', async () => {
+    mockPublic(false);
+    const token = await jwtService.signAsync({ sub: 1, email: 'a@b.com' });
+    const request: Record<string, unknown> = {
+      headers: {},
+      cookies: { access_token: token },
+    };
+    await expect(guard.canActivate(contextFor(request))).resolves.toBe(true);
+    expect(request.user).toMatchObject({ sub: 1, email: 'a@b.com' });
+  });
+
+  it('accepts a token from the raw Cookie header when nothing pre-parsed it', async () => {
+    mockPublic(false);
+    const token = await jwtService.signAsync({ sub: 1, email: 'a@b.com' });
+    const request: Record<string, unknown> = {
+      headers: { cookie: `access_token=${token}` },
+    };
+    await expect(guard.canActivate(contextFor(request))).resolves.toBe(true);
+    expect(request.user).toMatchObject({ sub: 1, email: 'a@b.com' });
+  });
+
+  it('prefers the cookie over the Authorization header when both are present', async () => {
+    mockPublic(false);
+    const cookieToken = await jwtService.signAsync({ sub: 1, email: 'cookie@b.com' });
+    const headerToken = await jwtService.signAsync({ sub: 2, email: 'header@b.com' });
+    const request: Record<string, unknown> = {
+      headers: { authorization: `Bearer ${headerToken}`, cookie: `access_token=${cookieToken}` },
+    };
+    await expect(guard.canActivate(contextFor(request))).resolves.toBe(true);
+    expect(request.user).toMatchObject({ sub: 1, email: 'cookie@b.com' });
+  });
+
   it('rejects a token signed with a different algorithm', async () => {
     mockPublic(false);
     // alg: none, unsigned — the classic JWT bypass. base64url(header).base64url(payload).
