@@ -7,6 +7,10 @@ const button = cva(
     variants: {
       variant: {
         primary: 'bg-primary text-ink hover:brightness-95 focus-visible:outline-primary',
+        // For icon-led controls (like, logout) that sit on a card rather
+        // than acting as the page's main action.
+        ghost:
+          'bg-transparent text-offwhite hover:text-primary focus-visible:outline-primary',
       },
       fullWidth: {
         true: 'w-full',

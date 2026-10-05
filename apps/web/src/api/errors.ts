@@ -12,6 +12,8 @@ export function getErrorMessage(error: unknown): string {
       return 'Verifique os dados informados.'
     case 401:
       return 'Email ou senha inválidos.'
+    case 404:
+      return 'Conteúdo não encontrado.'
     case 409:
       return 'Este email já está cadastrado.'
     case 429: {
@@ -27,4 +29,8 @@ export function getErrorMessage(error: unknown): string {
 
 export function isUnauthorized(error: unknown): boolean {
   return axios.isAxiosError(error) && error.response?.status === 401
+}
+
+export function isNotFound(error: unknown): boolean {
+  return axios.isAxiosError(error) && error.response?.status === 404
 }

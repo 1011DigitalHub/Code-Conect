@@ -24,3 +24,84 @@ export type LoginBody = {
 export type CreateUserBody = LoginBody & {
   name: string
 }
+
+export type PostAuthor = {
+  id: number
+  name: string
+  self: string
+}
+
+export type Pagination = {
+  page: number
+  perPage: number
+  total: number
+  totalPages: number
+}
+
+export type CollectionLinks = {
+  self: string
+  next: string | null
+  prev: string | null
+}
+
+export type PostLinks = {
+  self: string
+  comments: string
+  like: string
+  author: string
+}
+
+// Feed representation: no `content`, which only the single-post endpoint returns.
+export type FeedPost = {
+  slug: string
+  title: string
+  excerpt: string
+  thumbnailUrl: string | null
+  createdAt: string
+  author: PostAuthor
+  likeCount: number
+  commentCount: number
+  likedByMe: boolean
+  links: PostLinks
+}
+
+export type PostDetail = FeedPost & {
+  content: string
+}
+
+export type Comment = {
+  id: number
+  body: string
+  createdAt: string
+  author: PostAuthor
+  links: { self: string; post: string }
+}
+
+export type PostCollection = {
+  data: FeedPost[]
+  pagination: Pagination
+  links: CollectionLinks
+}
+
+export type CommentCollection = {
+  data: Comment[]
+  pagination: Pagination
+  links: CollectionLinks
+}
+
+export type ListPostsParams = {
+  q?: string
+  page?: number
+  perPage?: number
+}
+
+export type CreatePostBody = {
+  title: string
+  excerpt: string
+  content: string
+  thumbnailUrl?: string
+}
+
+export type CreateCommentBody = {
+  body: string
+}
