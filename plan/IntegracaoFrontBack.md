@@ -208,3 +208,6 @@ Run 37314201427 no PR #1, três execuções por rota (resultados idênticos). Co
 | `/cadastro` | 100 | 100 | 100 | 100 | 0,6 s | 0 | 0 ms |
 
 `/perfil` é privada e não entra no Lighthouse (nem em `e2e/routes.ts`).
+
+## Checagens manuais (2026-10-05)
+Feitas pelo usuário em Login, Cadastro e Perfil: uso só com teclado, NVDA e zoom de 200%. Sem problemas reportados.
