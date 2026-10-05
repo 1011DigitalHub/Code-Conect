@@ -184,4 +184,23 @@ describe('Security regressions (e2e)', () => {
         .expect('Content-Type', /text\/html/);
     });
   });
+
+  describe('Helmet security headers', () => {
+    it('sets the standard protective headers and removes X-Powered-By', async () => {
+      const res = await request(app.getHttpServer()).get('/').expect(200);
+
+      expect(res.headers['x-content-type-options']).toBe('nosniff');
+      expect(res.headers['x-frame-options']).toBeDefined();
+      expect(res.headers['strict-transport-security']).toBeDefined();
+      expect(res.headers['x-powered-by']).toBeUndefined();
+    });
+
+    it("keeps the Swagger UI's inline init script allowed, even with a CSP in place", async () => {
+      const res = await request(app.getHttpServer()).get('/api/docs').expect(200);
+
+      expect(res.headers['content-security-policy']).toMatch(
+        /script-src[^;]*'unsafe-inline'/,
+      );
+    });
+  });
 });
