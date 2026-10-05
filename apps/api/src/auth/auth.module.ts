@@ -10,6 +10,7 @@ import {
 } from './auth.constants.js';
 import { AuthGuard } from './auth.guard.js';
 import { AuthService } from './auth.service.js';
+import { CsrfGuard } from './csrf.guard.js';
 
 @Module({
   imports: [
@@ -24,8 +25,13 @@ import { AuthService } from './auth.service.js';
   controllers: [AuthController],
   providers: [
     AuthService,
-    // Global guard: every route is protected unless it carries @Public().
+    // Global guards run in registration order: AuthGuard first, so a
+    // request with no session gets 401 rather than a CSRF 403. CsrfGuard
+    // derives its key from the raw access_token cookie (not request.user),
+    // so it is functionally order-independent — the order only decides
+    // which status code wins when both would reject.
     { provide: APP_GUARD, useClass: AuthGuard },
+    { provide: APP_GUARD, useClass: CsrfGuard },
   ],
 })
 export class AuthModule {}

@@ -205,21 +205,58 @@ describe('Auth (e2e)', () => {
     });
   });
 
+  describe('GET /auth/csrf', () => {
+    it('sets a readable (non-HttpOnly) csrf_token cookie, even with no session', async () => {
+      const res = await request(app.getHttpServer()).get('/auth/csrf').expect(204);
+      const cookie = setCookie(res, 'csrf_token');
+      expect(cookie).not.toMatch(/HttpOnly/i);
+    });
+  });
+
   describe('POST /auth/logout', () => {
     it('requires a session', () => {
       return request(app.getHttpServer()).post('/auth/logout').expect(401);
     });
 
-    it('clears the session cookie and the next /auth/me is unauthorized', async () => {
+    it('rejects a session request with no csrf token', async () => {
       const agent = request.agent(app.getHttpServer());
       await agent.post('/users').send(newUser).expect(201);
       await agent
         .post('/auth/login')
         .send({ email: newUser.email, password: newUser.password })
         .expect(200);
+      await agent.post('/auth/logout').expect(403);
+    });
+
+    it('rejects a csrf header that does not match the cookie', async () => {
+      const agent = request.agent(app.getHttpServer());
+      await agent.post('/users').send(newUser).expect(201);
+      await agent
+        .post('/auth/login')
+        .send({ email: newUser.email, password: newUser.password })
+        .expect(200);
+      await agent
+        .post('/auth/logout')
+        .set('X-CSRF-Token', 'forged.token')
+        .expect(403);
+    });
+
+    it('clears the session cookie and the next /auth/me is unauthorized', async () => {
+      const agent = request.agent(app.getHttpServer());
+      await agent.post('/users').send(newUser).expect(201);
+      const login = await agent
+        .post('/auth/login')
+        .send({ email: newUser.email, password: newUser.password })
+        .expect(200);
       await agent.get('/auth/me').expect(200);
 
-      const logout = await agent.post('/auth/logout').expect(204);
+      // Logout is a protected, unsafe (POST) route, so it needs the matching
+      // CSRF pair. Login already minted one bound to this session.
+      const csrfToken = cookieValue(setCookie(login, 'csrf_token'));
+      const logout = await agent
+        .post('/auth/logout')
+        .set('X-CSRF-Token', csrfToken)
+        .expect(204);
       const cleared = setCookie(logout, 'access_token');
       expect(cleared).toMatch(/Path=\//);
       expect(cookieValue(cleared) === '' || /Expires=.*1970/.test(cleared)).toBe(
@@ -243,8 +280,9 @@ describe('Auth (e2e)', () => {
         .send({ email: newUser.email, password: newUser.password })
         .expect(200);
       const capturedToken = login.body.accessToken as string;
+      const csrfToken = cookieValue(setCookie(login, 'csrf_token'));
 
-      await agent.post('/auth/logout').expect(204);
+      await agent.post('/auth/logout').set('X-CSRF-Token', csrfToken).expect(204);
 
       // Replayed by hand (not through the agent, whose jar already cleared
       // the cookie) so this keeps proving the point once the Bearer bridge
@@ -288,6 +326,7 @@ describe('Auth (e2e)', () => {
           '/auth/login',
           '/auth/logout',
           '/auth/me',
+          '/auth/csrf',
         ]),
       );
       expect(res.body.components.securitySchemes).toHaveProperty('bearer');

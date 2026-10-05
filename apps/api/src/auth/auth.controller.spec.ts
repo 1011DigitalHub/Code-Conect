@@ -1,9 +1,10 @@
 import { NotFoundException, UnauthorizedException } from '@nestjs/common';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { UserEntity } from '../users/entities/user.entity.js';
 import type { UsersService } from '../users/users.service.js';
 import { AuthController } from './auth.controller.js';
 import type { AuthService } from './auth.service.js';
+import { sessionKey, verifyCsrfToken } from './csrf.js';
 
 // Returning the mocks alongside `res` (instead of reading them back off the
 // typed Response interface, e.g. `res.cookie`) avoids an unbound-method lint
@@ -13,6 +14,10 @@ function fakeResponse() {
   const clearCookie = vi.fn();
   const res = { cookie, clearCookie } as unknown as Response;
   return { res, cookie, clearCookie };
+}
+
+function fakeRequest(cookieHeader?: string): Request {
+  return { headers: { cookie: cookieHeader } } as unknown as Request;
 }
 
 describe('AuthController', () => {
@@ -50,6 +55,36 @@ describe('AuthController', () => {
       'token',
       expect.objectContaining({ httpOnly: true, path: '/' }),
     );
+  });
+
+  it('rotates the csrf token bound to the new access token on login', async () => {
+    authService.signIn.mockResolvedValue({
+      accessToken: 'brand-new-token',
+      tokenType: 'Bearer',
+      expiresIn: 3600,
+    });
+    const { res, cookie } = fakeResponse();
+    await controller.login(
+      { email: 'maria@exemplo.com', password: 'senha-segura-123' },
+      res,
+    );
+    const csrfCall = cookie.mock.calls.find(
+      (call: unknown[]) => call[0] === 'csrf_token',
+    ) as [string, string, Record<string, unknown>];
+    expect(csrfCall).toBeDefined();
+    const [, csrfToken, options] = csrfCall;
+    expect(options.httpOnly).toBe(false);
+    // Must validate against the NEW token's session key, not any stale
+    // access_token cookie the login request happened to carry.
+    expect(verifyCsrfToken(csrfToken, sessionKey('brand-new-token'))).toBe(true);
+    expect(verifyCsrfToken(csrfToken, sessionKey('some-other-token'))).toBe(false);
+  });
+
+  it('mints an anonymous-bound csrf token on GET /auth/csrf with no session', () => {
+    const { res, cookie } = fakeResponse();
+    controller.csrf(fakeRequest(undefined), res);
+    const [, token] = cookie.mock.calls[0] as [string, string, Record<string, unknown>];
+    expect(verifyCsrfToken(token, sessionKey(undefined))).toBe(true);
   });
 
   it('passes remember through to the service and sets a persistent cookie', async () => {
@@ -90,11 +125,15 @@ describe('AuthController', () => {
     expect(options.maxAge).toBeUndefined();
   });
 
-  it('clears the session cookie on logout', () => {
+  it('clears both the session and csrf cookies on logout', () => {
     const { res, clearCookie } = fakeResponse();
     controller.logout(res);
     expect(clearCookie).toHaveBeenCalledWith(
       'access_token',
+      expect.objectContaining({ path: '/' }),
+    );
+    expect(clearCookie).toHaveBeenCalledWith(
+      'csrf_token',
       expect.objectContaining({ path: '/' }),
     );
   });
