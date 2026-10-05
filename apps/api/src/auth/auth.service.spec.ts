@@ -48,4 +48,18 @@ describe('AuthService', () => {
       service.signIn('maria@exemplo.com', 'errada'),
     ).rejects.toBeInstanceOf(UnauthorizedException);
   });
+
+  it('uses the short-lived ttl by default', async () => {
+    const result = await service.signIn('maria@exemplo.com', 'senha-segura-123');
+    expect(result.expiresIn).toBe(3600);
+  });
+
+  it('uses the remember-me ttl when remember is true', async () => {
+    const result = await service.signIn(
+      'maria@exemplo.com',
+      'senha-segura-123',
+      true,
+    );
+    expect(result.expiresIn).toBe(7 * 24 * 3600);
+  });
 });

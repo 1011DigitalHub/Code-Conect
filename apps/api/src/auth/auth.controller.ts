@@ -6,12 +6,14 @@ import {
   HttpStatus,
   NotFoundException,
   Post,
+  Res,
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -19,13 +21,19 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import type { Response } from 'express';
 import { ErrorResponseDto } from '../common/dto/error-response.dto.js';
 import { LOGIN_THROTTLE } from '../common/throttle.constants.js';
 import { UserEntity } from '../users/entities/user.entity.js';
 import { UsersService } from '../users/users.service.js';
 import { AuthService } from './auth.service.js';
-import { CurrentUser } from './current-user.decorator.js';
 import type { JwtPayload } from './auth.types.js';
+import {
+  ACCESS_TOKEN_COOKIE,
+  getClearCookieOptions,
+  getSessionCookieOptions,
+} from './cookie.constants.js';
+import { CurrentUser } from './current-user.decorator.js';
 import { LoginDto } from './dto/login.dto.js';
 import { TokenResponseDto } from './dto/token-response.dto.js';
 import { Public } from './public.decorator.js';
@@ -51,8 +59,30 @@ export class AuthController {
     type: ErrorResponseDto,
     description: 'Muitas tentativas; veja o header Retry-After',
   })
-  login(@Body() dto: LoginDto): Promise<TokenResponseDto> {
-    return this.authService.signIn(dto.email, dto.password);
+  async login(
+    @Body() dto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<TokenResponseDto> {
+    const remember = dto.remember ?? false;
+    const result = await this.authService.signIn(dto.email, dto.password, remember);
+    // Bridge phase: the token still travels in the body too (accessToken),
+    // for the web app until it switches to reading only the cookie.
+    res.cookie(
+      ACCESS_TOKEN_COOKIE,
+      result.accessToken,
+      getSessionCookieOptions(remember, result.expiresIn),
+    );
+    return result;
+  }
+
+  @Post('logout')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Encerra a sessão, limpando o cookie' })
+  @ApiNoContentResponse()
+  @ApiUnauthorizedResponse({ type: ErrorResponseDto })
+  logout(@Res({ passthrough: true }) res: Response): void {
+    res.clearCookie(ACCESS_TOKEN_COOKIE, getClearCookieOptions());
   }
 
   @Get('me')

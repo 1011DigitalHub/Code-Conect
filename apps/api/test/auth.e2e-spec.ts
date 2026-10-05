@@ -5,6 +5,8 @@ import type { App } from 'supertest/types.js';
 import { AppModule } from './../src/app.module.js';
 import { configureApp } from './../src/app.setup.js';
 import { setupSwagger } from './../src/swagger.js';
+import { isCookieSecure } from './../src/auth/cookie.constants.js';
+import { cookieValue, setCookie } from './cookies.js';
 import { resetDatabase } from './db.js';
 
 const newUser = {
@@ -27,6 +29,14 @@ async function createApp(): Promise<INestApplication<App>> {
 
 describe('Auth (e2e)', () => {
   let app: INestApplication<App>;
+
+  // If COOKIE_SECURE ever leaks into the test env, every cookie test below
+  // fails as an unexplained 401 (supertest's cookie jar silently refuses to
+  // replay a Secure cookie over http) — assert the premise so that failure
+  // is self-describing instead of a mystery.
+  beforeAll(() => {
+    expect(isCookieSecure()).toBe(false);
+  });
 
   // A fresh app and an empty test database per test, so ids start at 1.
   beforeEach(async () => {
@@ -106,6 +116,33 @@ describe('Auth (e2e)', () => {
       expect(res.body.accessToken).toEqual(expect.any(String));
     });
 
+    it('also sets the session as an httpOnly, SameSite=Strict cookie', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ email: newUser.email, password: newUser.password })
+        .expect(200);
+
+      const access = setCookie(res, 'access_token');
+      expect(access).toMatch(/HttpOnly/i);
+      expect(access).toMatch(/SameSite=Strict/i);
+      expect(access).toMatch(/Path=\//);
+      // COOKIE_SECURE is off in tests on purpose (see the beforeAll above).
+      expect(access).not.toMatch(/Secure/i);
+      // Not "remember me": a session cookie, with no Max-Age/Expires.
+      expect(access).not.toMatch(/Max-Age/i);
+    });
+
+    it('sets a persistent cookie, matching the longer ttl, when remember is true', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ email: newUser.email, password: newUser.password, remember: true })
+        .expect(200);
+
+      expect(res.body.expiresIn).toBe(7 * 24 * 3600);
+      const access = setCookie(res, 'access_token');
+      expect(access).toMatch(/Max-Age=604800/);
+    });
+
     it('returns 401 for a wrong password', async () => {
       const res = await request(app.getHttpServer())
         .post('/auth/login')
@@ -152,6 +189,71 @@ describe('Auth (e2e)', () => {
       });
       expect(JSON.stringify(res.body)).not.toMatch(/password/i);
     });
+
+    it('returns the logged user with just the session cookie, no Authorization header', async () => {
+      // One cookie jar for the whole flow: supertest's agent captures
+      // Set-Cookie from the login response and replays it automatically.
+      const agent = request.agent(app.getHttpServer());
+      await agent.post('/users').send(newUser).expect(201);
+      await agent
+        .post('/auth/login')
+        .send({ email: newUser.email, password: newUser.password })
+        .expect(200);
+
+      const res = await agent.get('/auth/me').expect(200);
+      expect(res.body).toMatchObject({ id: 1, email: newUser.email });
+    });
+  });
+
+  describe('POST /auth/logout', () => {
+    it('requires a session', () => {
+      return request(app.getHttpServer()).post('/auth/logout').expect(401);
+    });
+
+    it('clears the session cookie and the next /auth/me is unauthorized', async () => {
+      const agent = request.agent(app.getHttpServer());
+      await agent.post('/users').send(newUser).expect(201);
+      await agent
+        .post('/auth/login')
+        .send({ email: newUser.email, password: newUser.password })
+        .expect(200);
+      await agent.get('/auth/me').expect(200);
+
+      const logout = await agent.post('/auth/logout').expect(204);
+      const cleared = setCookie(logout, 'access_token');
+      expect(cleared).toMatch(/Path=\//);
+      expect(cookieValue(cleared) === '' || /Expires=.*1970/.test(cleared)).toBe(
+        true,
+      );
+
+      await agent.get('/auth/me').expect(401);
+    });
+
+    it('a token captured before logout still works until it expires (documented, not fixed)', async () => {
+      // With a stateless JWT, clearing the cookie does not revoke the
+      // token itself — a copy made before logout stays valid until its own
+      // expiry. This is a deliberately accepted trade-off (see
+      // SECURITY.md): revoking it server-side would need a tokenVersion
+      // column or a denylist, which costs a database round trip on every
+      // authenticated request.
+      const agent = request.agent(app.getHttpServer());
+      await agent.post('/users').send(newUser).expect(201);
+      const login = await agent
+        .post('/auth/login')
+        .send({ email: newUser.email, password: newUser.password })
+        .expect(200);
+      const capturedToken = login.body.accessToken as string;
+
+      await agent.post('/auth/logout').expect(204);
+
+      // Replayed by hand (not through the agent, whose jar already cleared
+      // the cookie) so this keeps proving the point once the Bearer bridge
+      // is removed later.
+      await request(app.getHttpServer())
+        .get('/auth/me')
+        .set('Cookie', `access_token=${capturedToken}`)
+        .expect(200);
+    });
   });
 
   describe('persistence', () => {
@@ -181,7 +283,12 @@ describe('Auth (e2e)', () => {
         .get('/api/docs-json')
         .expect(200);
       expect(Object.keys(res.body.paths)).toEqual(
-        expect.arrayContaining(['/users', '/auth/login', '/auth/me']),
+        expect.arrayContaining([
+          '/users',
+          '/auth/login',
+          '/auth/logout',
+          '/auth/me',
+        ]),
       );
       expect(res.body.components.securitySchemes).toHaveProperty('bearer');
       expect(res.body.paths['/auth/login'].post.responses).toHaveProperty(
