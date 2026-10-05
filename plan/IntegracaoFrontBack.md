@@ -198,3 +198,13 @@ src/api/
 - Os specs de controller que usam `ThrottlerGuard` o substituem por um guard liberado; o limite é coberto por `test/throttle.e2e-spec.ts`.
 - A API já usa Prisma/Postgres (não mais array em memória); isso não alterou o plano.
 - Pendências manuais: medir o Lighthouse em `/login` e `/cadastro` (build de produção, DevTools) e fazer os testes com NVDA e zoom de 200%.
+
+## Lighthouse (2026-10-05, GitHub Actions, desktop, build de produção)
+Run 37314201427 no PR #1, três execuções por rota (resultados idênticos). Com o Axios no bundle (JS de 323 KB, 105 KB gzip), os alvos continuam atingidos.
+
+| Rota | Performance | Accessibility | Best Practices | SEO | LCP | CLS | TBT |
+|---|---|---|---|---|---|---|---|
+| `/login` | 100 | 100 | 100 | 100 | 0,6 s | 0 | 0 a 10 ms |
+| `/cadastro` | 100 | 100 | 100 | 100 | 0,6 s | 0 | 0 ms |
+
+`/perfil` é privada e não entra no Lighthouse (nem em `e2e/routes.ts`).
