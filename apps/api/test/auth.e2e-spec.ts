@@ -108,6 +108,18 @@ describe('Auth (e2e)', () => {
         .send({ ...newUser, admin: true })
         .expect(400);
     });
+
+    it('returns 400 for an email over 254 characters, instead of a 500 from the database', async () => {
+      const agent = request.agent(app.getHttpServer());
+      const csrfToken = await fetchCsrfToken(agent);
+      const overLongEmail = `${'a'.repeat(250)}@example.com`; // > 254 chars
+
+      await agent
+        .post('/users')
+        .set('X-CSRF-Token', csrfToken)
+        .send({ ...newUser, email: overLongEmail })
+        .expect(400);
+    });
   });
 
   describe('POST /auth/login', () => {
