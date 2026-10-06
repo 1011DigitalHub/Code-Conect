@@ -48,10 +48,6 @@ export function SignUpPage() {
     await navigate('/perfil')
   }
 
-  function handleSocialSignUp(providerId: string) {
-    console.info('social sign up', providerId)
-  }
-
   return (
     <AuthTemplate
       bannerSrc="/Banner_cadastro_page.webp"
@@ -70,7 +66,8 @@ export function SignUpPage() {
       }
     >
       <SignUpForm onSubmit={handleSignUp} submitting={submitting} error={error} />
-      <SocialLogin providers={socialProviders} onSelect={handleSocialSignUp} />
+      {/* Social login isn't implemented yet — see plan/LoginSocial.md for the OIDC design. */}
+      <SocialLogin providers={socialProviders} disabled />
     </AuthTemplate>
   )
 }

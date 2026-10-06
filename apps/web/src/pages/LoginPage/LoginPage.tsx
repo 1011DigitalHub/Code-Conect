@@ -38,10 +38,6 @@ export function LoginPage() {
     await navigate('/perfil')
   }
 
-  function handleSocialLogin(providerId: string) {
-    console.info('social login', providerId)
-  }
-
   return (
     <AuthTemplate
       bannerSrc="/Banner_login_page.webp"
@@ -63,7 +59,8 @@ export function LoginPage() {
         submitting={submitting}
         error={error}
       />
-      <SocialLogin providers={socialProviders} onSelect={handleSocialLogin} />
+      {/* Social login isn't implemented yet — see plan/LoginSocial.md for the OIDC design. */}
+      <SocialLogin providers={socialProviders} disabled />
     </AuthTemplate>
   )
 }

@@ -67,8 +67,9 @@ describe('SignUpPage', () => {
     expect(screen.getByLabelText('Email')).toBeInTheDocument()
     expect(screen.getByLabelText('Senha')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Cadastrar' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Github' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Gmail' })).toBeInTheDocument()
+    // Not implemented yet (see plan/LoginSocial.md) — rendered, but disabled.
+    expect(screen.getByRole('button', { name: 'Github' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Gmail' })).toBeDisabled()
     expect(screen.getByRole('link', { name: 'Faça seu login!' })).toHaveAttribute(
       'href',
       '/login',
