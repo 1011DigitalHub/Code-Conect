@@ -11,3 +11,7 @@ allowBuilds:
 overrides:
   mysql2: ^3.23.1
   deepmerge-ts: ^8.0.0
+  # Transitive dependency of postcss (via vite/vitest, dev-only — never
+  # ships in the production build). Remove once vite/postcss bump it
+  # themselves and re-run `pnpm audit`.
+  source-map-js: ^1.2.2
