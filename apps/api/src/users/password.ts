@@ -103,6 +103,16 @@ export async function verifyPassword(
   return parsed.hash.length === actual.length && timingSafeEqual(parsed.hash, actual);
 }
 
+// A fixed, valid (but unreachable — no account could ever match it) hash in
+// the current format, for AuthService to compare an unknown email against.
+// Without this, verifyPassword is only ever called when the email exists,
+// so an unknown email returns a 401 measurably faster than a wrong
+// password: the email itself becomes a timing side-channel even though the
+// error message is identical for both. Precomputed offline, not generated
+// at import time, so it costs nothing beyond a fixed string literal.
+export const DUMMY_HASH =
+  'scrypt$N=131072,r=8,p=1$9fc2a80d057f7a9e3c9eae1f444070b7$d0dbf607256887c7beaa63154eb99b379bd3b7daa2f3d6e3227c261c3ceb759202faef05c17a33896d2c51de555cd33c084183a58142cd83d474daf1a3798831';
+
 // True when `stored` isn't using the current cost parameters — either the
 // legacy unversioned format or an older, weaker versioned one. The caller
 // (AuthService, after a successful login) re-hashes and persists the
