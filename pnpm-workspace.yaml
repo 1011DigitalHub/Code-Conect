@@ -5,6 +5,7 @@ allowBuilds:
   '@scarf/scarf': false
   esbuild: false
   prisma: true
+  simple-git-hooks: true
 # Audit fixes for transitive dependencies of the Prisma CLI (prisma@7.10.0 pins the
 # vulnerable versions). Neither is used at runtime: the API talks to PostgreSQL through
 # @prisma/adapter-pg. Remove these when a stable Prisma release bumps them.
