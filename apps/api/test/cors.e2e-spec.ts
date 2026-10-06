@@ -1,7 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
-import type { App } from 'supertest/types.js';
 import { AppModule } from './../src/app.module.js';
 import { configureApp } from './../src/app.setup.js';
 import { fetchCsrfToken } from './cookies.js';
@@ -10,13 +9,13 @@ import { resetDatabase } from './db.js';
 const allowedOrigin = 'http://localhost:5173';
 
 describe('CORS (e2e)', () => {
-  let app: INestApplication<App>;
+  let app: NestExpressApplication;
 
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
-    app = moduleFixture.createNestApplication<INestApplication<App>>();
+    app = moduleFixture.createNestApplication<NestExpressApplication>();
     configureApp(app);
     await app.init();
     await resetDatabase(app);

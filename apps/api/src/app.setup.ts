@@ -1,11 +1,20 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { ValidationPipe } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { getCorsOptions } from './cors.js';
 import { env } from './env.js';
 
+// Max size of a JSON request body. Every DTO in this API (name, email,
+// password) fits in well under 1 KB; 10 KB leaves headroom without leaving
+// the implicit, much larger Express default (100 KB) as a free DoS lever.
+// NestExpressApplication (not plain INestApplication) is required for
+// useBodyParser, which is why every e2e test that calls configureApp creates
+// its app with that type too.
+const JSON_BODY_LIMIT = '10kb';
+
 // Shared by main.ts and the e2e tests so both run with the same validation,
-// CORS, headers and proxy trust.
-export function configureApp(app: INestApplication): void {
+// CORS, headers, proxy trust and body size limit.
+export function configureApp(app: NestExpressApplication): void {
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -14,6 +23,7 @@ export function configureApp(app: INestApplication): void {
     }),
   );
   app.enableCors(getCorsOptions());
+  app.useBodyParser('json', { limit: JSON_BODY_LIMIT });
 
   app.use(
     helmet({

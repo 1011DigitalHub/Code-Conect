@@ -1,12 +1,13 @@
 import './load-env.js';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module.js';
 import { configureApp } from './app.setup.js';
 import { env } from './env.js';
 import { setupSwagger } from './swagger.js';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   // Makes a real SIGTERM/SIGINT call app.close(), which runs every
   // OnModuleDestroy hook (PrismaService disconnects cleanly) instead of the

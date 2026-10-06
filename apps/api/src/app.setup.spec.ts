@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // TRUST_PROXY is read from env.ts, frozen at that module's import time, so
@@ -20,7 +20,7 @@ async function configuredAppWithTrustProxy(trustProxy: string | undefined) {
     controllers: [AppController],
     providers: [AppService],
   }).compile();
-  const app: INestApplication = moduleFixture.createNestApplication();
+  const app = moduleFixture.createNestApplication<NestExpressApplication>();
   configureApp(app);
   await app.init();
   return app;

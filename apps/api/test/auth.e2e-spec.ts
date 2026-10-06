@@ -1,7 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
-import type { App } from 'supertest/types.js';
 import { AppModule } from './../src/app.module.js';
 import { configureApp } from './../src/app.setup.js';
 import { setupSwagger } from './../src/swagger.js';
@@ -15,12 +14,12 @@ const newUser = {
   password: 'senha-segura-123',
 };
 
-async function createApp(): Promise<INestApplication<App>> {
+async function createApp(): Promise<NestExpressApplication> {
   const moduleFixture: TestingModule = await Test.createTestingModule({
     imports: [AppModule],
   }).compile();
 
-  const app = moduleFixture.createNestApplication<INestApplication<App>>();
+  const app = moduleFixture.createNestApplication<NestExpressApplication>();
   configureApp(app);
   setupSwagger(app);
   await app.init();
@@ -28,7 +27,7 @@ async function createApp(): Promise<INestApplication<App>> {
 }
 
 describe('Auth (e2e)', () => {
-  let app: INestApplication<App>;
+  let app: NestExpressApplication;
 
   // If COOKIE_SECURE ever leaks into the test env, every cookie test below
   // fails as an unexplained 401 (supertest's cookie jar silently refuses to
