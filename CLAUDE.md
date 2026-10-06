@@ -21,8 +21,10 @@ pnpm dev               # runs web (vite) and api (nest start --watch) together
 pnpm dev:web | pnpm dev:api
 pnpm build             # builds all apps (web: tsc -b && vite build; api: nest build)
 pnpm lint              # oxlint in every app
+pnpm typecheck         # tsc -b / tsc --noEmit in every app (separate from build; also checks test files on the API)
+pnpm audit --audit-level=high   # dependency vulnerabilities; CI fails on this (.github/workflows/security.yml)
 pnpm test:web          # web component tests (*.test.tsx), including axe checks
-pnpm test:web:a11y     # web browser suites (Playwright, e2e/*.e2e.ts): accessibility and SEO
+pnpm test:web:a11y     # web browser suites (Playwright, e2e/*.e2e.ts): accessibility, SEO and security headers
 pnpm test:api          # api unit tests (*.spec.ts), no database needed
 pnpm test:api:e2e      # api e2e tests (test/*.e2e-spec.ts, separate vitest config); needs pnpm db:up
 pnpm start:api         # node dist/main (needs a build first)
@@ -31,6 +33,8 @@ pnpm db:down           # stop it; data stays in the code-connect-pgdata volume
 pnpm db:migrate        # prisma migrate dev: apply migrations / create one after editing schema.prisma
 pnpm db:studio         # Prisma Studio, to browse the data
 ```
+
+The hardened production images (`apps/api/Dockerfile`, `apps/web/Dockerfile`) aren't part of the day-to-day loop above — `pnpm dev` against `pnpm db:up`'s postgres is faster. Build and smoke-test them locally with `docker compose up --build api web` (needs `JWT_SECRET`/`CORS_ORIGINS`/`VITE_API_URL` in the root `.env`, see `.env.example`); `pnpm dev`/`pnpm db:up` stays the normal workflow.
 
 To run any other app script: `pnpm api <script>` / `pnpm web <script>`. Examples:
 
@@ -64,11 +68,18 @@ Rules:
 
 ### API layer: Axios (`src/api/`)
 
-- `client.ts` is the only Axios instance. `baseURL` comes from `VITE_API_URL` (default `http://localhost:3000`, see `.env.example`). A request interceptor adds `Authorization: Bearer <token>`; a response interceptor drops the token on a `401` for a request that carried one.
+- `client.ts` is the only Axios instance. `baseURL` comes from `VITE_API_URL` (default `http://localhost:3000`, see `.env.example`). `withCredentials: true`, since the session is an httpOnly cookie (`access_token`), not something the client reads or stores — there is no `tokenStorage.ts`, and there must never be one again: don't put a JWT in `localStorage`/`sessionStorage`.
+- Every unsafe method (anything but GET/HEAD/OPTIONS) needs `X-CSRF-Token` set to the (non-HttpOnly) `csrf_token` cookie's value — see the API's `CsrfGuard`. A request interceptor does this, bootstrapping a token via `GET /auth/csrf` first if none is set (`src/api/csrf.ts`, memoized so concurrent callers share one bootstrap request); a response interceptor retries a `403` exactly once after refetching the token, using a flag stamped on the request config (not a `WeakSet` keyed by object identity — axios's `mergeConfig` builds a new config object on every retry, so identity-based tracking never recognizes a retried request and loops forever; this is not hypothetical, it happened while writing the test for it).
 - One file per resource (`auth.ts`, `users.ts`) with typed functions that return `response.data`. Types in `types.ts` mirror the Swagger document.
-- `tokenStorage.ts` holds the JWT: `localStorage` when "Lembrar-me" is checked, `sessionStorage` otherwise. Storage access is guarded with try/catch. Never log the token.
 - Pages turn failures into messages with `getErrorMessage` (`errors.ts`, pt-BR, by status; `429` reads `Retry-After`) and show them with `FormError`. Don't show the API's own messages.
-- Private pages (`/perfil`) redirect to `/login` without a token and are not added to `e2e/routes.ts`; they get their own browser suite (`e2e/profile.e2e.ts`) with a fake API through `page.route`.
+- Private pages (`/perfil`) have no readable token to gate on synchronously anymore: they render an optimistic loading state, call `GET /auth/me`, and redirect to `/login` only on a `401`. They are not added to `e2e/routes.ts`; they get their own browser suite (`e2e/profile.e2e.ts`) with a fake API through `page.route`, seeding the session (where needed) via `browserContext.addCookies()` — the only way to write an `httpOnly` cookie from Playwright, since `page.addInitScript` + storage can no longer reach it.
+
+### Frontend security
+
+- No secret ever goes in a `VITE_*` variable: Vite inlines every `import.meta.env.VITE_*` value into the client bundle at build time, so it is visible to anyone who opens DevTools, build artifact or not. `VITE_API_URL` (a public URL) is the only one that should ever exist.
+- No `dangerouslySetInnerHTML` without `dompurify` sanitizing the input first — there is currently none in the codebase and no reason to add one.
+- A dynamic link (`<a href={...}>`, or `TextLink`'s `href` prop) must be validated to start with `/` before being used, closing off a `javascript:` URL vector. `TextLink` (`src/components/atoms/TextLink/TextLink.tsx`) throws if it doesn't; every current caller passes a hardcoded literal, so this is a guard for the first caller that ever passes API-sourced data, not a fix for something broken today.
+- Security headers (CSP, HSTS, `X-Content-Type-Options`, `Referrer-Policy`, `Cross-Origin-Opener-Policy`) are set in `vite.config.ts`'s `preview.headers`, which Playwright and Lighthouse CI both run against — they are tested, not just documented. The production nginx config (`apps/web/default.conf.template`) carries the same values; keep the two in sync by hand, since nginx has no way to import `vite.config.ts` at build time. `script-src` has no `'unsafe-inline'` (there is no inline `<script>` in `index.html`); `style-src` does, only because the WCAG 1.4.12 Playwright test injects a stylesheet via `page.addStyleTag`, which a strict `style-src` blocks — inline CSS has nowhere near the attack surface of inline JS, so this is the standard, lower-risk trade-off, not an oversight.
 
 ### Styling: Tailwind CSS
 
@@ -173,7 +184,7 @@ Every page must pass a Lighthouse audit, not only Login and Cadastro. A page tha
 
 **Best practices:**
 - No errors in the browser console; no permission requests (location, notifications) on page load.
-- Security headers (CSP, HSTS, COOP, X-Frame-Options) belong to the hosting setup; add them when the app is deployed.
+- Security headers (CSP, HSTS, COOP, X-Content-Type-Options, Referrer-Policy) are set in `vite.config.ts`'s `preview.headers` and mirrored in the production nginx config — see "Frontend security" above. Lighthouse's Best Practices score does **not** catch a missing or broken CSP (the CSP-XSS audit is informational, not scored); `e2e/security.e2e.ts` is the real check for these.
 
 ## Backend architecture (`apps/api`)
 
@@ -214,7 +225,7 @@ Every endpoint must follow REST principles:
   - `401`/`403` for authentication/authorization, `404` for a missing resource, `409` for conflicts (duplicates, state clashes).
   - Never return `200` with an error in the body.
   - Set codes explicitly with `@HttpCode()` when Nest's default is wrong, for example `@HttpCode(204)` on `DELETE`.
-- **Stateless.** Each request carries everything needed (for example the auth token in `Authorization`). No server-side session state between requests.
+- **Stateless.** Each request carries everything needed (the session cookie, the CSRF header on an unsafe method). No server-side session store between requests — the API keeps no session state of its own; see Security below for what that trades away (a token can't be revoked server-side before it expires).
 - **Representations.** JSON in and out, `camelCase` fields. Responses return resource representations (entities/response DTOs), never raw persistence objects or internal fields.
 - **Collections.** Filtering, sorting and pagination go in query params (`?page=1&limit=20&sort=-createdAt&authorId=1`). Paginated responses include the data plus pagination metadata and links (`self`, `next`, `prev`).
 - **Hypermedia.** Resources include links to themselves and to related resources where useful (for example a post links to its comments).
@@ -224,33 +235,44 @@ Every endpoint must follow REST principles:
 
 ### Security: authentication and authorization
 
-Auth lives in `src/auth/` (`AuthGuard`, JWT) and users in `src/users/`. Users are stored in PostgreSQL through Prisma (see Database below and `plan/PersistenciaDados.md`).
+Auth lives in `src/auth/` (`AuthGuard`, `CsrfGuard`, JWT) and users in `src/users/`. Users are stored in PostgreSQL through Prisma (see Database below and `plan/PersistenciaDados.md`). The full migration from the original Bearer-token design to the cookie session below is `plan/SecureByDesign.md`.
 
-**JWT:**
-- Sign and verify with `@nestjs/jwt`. The secret comes from `JWT_SECRET` (see `getJwtSecret()` in `auth/auth.constants.ts`). Never hard-code a secret, never commit one, and never log tokens. In production the API must refuse to start without `JWT_SECRET`.
-- Tokens are short-lived (`JWT_EXPIRES_IN`, in seconds, default 1 hour). The payload holds only what the guard needs (`sub` = user id, `email`). Never put a password, hash or other sensitive data in it: a JWT is signed, not encrypted.
-- The token travels only in `Authorization: Bearer <token>`. Don't accept it in the URL or query string, and keep the API stateless.
-- The login response is `{ accessToken, tokenType, expiresIn }`.
+**Session cookie, not a token the client holds:**
+- `POST /auth/login` sets an `access_token` cookie (`HttpOnly`, `SameSite` from `COOKIE_SAMESITE` — default `strict`, `Secure` from `COOKIE_SECURE` — default on in production, off elsewhere) via `getSessionCookieOptions()` (`auth/cookie.constants.ts`). The response body carries only `{ tokenType, expiresIn }` — never the raw token. There is no `Authorization: Bearer` support anymore; `AuthGuard` only reads the cookie.
+- "Lembrar-me" (`remember` on `LoginDto`) controls both the cookie's `Max-Age` (persistent vs. a session cookie) and the JWT's own lifetime (`JWT_EXPIRES_IN_SECONDS` vs. the longer `REMEMBER_ME_EXPIRES_IN_SECONDS`) — the two must move together, or a cookie that outlives its token produces a "logged in, but every request 401s" loop.
+- `POST /auth/logout` clears the cookie. It does **not** revoke the token server-side (the API is stateless, no session store) — a token captured before logout stays valid until it expires. This is a deliberately accepted trade-off, documented in `SECURITY.md` and exercised (not just asserted) by an e2e case in `test/security.e2e-spec.ts`.
+- `JWT_SECRET` comes from `getJwtSecret()` (`auth/auth.constants.ts`), validated at boot by `src/env.ts` (see below) — never hard-code one, never commit one, never log a token. The payload holds only `sub` (user id) and `email`; never a password, hash or other sensitive data — a JWT is signed, not encrypted. Signing and verifying both pin `algorithms: ['HS256']` explicitly (`auth/auth.constants.ts`'s `JWT_ALGORITHM`) rather than relying on a library default.
 
-**Auth Guard:**
-- Follow the NestJS "Authentication" guide: an `AuthGuard` implementing `CanActivate` that reads the Bearer header, calls `JwtService.verifyAsync` with the secret, and stores the payload in `request.user`. Any missing, malformed, expired or invalid token throws `UnauthorizedException`, with no detail about why.
-- Protect each route explicitly with `@UseGuards(AuthGuard)` and `@ApiBearerAuth()`, or register the guard globally and mark public routes with a decorator. Never leave a route unprotected by accident: a new endpoint that returns user data must have a guard and an e2e test for the `401` case.
-- Derive the user from the token (`request.user.sub`), never from an id sent by the client. A valid token for a user that no longer exists is a `401`.
-- Use the typed `JwtPayload` and `AuthenticatedRequest` in `auth/auth.types.ts`, not `any`.
+**CSRF:**
+- A signed, session-bound double-submit token (`CsrfGuard`, `auth/csrf.ts`): the `csrf_token` cookie (readable, not `HttpOnly`) and the `X-CSRF-Token` header must match, and the cookie's HMAC must verify against a key derived from the current `access_token` cookie — a token minted for a different session (or before the current one existed) doesn't validate. Required on every unsafe method (`POST`/`PUT`/`PATCH`/`DELETE`), including `@Public()` routes like login and sign-up: `SameSite=Strict` alone doesn't stop login CSRF, since a cross-site POST's `Set-Cookie` response is still stored by the browser and sent on the victim's next same-site navigation.
+- `GET /auth/csrf` (`@Public()`, `@NoCsrf()`) lets an anonymous visitor bootstrap a token before their first mutation. Login rotates it, bound to the newly-issued token — not to whatever stale `access_token` cookie the login request happened to carry.
+- A new webhook/machine-to-machine route that genuinely can't carry the header gets `@NoCsrf()`, not a broader exemption.
+
+**Auth Guard — fail-closed by default:**
+- `AuthGuard` is a global `APP_GUARD` (registered in `AppModule`, alongside `ThrottlerGuard` and `CsrfGuard` in one explicit array — their relative order matters and doesn't survive being split across modules, since Nest doesn't guarantee cross-module `APP_GUARD` resolution order). **Every route is protected unless it carries `@Public()`.** This is inverted from the old opt-in model on purpose: a new endpoint that forgets a decorator stays protected instead of accidentally becoming public.
+- Read the current user with `@CurrentUser()` (`auth/current-user.decorator.ts`), not a raw `@Req()` — it's only valid on a route behind the guard, since `request.user` is genuinely absent on a `@Public()` one (see the `MaybeAuthenticatedRequest`/`AuthenticatedRequest` split in `auth/auth.types.ts`).
+- Derive the user from the token (`user.sub`), never from an id sent by the client. A valid token for a user that no longer exists is a `401`.
+- `/api/docs` and `/api/docs-json` are **not** protected by this guard and can't be: `SwaggerModule` registers its routes directly on the underlying Express instance (`httpAdapter.get(...)`), bypassing Nest's router entirely, so no Nest guard ever sees them. Gate them with `SWAGGER_ENABLED` instead (see `env.ts` below) — defaults on outside production, off in it.
+- **BOLA/IDOR**: there is no route with a `:id` param yet, so there is no ownership check to write — but the pattern for the first one that needs it: derive the actor from `@CurrentUser()`, never trust an id from the body or path as the actor, and prefer a single query shaped `where: { id, authorId: actor.sub }` over a separate existence check (avoids a TOCTOU gap and an extra round trip). Return `404` instead of `403` when the resource's existence itself should be private. Every new owned resource needs an e2e case proving user A can't touch user B's resource.
+- No RBAC/roles exist yet (no `role` column, no `RolesGuard`) — add them when a feature actually needs one, not speculatively.
 
 **Passwords and credentials:**
-- Hash passwords with `scrypt` + a random salt and compare with `timingSafeEqual` (`users/password.ts`), or another adaptive hash (argon2, bcrypt). Never store, log or return a plain password or hash. Responses use `UserEntity`, which has no password field.
-- Login failures return the same `401` message for an unknown email and a wrong password, so the API doesn't reveal which emails are registered.
-- Passwords are 8 to 72 characters. Normalize emails (trim, lowercase) before comparing or storing them.
+- Hash with `scrypt` at `N=2^17` (OWASP's 2023+ minimum for an interactive login; `r`/`p` at the conventional defaults), compared with `timingSafeEqual` (`users/password.ts`). Stored as `scrypt$N=<N>,r=<r>,p=<p>$<salt>$<hash>` — versioned, so the cost can be raised again later without invalidating every existing hash, which the old unversioned `"<salt>:<hash>"` format couldn't do. `verifyPassword` still accepts that legacy format; `shouldRehash()` flags any hash (legacy or an older versioned one) that isn't at the current cost, and `AuthService.signIn` re-hashes and persists it on the next successful login — never store, log or return a plain password or hash. Responses use `UserEntity`, which has no password field, and `PrismaService` sets a global `omit` on `User.passwordHash` (see Database below) so it isn't even fetched except where `findByEmail` explicitly opts back in.
+- Login failures return the same `401` message for an unknown email and a wrong password — and `AuthService.signIn` always runs the scrypt comparison, against a fixed `DUMMY_HASH` when the user doesn't exist, so an unknown email doesn't also respond measurably faster (the short-circuit that used to skip the comparison entirely was a real timing side channel the identical message alone didn't close).
+- Passwords are 8 to 72 characters; emails are capped at 254 (the column's `VARCHAR(254)`, enforced with `@MaxLength(254)` on the DTOs — without it an over-long email reached Prisma and came back as a `500`). Normalize emails (trim, lowercase) before comparing or storing them.
 
 **General:**
 - Responses return response DTOs or entities, never raw stored records. `ValidationPipe` with `whitelist` and `forbidNonWhitelisted` stops mass assignment (a client can't set `id` or `role`).
 - Errors keep Nest's default shape and don't leak stack traces, SQL or internal messages.
-- Read secrets and settings from environment variables (`JWT_SECRET`, `JWT_EXPIRES_IN`, `PORT`, `DATABASE_URL`). Keep `.env` files out of git and commit a `.env.example` next to each one (`.gitignore` ignores `.env.*` except `.env.example`).
-- **CORS** is set in `configureApp` through `getCorsOptions()` (`src/cors.ts`). Allowed origins come from `CORS_ORIGINS` (comma-separated; dev default is the Vite origins; in production, without it, every origin is refused). Never `*`, and no credentials: the token travels in the `Authorization` header. `Location` and `Retry-After` are exposed to the browser.
-- **Rate limiting** (`@nestjs/throttler`, in-memory, per IP) applies only where `ThrottlerGuard` is used: `POST /auth/login` (5/min) and `POST /users` (3/min), with values in `common/throttle.constants.ts`. Excess requests get `429` with `Retry-After`; document `@ApiTooManyRequestsResponse` on any new limited route.
-- Still to do at deploy time: `app.set('trust proxy', ...)` behind a reverse proxy (otherwise every user shares one IP for rate limiting), security headers (`helmet`), and a shared store (Redis) if there is more than one instance.
-- Run `pnpm audit` when adding auth-related dependencies.
+- **Environment variables are validated once at boot**, not read ad hoc: `src/env.ts`, imported first in `main.ts` right after `load-env.js`, aggregates every problem into one error message instead of surfacing them one at a time on the first request that happens to need the broken variable. It validates `NODE_ENV` (must be `development`/`test`/`production` — previously read in two places and undeclared in any `.env.example`), `DATABASE_URL`'s scheme, `CORS_ORIGINS` being non-empty in production, `JWT_SECRET`'s length, `TRUST_PROXY` and `SWAGGER_ENABLED`. Keep `.env` files out of git and commit a `.env.example` next to each one (`.gitignore` ignores `.env.*` except `.env.example`).
+- **Security headers**: `helmet` is applied in `configureApp`, **before** `enableCors()` — the `cors` package ends an OPTIONS preflight itself without calling `next()`, so anything registered after it never runs for that request; this was a real bug (`X-Powered-By` leaking on every preflight), found by curling the built Docker image, not by reading the code. Swagger UI's CSP exemption (`script-src 'self' 'unsafe-inline'`, since its bundled page has an inline init script) uses helmet's dash-case directive keys (`'script-src'`) — a camelCase override adds a second directive instead of replacing it, and helmet rejects the result outright.
+- **CORS** is set in `configureApp` through `getCorsOptions()` (`src/cors.ts`). Allowed origins come from `CORS_ORIGINS` (comma-separated; dev default is the Vite origins; in production, without it, `env.ts` refuses to boot). Never `*`. `credentials: true` (the session is a cookie now) and `X-CSRF-Token` is in `allowedHeaders`; `Authorization` is not, since the Bearer bridge is gone. `Location` and `Retry-After` are exposed to the browser.
+- **Rate limiting** (`@nestjs/throttler`, in-memory, per IP) is global now (`ThrottlerGuard` as an `APP_GUARD`, `DEFAULT_THROTTLE` 100/min/IP), with tighter overrides on `POST /auth/login` (5/min) and `POST /users` (3/min) via `@Throttle(...)` in `common/throttle.constants.ts` — don't also add `@UseGuards(ThrottlerGuard)` on a route now that the guard is global, that runs it twice per request and double-counts against the same limit (an actual bug this project hit once already). Excess requests get `429` with `Retry-After`; document `@ApiTooManyRequestsResponse` on any new limited route.
+- **Behind a reverse proxy**, set `TRUST_PROXY` to the hop count (an integer, e.g. `1`) — `configureApp` turns that into Express's `trust proxy` setting. Never set it to `true`-equivalent/trust-everything: that trusts the whole `X-Forwarded-For` chain, letting any client spoof its own IP and bypass the rate limiter entirely, which is the opposite of what it's for.
+- `app.enableShutdownHooks()` (`main.ts`) makes a real `SIGTERM`/`SIGINT` run every `OnModuleDestroy` hook (`PrismaService` disconnects cleanly) instead of the process dying with open connections — verified by timing `docker stop` against the built image (~0.6-0.7s, not the 10s default grace period).
+- A shared throttler store (Redis) is still needed if there is more than one API instance — the in-memory store doesn't coordinate across processes.
+- **Deploying the web app and the API on different registrable domains** (e.g. a static host for the SPA, a separate host for the API) turns the session cookie third-party, which `SameSite=Strict`/`Lax` both drop and `None` requires `Secure` for — and is being phased out by browsers regardless. Prefer deploying them same-site (the API behind the web origin at `/api` via a reverse proxy, or `api.example.com` + `app.example.com` sharing `COOKIE_DOMAIN=.example.com`) over reaching for the `COOKIE_SAMESITE=none`/`COOKIE_DOMAIN` escape hatch, which is a real but second-choice option.
+- Run `pnpm audit` when adding auth-related dependencies. A new high-severity finding either gets fixed upstream or gets a narrow, documented override in `pnpm-workspace.yaml` (see the existing Prisma CLI and `source-map-js` ones) — never a relaxed `--audit-level`.
 
 ### Database: PostgreSQL + Prisma
 
@@ -262,7 +284,10 @@ Auth lives in `src/auth/` (`AuthGuard`, JWT) and users in `src/users/`. Users ar
   - `pnpm-workspace.yaml` overrides `mysql2` and `deepmerge-ts` (transitive dependencies of the Prisma CLI that `prisma@7.10.0` pins at vulnerable versions; the API doesn't use either at runtime). Keep the overrides until a stable Prisma release bumps them, then remove them and re-run `pnpm audit`.
   - Keep `prisma` and `@prisma/client` on the same version. The npm `latest` tag of `prisma` may point at a prerelease, so add or upgrade with an explicit version.
 - **Access**: inject `PrismaService` (`src/prisma/`, global module) into services only, never into controllers. Map Prisma errors to Nest exceptions in the service (unique violation `P2002` → `ConflictException`). Never return a Prisma record directly; wrap it in the response entity (`UserEntity`).
-- **Environment**: `apps/api/.env` holds `DATABASE_URL` and `TEST_DATABASE_URL`; the root `.env` holds `POSTGRES_PASSWORD` for Docker Compose. Both are git-ignored; copy them from the `.env.example` files. `src/load-env.ts` loads `apps/api/.env` with `process.loadEnvFile()` and must stay the first import of `main.ts`.
+- **Minimize what a query fetches.** `PrismaService` sets a global `omit` for any sensitive column (today: `User.passwordHash`), so it never comes back unless a call site explicitly opts back in with its own `omit: { passwordHash: false }` (see `UsersService.findByEmail`, the one place that needs it to verify a login). A new sensitive column gets the same treatment, not a per-query `select` scattered across call sites that each have to remember to exclude it.
+- **Raw SQL only as a tagged template** (`` prisma.$queryRaw`...` ``/`` prisma.$executeRaw`...` ``) or `Prisma.sql`, never string interpolation into `$queryRawUnsafe`/`$executeRawUnsafe`. The only raw SQL in the codebase today is `test/db.ts`'s `` prisma.$executeRaw`TRUNCATE TABLE users RESTART IDENTITY CASCADE` ``.
+- **Soft deletes.** No resource has a `DELETE` route yet, so there's no `deletedAt` column yet either — when one does, prefer a `deletedAt` flag over a hard delete for anything a user might reasonably want undone, and filter it out of every read query (a Prisma `$extends` query middleware on `PrismaService`, not a per-call `where`, so a forgotten filter can't leak a "deleted" row).
+- **Environment**: `apps/api/.env` holds `DATABASE_URL`, `TEST_DATABASE_URL` and the rest of what `env.ts` validates, for running the API outside a container. The root `.env` holds `POSTGRES_PASSWORD` for Docker Compose, plus `JWT_SECRET`/`CORS_ORIGINS`/`VITE_API_URL` — separate copies, only needed to run the containerized `api`/`web` services (`docker compose up api web`). Both are git-ignored; copy them from the `.env.example` files. `src/load-env.ts` loads `apps/api/.env` with `process.loadEnvFile()` and must stay the first import of `main.ts`.
 - **Tests**: unit tests mock `PrismaService` (or the service that uses it) and need no database. E2E tests run against `TEST_DATABASE_URL`: `test/global-setup.ts` refuses to run if it equals `DATABASE_URL` and runs `prisma migrate deploy`, and `resetDatabase(app)` (`test/db.ts`) truncates the tables before each test. Test files run sequentially (`fileParallelism: false`).
 
 ### API documentation: Swagger (OpenAPI)
@@ -272,10 +297,10 @@ The Swagger setup is in `src/swagger.ts` (`setupSwagger`, called from `main.ts` 
 - **No CLI plugin.** Vitest doesn't go through `nest build`, so document explicitly. Every DTO and entity field has `@ApiProperty({ example, description })`, with `minLength`/`maxLength`/`enum`/`format` when they apply, matching the `class-validator` rules.
 - Each controller has `@ApiTags('<resource>')`. Each handler has `@ApiOperation({ summary })` (in pt-BR, short) and one response decorator for the success code (`@ApiOkResponse`, `@ApiCreatedResponse`, ...), with `type` set to a response class (arrays use `type: [X]`).
 - Document every error the endpoint can return (`@ApiBadRequestResponse`, `@ApiUnauthorizedResponse`, `@ApiConflictResponse`, `@ApiNotFoundResponse`, ...) with `type: ErrorResponseDto` (`common/dto/error-response.dto.ts`), which mirrors Nest's default error shape.
-- Protected routes carry `@ApiBearerAuth()`, so Swagger UI sends the token after "Authorize". Public routes don't.
+- Protected routes carry `@ApiCookieAuth('cookie')` (the session cookie) and, where relevant, `@ApiSecurity('csrf')` for the `X-CSRF-Token` header — both schemes are registered in `src/swagger.ts`. Public routes carry neither.
 - Document inputs through DTO classes (`@Body`, `@Query`, `@Param`), not inline types, because only classes reach the OpenAPI document. Response types must be classes too.
 - Swagger examples never contain real data or real secrets. Use obvious fakes (`maria@exemplo.com`, `senha-segura-123`).
-- Each feature's e2e test asserts that its paths appear in `GET /api/docs-json` (see `test/auth.e2e-spec.ts`). Before deploying, decide whether `/api/docs` stays public; if not, disable it or protect it in production.
+- Each feature's e2e test asserts that its paths appear in `GET /api/docs-json` (see `test/auth.e2e-spec.ts`). `SWAGGER_ENABLED` (see `env.ts`) gates whether it's served at all — defaults off in production. No guard can do this instead: `SwaggerModule` registers its routes directly on the Express instance, bypassing Nest's router (and every `APP_GUARD`) entirely.
 
 ### Tests
 
@@ -291,6 +316,27 @@ Every execution plan for this project lives in `plan/` at the repo root, one Mar
 - Web plans include accessibility: the tests step lists the axe case for each new component and the new routes added to `e2e/routes.ts`. The verification step runs `pnpm test:web:a11y` and the manual checks (keyboard only, screen reader, 200% zoom).
 - Web plans for a page also include performance and SEO: the page's meta description, its LCP image and how it is optimized, and, in the verification step, a Lighthouse table (scores per category plus LCP, CLS and TBT) measured on the production build.
 - When a plan lists measurements from the design, it also names the Tailwind token each one maps to (for example "407px → `w-102`", "`#81FE88` → `primary`"), following the styling rules above. New colors go in the plan's theme step as `--color-*` tokens.
+- API plans list the security cases a new endpoint needs, the same way web plans list accessibility cases: `401` with no session, `403` with a missing/mismatched CSRF pair on an unsafe method, and — for any route with a `:id` — an ownership case proving user A can't reach user B's resource (see "BOLA/IDOR" under Security above).
+
+## PR validation
+
+Four GitHub Actions workflows, with different path scopes — know which ones actually ran before trusting a green PR:
+
+- `.github/workflows/ci.yml` — **no path filter, runs on every push/PR regardless of what changed.** Three jobs: `quality` (`pnpm lint`, `pnpm typecheck`, `pnpm test:api`, `pnpm test:web`, no database), `e2e-api` (a Postgres service container, then `pnpm test:api:e2e`), `e2e-web` (`pnpm test:web:a11y` against the production build). This is the deterministic gate; keep it passing before merging.
+- `.github/workflows/security.yml` — **also no path filter.** Secret scanning (TruffleHog, full git history), SAST (Semgrep OSS — oxlint has no security plugin of its own), and `pnpm audit --audit-level=high`.
+- `.github/workflows/lighthouse.yml` — scoped to `apps/web/**` (plus the lockfile and its own workflow file). Performance/a11y/SEO scores against the production build; see "Performance and SEO (Lighthouse)" above.
+- `.github/workflows/claude.yml` — scoped to `apps/api/**` and `apps/web/**`. The Claude Code GitHub Action, reviewing the diff on PRs in that path scope and posting findings as a PR comment.
+
+The only genuinely unscoped automation gaps are Lighthouse (never runs for an API-only change — correctly, it has nothing to measure) and Claude's review (never runs for a PR that only touches `plan/*.md`, `CLAUDE.md`, or root tooling config outside `apps/*`). For a PR like that, run the relevant commands by hand instead of assuming a review happened:
+
+```bash
+pnpm lint          # oxlint in every app
+pnpm typecheck     # tsc -b / tsc --noEmit in every app
+pnpm test:web      # web component tests
+pnpm test:api      # api unit tests
+pnpm test:web:a11y # only if the change could affect accessibility/SEO (needs the browser suite)
+pnpm test:api:e2e  # only if the change could affect API behavior backed by the database (needs pnpm db:up)
+```
 
 ## Git: Conventional Commits
 
@@ -322,3 +368,7 @@ Both apps use [Conventional Commits](https://www.conventionalcommits.org/):
 - API Prettier: single quotes, trailing commas. The web app has no Prettier config.
 - `.gitattributes` enforces LF line endings (the repo is developed on Windows).
 - The `apps/*/README.md` files are unmodified framework templates and don't document the project.
+- Both apps run with `strict: true` and `noUncheckedIndexedAccess: true`. `exactOptionalPropertyTypes` is deliberately **off** on the web app: turning it on produces six errors, none of them bugs — friction between optional React props (`error?: string`) and state typed as `string | undefined`, plus one axios type. Don't turn it on without re-measuring first.
+- `tsc` only ran as part of `build` before (and on the API, `tsconfig.build.json` excludes test files from even that) — `pnpm typecheck` / `pnpm api typecheck` / `pnpm web typecheck` run it standalone, against the full `tsconfig.json` on the API (including `*.spec.ts`/`test/`).
+- `simple-git-hooks` + `lint-staged` run `pnpm --filter <app> lint` (the whole app's oxlint, not a file-scoped lint — oxlint's `--type-aware` mode on the API needs full project resolution) on every commit that touches that app. It's intentionally light; the real gate is CI.
+- `apps/api/Dockerfile` and `apps/web/Dockerfile` are multi-stage, non-root (`USER node` / `USER nginx`) production images — see `docker-compose.yml`'s `api`/`web` services and "Commands" above. Both apps' workspace installs run `apps/api`'s own `postinstall` (`prisma generate`) regardless of which app is being built, so both Dockerfiles copy `apps/api/prisma` in before `pnpm install`, even the web one.
