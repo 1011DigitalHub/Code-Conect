@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PNPM_VERSION: 12.6.0
+  NODE_VERSION: 22
+
+jobs:
+  # Lint, typecheck and the unit suites of both apps — no database needed,
+  # so this is the fast, always-on gate.
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm lint
+
+      - run: pnpm typecheck
+
+      - run: pnpm test:api
+
+      - run: pnpm test:web
+
+  # The API e2e suite, which the previous lighthouse-only CI setup never
+  # ran at all — this is what actually exercises configureApp (helmet, the
+  # body limit, CORS, rate limiting) and the whole cookie/CSRF auth flow.
+  e2e-api:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: codeconnect
+          POSTGRES_PASSWORD: codeconnect-ci-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U codeconnect"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://codeconnect:codeconnect-ci-only@localhost:5432/codeconnect
+      TEST_DATABASE_URL: postgresql://codeconnect:codeconnect-ci-only@localhost:5432/codeconnect_test
+      # CI-only, never a real secret: the e2e suite needs 32+ characters
+      # (see src/env.ts) and nothing about this value is sensitive.
+      JWT_SECRET: ci-only-jwt-secret-not-a-real-secret-32-chars-minimum
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # The dev/test databases themselves (docker-compose.yml's
+      # docker/postgres/init/ only runs for that local setup); migrations
+      # are applied separately by test/global-setup.ts against
+      # TEST_DATABASE_URL.
+      - name: Create the databases
+        run: |
+          PGPASSWORD=codeconnect-ci-only psql -h localhost -U codeconnect -d postgres \
+            -c "CREATE DATABASE codeconnect;" \
+            -c "CREATE DATABASE codeconnect_test;"
+
+      - run: pnpm test:api:e2e
+
+  # The browser suite (a11y + the new security headers), against the
+  # production build — same as Lighthouse CI, but for correctness/a11y
+  # instead of performance scores.
+  e2e-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install the browser Playwright drives (new headless Chromium)
+        working-directory: apps/web
+        run: pnpm exec playwright install --with-deps chromium
+
+      - run: pnpm test:web:a11y
