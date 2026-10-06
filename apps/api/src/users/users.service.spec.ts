@@ -45,7 +45,11 @@ describe('UsersService', () => {
   it('stores the normalized email and a hash, never the password', async () => {
     prisma.user.create.mockResolvedValue(stored);
     await service.create(dto);
-    const { data } = prisma.user.create.mock.calls[0][0];
+    expect(prisma.user.create).toHaveBeenCalledTimes(1);
+    // The assertion above is what actually guarantees calls[0] exists; the
+    // non-null assertion just tells noUncheckedIndexedAccess what the test
+    // already proved, instead of an unsafe optional-chain into a destructure.
+    const { data } = prisma.user.create.mock.calls[0]![0];
     expect(data.email).toBe('maria@exemplo.com');
     expect(data).not.toHaveProperty('password');
     expect(data.passwordHash).not.toContain(dto.password);

@@ -19,7 +19,7 @@ describe('CsrfGuard', () => {
     const reflector = new Reflector();
     const metadata = new Map<string, boolean>();
     vi.spyOn(reflector, 'getAllAndOverride').mockImplementation(
-      (key: string) => metadata.get(key) ?? false,
+      (key: unknown) => metadata.get(key as string) ?? false,
     );
     return { guard: new CsrfGuard(reflector), metadata };
   }
