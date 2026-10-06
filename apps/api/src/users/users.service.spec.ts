@@ -22,10 +22,10 @@ const stored: StoredUser = {
 
 describe('UsersService', () => {
   let service: UsersService;
-  let prisma: { user: { create: Mock; findUnique: Mock } };
+  let prisma: { user: { create: Mock; findUnique: Mock; update: Mock } };
 
   beforeEach(() => {
-    prisma = { user: { create: vi.fn(), findUnique: vi.fn() } };
+    prisma = { user: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn() } };
     service = new UsersService(prisma as unknown as PrismaService);
   });
 
@@ -91,5 +91,14 @@ describe('UsersService', () => {
     await expect(service.findById(99)).rejects.toBeInstanceOf(
       NotFoundException,
     );
+  });
+
+  it('updates the stored password hash', async () => {
+    prisma.user.update.mockResolvedValue(stored);
+    await service.updatePasswordHash(1, 'new-hash');
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: { passwordHash: 'new-hash' },
+    });
   });
 });

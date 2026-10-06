@@ -56,4 +56,11 @@ export class UsersService {
     if (!user) throw new NotFoundException('Usuário não encontrado');
     return new UserEntity(user);
   }
+
+  // Called by AuthService after a successful login when password.ts's
+  // shouldRehash() flags the stored hash as using outdated cost parameters,
+  // so accounts migrate to the current cost without a forced password reset.
+  async updatePasswordHash(id: number, passwordHash: string): Promise<void> {
+    await this.prisma.user.update({ where: { id }, data: { passwordHash } });
+  }
 }

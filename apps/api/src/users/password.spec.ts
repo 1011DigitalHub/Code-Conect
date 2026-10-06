@@ -1,4 +1,22 @@
-import { hashPassword, verifyPassword } from './password.js';
+import { randomBytes, scrypt as scryptCb } from 'node:crypto';
+import { promisify } from 'node:util';
+import { hashPassword, shouldRehash, verifyPassword } from './password.js';
+
+const scrypt = promisify(scryptCb) as (
+  password: string,
+  salt: Buffer,
+  keylen: number,
+  options: { N: number; r: number; p: number; maxmem: number },
+) => Promise<Buffer>;
+
+// Builds a hash in the legacy, unversioned format this module replaced
+// ("<saltHex>:<hashHex>", Node's scrypt defaults N=16384,r=8,p=1), the same
+// shape every account created before this change has stored.
+async function legacyHash(password: string): Promise<string> {
+  const salt = randomBytes(16);
+  const hash = await scrypt(password, salt, 64, { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 });
+  return `${salt.toString('hex')}:${hash.toString('hex')}`;
+}
 
 describe('password', () => {
   it('does not store the plain password', async () => {
@@ -22,5 +40,36 @@ describe('password', () => {
 
   it('rejects a malformed stored value', async () => {
     await expect(verifyPassword('x', 'invalid')).resolves.toBe(false);
+  });
+
+  it('stores the cost parameters in the versioned format', async () => {
+    const hash = await hashPassword('senha-segura-123');
+    expect(hash).toMatch(/^scrypt\$N=131072,r=8,p=1\$[0-9a-f]+\$[0-9a-f]+$/);
+  });
+
+  it('still verifies a legacy, unversioned hash', async () => {
+    const hash = await legacyHash('senha-segura-123');
+    await expect(verifyPassword('senha-segura-123', hash)).resolves.toBe(true);
+    await expect(verifyPassword('outra-senha', hash)).resolves.toBe(false);
+  });
+
+  describe('shouldRehash', () => {
+    it('is false for a hash at the current cost', async () => {
+      const hash = await hashPassword('senha-segura-123');
+      expect(shouldRehash(hash)).toBe(false);
+    });
+
+    it('is true for a legacy, unversioned hash', async () => {
+      const hash = await legacyHash('senha-segura-123');
+      expect(shouldRehash(hash)).toBe(true);
+    });
+
+    it('is true for a versioned hash at a weaker cost', () => {
+      expect(shouldRehash('scrypt$N=16384,r=8,p=1$aa$bb')).toBe(true);
+    });
+
+    it('is true for a malformed value (so verifyPassword failing is the real signal)', () => {
+      expect(shouldRehash('not-a-hash')).toBe(true);
+    });
   });
 });
