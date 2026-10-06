@@ -18,4 +18,17 @@ describe('TextLink', () => {
 
     await expectNoA11yViolations(container)
   })
+
+  it('rejects an href that is not a relative path, closing off a javascript: URL vector', () => {
+    // Built at runtime, not a literal, so the no-script-url lint rule (which
+    // exists to catch exactly this scheme) doesn't flag the test that
+    // proves the guard works.
+    const scriptUrl = ['java', 'script:alert(1)'].join('')
+    expect(() => renderWithRouter(<TextLink href={scriptUrl}>x</TextLink>)).toThrow(
+      /relative path/,
+    )
+    expect(() => renderWithRouter(<TextLink href="http://evil.example.com">x</TextLink>)).toThrow(
+      /relative path/,
+    )
+  })
 })
