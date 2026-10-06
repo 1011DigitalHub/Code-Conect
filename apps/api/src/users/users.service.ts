@@ -39,12 +39,18 @@ export class UsersService {
     }
   }
 
+  // The one place passwordHash is read: login needs it to verify the
+  // password, so this explicitly opts back in to the field the global omit
+  // (see PrismaService) hides everywhere else.
   findByEmail(email: string): Promise<StoredUser | null> {
     return this.prisma.user.findUnique({
       where: { email: email.toLowerCase() },
+      omit: { passwordHash: false },
     });
   }
 
+  // No override: passwordHash stays omitted. GET /auth/me (the caller)
+  // never needed it — this used to load it into memory on every call anyway.
   async findById(id: number): Promise<UserEntity> {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('Usuário não encontrado');

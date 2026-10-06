@@ -64,13 +64,17 @@ describe('UsersService', () => {
     );
   });
 
-  it('finds a user by email, ignoring case', async () => {
+  it('finds a user by email, ignoring case, opting back into the omitted password hash', async () => {
     prisma.user.findUnique.mockResolvedValue(stored);
     await expect(service.findByEmail('MARIA@exemplo.com')).resolves.toBe(
       stored,
     );
+    // passwordHash is omitted globally (see PrismaService); login is the
+    // one place that needs it to verify the password, so this call must
+    // explicitly opt back in.
     expect(prisma.user.findUnique).toHaveBeenCalledWith({
       where: { email: 'maria@exemplo.com' },
+      omit: { passwordHash: false },
     });
   });
 
@@ -79,6 +83,9 @@ describe('UsersService', () => {
     await expect(service.findById(1)).resolves.toMatchObject({
       email: 'maria@exemplo.com',
     });
+    // No omit override: unlike findByEmail, this never needs the password
+    // hash, so it leaves the global default (omitted) in place.
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({ where: { id: 1 } });
 
     prisma.user.findUnique.mockResolvedValueOnce(null);
     await expect(service.findById(99)).rejects.toBeInstanceOf(
