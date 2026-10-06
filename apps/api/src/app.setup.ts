@@ -22,9 +22,12 @@ export function configureApp(app: NestExpressApplication): void {
       transform: true,
     }),
   );
-  app.enableCors(getCorsOptions());
-  app.useBodyParser('json', { limit: JSON_BODY_LIMIT });
-
+  // Registered before enableCors: the `cors` package short-circuits an
+  // OPTIONS preflight itself (it never calls next()), so any middleware
+  // registered after it never runs for that request. Found live, by
+  // actually curling an OPTIONS preflight against the built Docker image —
+  // it came back with X-Powered-By: Express still attached, because helmet
+  // was registered second and never got the chance to strip it.
   app.use(
     helmet({
       contentSecurityPolicy: {
@@ -42,6 +45,8 @@ export function configureApp(app: NestExpressApplication): void {
       },
     }),
   );
+  app.enableCors(getCorsOptions());
+  app.useBodyParser('json', { limit: JSON_BODY_LIMIT });
 
   // Express's req.ip is otherwise just the socket's peer address — behind a
   // reverse proxy that is the proxy itself, so every real client would share

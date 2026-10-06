@@ -201,6 +201,23 @@ describe('Security regressions (e2e)', () => {
         /script-src[^;]*'unsafe-inline'/,
       );
     });
+
+    it('also applies to an OPTIONS preflight, not just real requests', async () => {
+      // Caught live against the built Docker image, not by a test: the
+      // `cors` package ends an OPTIONS preflight itself without calling
+      // next(), so when helmet was registered after enableCors() in
+      // configureApp, it never ran for that request at all and
+      // X-Powered-By leaked through on every preflight.
+      const res = await request(app.getHttpServer())
+        .options('/auth/login')
+        .set('Origin', 'http://localhost:5173')
+        .set('Access-Control-Request-Method', 'POST')
+        .expect(204);
+
+      expect(res.headers['x-powered-by']).toBeUndefined();
+      expect(res.headers['x-content-type-options']).toBe('nosniff');
+      expect(res.headers['strict-transport-security']).toBeDefined();
+    });
   });
 
   describe('JSON body size limit', () => {
