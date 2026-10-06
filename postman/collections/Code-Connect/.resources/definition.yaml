@@ -1,2 +1,9 @@
 $kind: collection
 name: Code-Connect
+description: >-
+  Sessão em cookie httpOnly: rode a coleção inteira em ordem (Postman replica
+  o jar de cookies entre requisições de uma mesma execução, como um
+  navegador). O cookie `csrf_token` só é enviado de volta pelo Postman se
+  `localhost` estiver na allowlist de cookies dele (Settings > General >
+  "Automatically persist variable values" não é o suficiente — é preciso
+  habilitar o cookie jar para esse domínio em Settings > Cookies).
