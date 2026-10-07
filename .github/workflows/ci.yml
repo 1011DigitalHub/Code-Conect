@@ -100,6 +100,10 @@ jobs:
   # instead of performance scores.
   e2e-web:
     runs-on: ubuntu-latest
+    # Safety net: the suite itself finishes in ~1 minute. Without this, a webServer
+    # teardown hang (see playwright.config.ts) would otherwise run until the runner's
+    # default 6-hour timeout instead of failing fast.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 

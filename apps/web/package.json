@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "preview": "vite preview",
-    "test:a11y": "playwright test"
+    "test:a11y": "vite build && playwright test"
   },
   "dependencies": {
     "@fontsource/prompt": "^5.3.0",
