@@ -80,9 +80,20 @@ jobs:
         # CORS_ORIGINS must include the vite preview origin the web build
         # below is served from. VITE_API_URL is left unset on the web build:
         # its default (http://localhost:3000) already matches PORT here.
+        #
+        # NODE_ENV and JWT_SECRET live on this step rather than at job level on
+        # purpose. src/env.ts validates both at boot and refuses to start
+        # without them, but `vite build` further down reads NODE_ENV too — a
+        # job-level "test" would hand Lighthouse an unminified development
+        # bundle and invent performance findings (see CLAUDE.md, "Never audit
+        # vite dev"). "test" rather than "production" keeps cookies non-Secure,
+        # which the http preview origin needs.
         env:
           PORT: 3000
           CORS_ORIGINS: http://127.0.0.1:5174
+          NODE_ENV: test
+          # CI-only, never a real secret: src/env.ts requires 32+ characters.
+          JWT_SECRET: ci-only-jwt-secret-not-a-real-secret-32-chars-minimum
         run: |
           nohup node dist/main.js > api.log 2>&1 &
           for i in $(seq 1 30); do
