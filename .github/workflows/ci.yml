@@ -113,6 +113,10 @@ jobs:
         env:
           POSTGRES_USER: codeconnect
           POSTGRES_PASSWORD: codeconnect-ci-only
+          # Explicit, though it is also what POSTGRES_DB would default to from
+          # POSTGRES_USER. The entrypoint creates it, so this job needs no
+          # CREATE DATABASE step of its own.
+          POSTGRES_DB: codeconnect
         ports:
           - 5432:5432
         options: >-
@@ -142,11 +146,6 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-
-      - name: Create the database
-        run: |
-          PGPASSWORD=codeconnect-ci-only psql -h localhost -U codeconnect -d postgres \
-            -c "CREATE DATABASE codeconnect;"
 
       - name: Apply migrations and seed the feed the suites audit
         run: |

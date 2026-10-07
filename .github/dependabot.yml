@@ -1,6 +1,9 @@
 version: 2
 updates:
-  - package-ecosystem: pnpm
+  # "npm" is the ecosystem name for the whole npm/yarn/pnpm family — there is
+  # no "pnpm" value, and Dependabot refuses to parse the file if one is used,
+  # so it reads pnpm-lock.yaml under this name.
+  - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
