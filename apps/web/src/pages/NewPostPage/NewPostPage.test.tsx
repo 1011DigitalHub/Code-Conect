@@ -2,12 +2,12 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AxiosError, AxiosHeaders, type AxiosResponse } from 'axios'
 import { MemoryRouter, Route, Routes } from 'react-router'
-import { getMe } from '../../api/auth'
+import { getSession } from '../../api/auth'
 import { createPost } from '../../api/posts'
 import { expectNoA11yViolations } from '../../test/axe'
 import { NewPostPage } from './NewPostPage'
 
-vi.mock('../../api/auth', () => ({ getMe: vi.fn(), logout: vi.fn() }))
+vi.mock('../../api/auth', () => ({ getSession: vi.fn(), logout: vi.fn() }))
 vi.mock('../../api/posts', () => ({ createPost: vi.fn() }))
 
 function apiError(status: number) {
@@ -42,7 +42,7 @@ describe('NewPostPage', () => {
   })
 
   it('redirects to the login page without a session', async () => {
-    vi.mocked(getMe).mockRejectedValue(apiError(401))
+    vi.mocked(getSession).mockResolvedValue({ user: null })
 
     renderNewPostRoutes()
 
@@ -50,7 +50,7 @@ describe('NewPostPage', () => {
   })
 
   it('renders the form for a signed-in viewer', async () => {
-    vi.mocked(getMe).mockResolvedValue(user)
+    vi.mocked(getSession).mockResolvedValue({ user })
 
     renderNewPostRoutes()
 
@@ -58,7 +58,7 @@ describe('NewPostPage', () => {
   })
 
   it('submits and navigates to the new post', async () => {
-    vi.mocked(getMe).mockResolvedValue(user)
+    vi.mocked(getSession).mockResolvedValue({ user })
     vi.mocked(createPost).mockResolvedValue({
       slug: 'um-novo-post',
       title: 'Um novo post',
@@ -92,7 +92,7 @@ describe('NewPostPage', () => {
   })
 
   it('reports a submission failure', async () => {
-    vi.mocked(getMe).mockResolvedValue(user)
+    vi.mocked(getSession).mockResolvedValue({ user })
     vi.mocked(createPost).mockRejectedValue(apiError(409))
 
     renderNewPostRoutes()
@@ -108,7 +108,7 @@ describe('NewPostPage', () => {
   })
 
   it('has no WCAG 2.2 AA violations', async () => {
-    vi.mocked(getMe).mockResolvedValue(user)
+    vi.mocked(getSession).mockResolvedValue({ user })
 
     const { container } = renderNewPostRoutes()
     await screen.findByLabelText('Título')

@@ -2,12 +2,12 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AxiosError, AxiosHeaders, type AxiosResponse } from 'axios'
 import { MemoryRouter, Route, Routes } from 'react-router'
-import { getMe } from '../../api/auth'
+import { getSession } from '../../api/auth'
 import { likePost, listPosts } from '../../api/posts'
 import { expectNoA11yViolations } from '../../test/axe'
 import { FeedPage } from './FeedPage'
 
-vi.mock('../../api/auth', () => ({ getMe: vi.fn(), logout: vi.fn() }))
+vi.mock('../../api/auth', () => ({ getSession: vi.fn(), logout: vi.fn() }))
 vi.mock('../../api/posts', () => ({
   listPosts: vi.fn(),
   likePost: vi.fn(),
@@ -64,7 +64,7 @@ describe('FeedPage', () => {
   })
 
   it('is public: it renders the feed even when the viewer is not logged in', async () => {
-    vi.mocked(getMe).mockRejectedValue(apiError(401))
+    vi.mocked(getSession).mockResolvedValue({ user: null })
     vi.mocked(listPosts).mockResolvedValue(collection())
 
     renderFeedRoutes()
@@ -76,7 +76,7 @@ describe('FeedPage', () => {
   })
 
   it('shows the loading state before the posts arrive', () => {
-    vi.mocked(getMe).mockReturnValue(new Promise(() => {}))
+    vi.mocked(getSession).mockReturnValue(new Promise(() => {}))
     vi.mocked(listPosts).mockReturnValue(new Promise(() => {}))
 
     renderFeedRoutes()
@@ -85,7 +85,7 @@ describe('FeedPage', () => {
   })
 
   it('shows an empty-feed message when there are no posts and no search', async () => {
-    vi.mocked(getMe).mockRejectedValue(apiError(401))
+    vi.mocked(getSession).mockResolvedValue({ user: null })
     vi.mocked(listPosts).mockResolvedValue(collection({ data: [], pagination: { page: 1, perPage: 9, total: 0, totalPages: 1 } }))
 
     renderFeedRoutes()
@@ -94,7 +94,7 @@ describe('FeedPage', () => {
   })
 
   it('names the search term in the empty-result message', async () => {
-    vi.mocked(getMe).mockRejectedValue(apiError(401))
+    vi.mocked(getSession).mockResolvedValue({ user: null })
     vi.mocked(listPosts).mockResolvedValue(
       collection({ data: [], pagination: { page: 1, perPage: 9, total: 0, totalPages: 1 } }),
     )
@@ -114,7 +114,7 @@ describe('FeedPage', () => {
   })
 
   it('reports an error from the API', async () => {
-    vi.mocked(getMe).mockRejectedValue(apiError(401))
+    vi.mocked(getSession).mockResolvedValue({ user: null })
     vi.mocked(listPosts).mockRejectedValue(apiError(500))
 
     renderFeedRoutes()
@@ -123,12 +123,14 @@ describe('FeedPage', () => {
   })
 
   it('toggles a like for a signed-in viewer', async () => {
-    vi.mocked(getMe).mockResolvedValue({
-      id: 1,
-      name: 'Ana Souza',
-      email: 'ana@exemplo.com',
-      createdAt: '2026-10-02T12:00:00.000Z',
-      links: { self: '/users/1' },
+    vi.mocked(getSession).mockResolvedValue({
+      user: {
+        id: 1,
+        name: 'Ana Souza',
+        email: 'ana@exemplo.com',
+        createdAt: '2026-10-02T12:00:00.000Z',
+        links: { self: '/users/1' },
+      },
     })
     vi.mocked(listPosts).mockResolvedValue(collection())
     vi.mocked(likePost).mockResolvedValue()
@@ -145,12 +147,14 @@ describe('FeedPage', () => {
   })
 
   it('signs out and the sidebar switches back to Login', async () => {
-    vi.mocked(getMe).mockResolvedValue({
-      id: 1,
-      name: 'Ana Souza',
-      email: 'ana@exemplo.com',
-      createdAt: '2026-10-02T12:00:00.000Z',
-      links: { self: '/users/1' },
+    vi.mocked(getSession).mockResolvedValue({
+      user: {
+        id: 1,
+        name: 'Ana Souza',
+        email: 'ana@exemplo.com',
+        createdAt: '2026-10-02T12:00:00.000Z',
+        links: { self: '/users/1' },
+      },
     })
     vi.mocked(listPosts).mockResolvedValue(collection())
 
@@ -162,7 +166,7 @@ describe('FeedPage', () => {
   })
 
   it('sets the page title and description', async () => {
-    vi.mocked(getMe).mockRejectedValue(apiError(401))
+    vi.mocked(getSession).mockResolvedValue({ user: null })
     vi.mocked(listPosts).mockResolvedValue(collection())
 
     renderFeedRoutes()
@@ -174,7 +178,7 @@ describe('FeedPage', () => {
   })
 
   it('has no WCAG 2.2 AA violations', async () => {
-    vi.mocked(getMe).mockRejectedValue(apiError(401))
+    vi.mocked(getSession).mockResolvedValue({ user: null })
     vi.mocked(listPosts).mockResolvedValue(collection())
 
     const { container } = renderFeedRoutes()

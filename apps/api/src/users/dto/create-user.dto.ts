@@ -17,9 +17,13 @@ export class CreateUserDto {
   @MaxLength(100)
   name: string;
 
-  @ApiProperty({ example: 'maria@exemplo.com' })
+  @ApiProperty({ example: 'maria@exemplo.com', maxLength: 254 })
   @Transform(trimLower)
   @IsEmail()
+  // The column is VARCHAR(254); without this, an over-long email reaches
+  // Prisma and comes back as a 500 instead of the 400 a malformed body
+  // should get.
+  @MaxLength(254)
   email: string;
 
   @ApiProperty({ example: 'senha-segura-123', minLength: 8, maxLength: 72 })

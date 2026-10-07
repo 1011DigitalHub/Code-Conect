@@ -5,5 +5,5 @@
 ## Páginas
 
 - [Feed](/): posts da comunidade, com busca por texto, curtidas e comentários. Cada post tem sua própria página em /posts/<slug>.
-- [Login](/login): entrar na conta com email ou usuário e senha, ou com Github ou Gmail.
+- [Login](/login): entrar na conta com email e senha.
 - [Cadastro](/cadastro): criar uma conta com nome, email e senha.

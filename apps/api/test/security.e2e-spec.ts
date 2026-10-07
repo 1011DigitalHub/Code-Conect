@@ -1,8 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
-import type { App } from 'supertest/types.js';
 import { AppModule } from './../src/app.module.js';
 import { configureApp } from './../src/app.setup.js';
 import { setupSwagger } from './../src/swagger.js';
@@ -15,7 +14,7 @@ import { resetDatabase } from './db.js';
 // (which is about the happy paths). Each case here documents a security
 // property the implementation must keep holding, not just a status code.
 describe('Security regressions (e2e)', () => {
-  let app: INestApplication<App>;
+  let app: NestExpressApplication;
   let jwtService: JwtService;
 
   const newUser = {
@@ -28,7 +27,7 @@ describe('Security regressions (e2e)', () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
-    app = moduleFixture.createNestApplication<INestApplication<App>>();
+    app = moduleFixture.createNestApplication<NestExpressApplication>();
     configureApp(app);
     setupSwagger(app);
     await app.init();
@@ -182,6 +181,66 @@ describe('Security regressions (e2e)', () => {
         .get('/api/docs')
         .expect(200)
         .expect('Content-Type', /text\/html/);
+    });
+  });
+
+  describe('Helmet security headers', () => {
+    it('sets the standard protective headers and removes X-Powered-By', async () => {
+      const res = await request(app.getHttpServer()).get('/').expect(200);
+
+      expect(res.headers['x-content-type-options']).toBe('nosniff');
+      expect(res.headers['x-frame-options']).toBeDefined();
+      expect(res.headers['strict-transport-security']).toBeDefined();
+      expect(res.headers['x-powered-by']).toBeUndefined();
+    });
+
+    it("keeps the Swagger UI's inline init script allowed, even with a CSP in place", async () => {
+      const res = await request(app.getHttpServer()).get('/api/docs').expect(200);
+
+      expect(res.headers['content-security-policy']).toMatch(
+        /script-src[^;]*'unsafe-inline'/,
+      );
+    });
+
+    it('also applies to an OPTIONS preflight, not just real requests', async () => {
+      // Caught live against the built Docker image, not by a test: the
+      // `cors` package ends an OPTIONS preflight itself without calling
+      // next(), so when helmet was registered after enableCors() in
+      // configureApp, it never ran for that request at all and
+      // X-Powered-By leaked through on every preflight.
+      const res = await request(app.getHttpServer())
+        .options('/auth/login')
+        .set('Origin', 'http://localhost:5173')
+        .set('Access-Control-Request-Method', 'POST')
+        .expect(204);
+
+      expect(res.headers['x-powered-by']).toBeUndefined();
+      expect(res.headers['x-content-type-options']).toBe('nosniff');
+      expect(res.headers['strict-transport-security']).toBeDefined();
+    });
+  });
+
+  describe('JSON body size limit', () => {
+    it('413s a payload over the 10kb limit', async () => {
+      const agent = request.agent(app.getHttpServer());
+      const csrfToken = await fetchCsrfToken(agent);
+
+      await agent
+        .post('/users')
+        .set('X-CSRF-Token', csrfToken)
+        .send({ ...newUser, name: 'a'.repeat(20_000) })
+        .expect(413);
+    });
+
+    it('accepts a normal-sized payload', async () => {
+      const agent = request.agent(app.getHttpServer());
+      const csrfToken = await fetchCsrfToken(agent);
+
+      await agent
+        .post('/users')
+        .set('X-CSRF-Token', csrfToken)
+        .send(newUser)
+        .expect(201);
     });
   });
 });

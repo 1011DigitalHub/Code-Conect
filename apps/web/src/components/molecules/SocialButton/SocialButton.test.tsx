@@ -33,4 +33,22 @@ describe('SocialButton', () => {
 
     await expectNoA11yViolations(container)
   })
+
+  it('can be disabled, and then ignores a click', async () => {
+    const onClick = vi.fn()
+    render(<SocialButton name="Github" icon="/icons/github.svg" onClick={onClick} disabled />)
+
+    const button = screen.getByRole('button', { name: 'Github' })
+    expect(button).toBeDisabled()
+    await userEvent.click(button)
+    expect(onClick).not.toHaveBeenCalled()
+  })
+
+  it('has no WCAG 2.2 AA violations when disabled', async () => {
+    const { container } = render(
+      <SocialButton name="Github" icon="/icons/github.svg" disabled />,
+    )
+
+    await expectNoA11yViolations(container)
+  })
 })

@@ -10,27 +10,27 @@ vi.mock('../api/posts', () => ({
   unlikePost: vi.fn(),
 }))
 
+const post: PostCollection['data'][number] = {
+  slug: 'um-post',
+  title: 'Um post',
+  excerpt: 'Resumo',
+  thumbnailUrl: null,
+  createdAt: '2026-10-05T12:00:00.000Z',
+  author: { id: 1, name: 'Ana Souza', self: '/users/1' },
+  likeCount: 4,
+  commentCount: 2,
+  likedByMe: false,
+  links: {
+    self: '/posts/um-post',
+    comments: '/posts/um-post/comments',
+    like: '/posts/um-post/like',
+    author: '/users/1',
+  },
+}
+
 function collection(overrides: Partial<PostCollection> = {}): PostCollection {
   return {
-    data: [
-      {
-        slug: 'um-post',
-        title: 'Um post',
-        excerpt: 'Resumo',
-        thumbnailUrl: null,
-        createdAt: '2026-10-05T12:00:00.000Z',
-        author: { id: 1, name: 'Ana Souza', self: '/users/1' },
-        likeCount: 4,
-        commentCount: 2,
-        likedByMe: false,
-        links: {
-          self: '/posts/um-post',
-          comments: '/posts/um-post/comments',
-          like: '/posts/um-post/like',
-          author: '/users/1',
-        },
-      },
-    ],
+    data: [post],
     pagination: { page: 1, perPage: 9, total: 1, totalPages: 1 },
     links: { self: '/posts?page=1', next: null, prev: null },
     ...overrides,
@@ -122,11 +122,11 @@ describe('useFeed', () => {
     })
 
     // Optimistic: flips before the request resolves.
-    expect(result.current.posts[0].likedByMe).toBe(true)
-    expect(result.current.posts[0].likeCount).toBe(5)
+    expect(result.current.posts[0]?.likedByMe).toBe(true)
+    expect(result.current.posts[0]?.likeCount).toBe(5)
 
     await waitFor(() => expect(result.current.pendingSlug).toBeNull())
-    expect(result.current.posts[0].likedByMe).toBe(true)
+    expect(result.current.posts[0]?.likedByMe).toBe(true)
     expect(likePost).toHaveBeenCalledWith('um-post')
   })
 
@@ -144,8 +144,8 @@ describe('useFeed', () => {
     })
 
     await waitFor(() => expect(result.current.pendingSlug).toBeNull())
-    expect(result.current.posts[0].likedByMe).toBe(false)
-    expect(result.current.posts[0].likeCount).toBe(4)
+    expect(result.current.posts[0]?.likedByMe).toBe(false)
+    expect(result.current.posts[0]?.likeCount).toBe(4)
     expect(result.current.error).toBeTruthy()
   })
 
@@ -164,13 +164,13 @@ describe('useFeed', () => {
     })
 
     await waitFor(() => expect(onUnauthorized).toHaveBeenCalledOnce())
-    expect(result.current.posts[0].likedByMe).toBe(false)
+    expect(result.current.posts[0]?.likedByMe).toBe(false)
   })
 
   it('unlikes a post that was already liked', async () => {
     vi.mocked(listPosts).mockResolvedValue(
       collection({
-        data: [{ ...collection().data[0], likedByMe: true, likeCount: 5 }],
+        data: [{ ...post, likedByMe: true, likeCount: 5 }],
       }),
     )
     vi.mocked(unlikePost).mockResolvedValue()
@@ -184,8 +184,8 @@ describe('useFeed', () => {
       result.current.toggleLike('um-post')
     })
 
-    expect(result.current.posts[0].likedByMe).toBe(false)
-    expect(result.current.posts[0].likeCount).toBe(4)
+    expect(result.current.posts[0]?.likedByMe).toBe(false)
+    expect(result.current.posts[0]?.likeCount).toBe(4)
     await waitFor(() => expect(unlikePost).toHaveBeenCalledWith('um-post'))
   })
 
@@ -214,7 +214,7 @@ describe('useFeed', () => {
     )
     unmount()
 
-    const signal = vi.mocked(listPosts).mock.calls[0][1]
+    const signal = vi.mocked(listPosts).mock.calls[0]?.[1]
     expect(signal?.aborted).toBe(true)
   })
 })

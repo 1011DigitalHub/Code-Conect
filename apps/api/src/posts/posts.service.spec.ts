@@ -141,8 +141,8 @@ describe('PostsService.list', () => {
         }),
       }),
     );
-    expect(result.data[0].likedByMe).toBe(true);
-    expect(result.data[0].likeCount).toBe(1);
+    expect(result.data[0]?.likedByMe).toBe(true);
+    expect(result.data[0]?.likeCount).toBe(1);
   });
 
   it('reports likedByMe false for an anonymous viewer', async () => {
@@ -160,7 +160,7 @@ describe('PostsService.list', () => {
         }),
       }),
     );
-    expect(result.data[0].likedByMe).toBe(false);
+    expect(result.data[0]?.likedByMe).toBe(false);
   });
 });
 

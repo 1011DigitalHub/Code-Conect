@@ -1,7 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
-import type { App } from 'supertest/types.js';
 import { AppModule } from './../src/app.module.js';
 import { configureApp } from './../src/app.setup.js';
 import { setupSwagger } from './../src/swagger.js';
@@ -30,12 +29,12 @@ const newPost = {
   content: 'Começar pelo componente menor costuma ser mais fácil de manter.',
 };
 
-async function createApp(): Promise<INestApplication<App>> {
+async function createApp(): Promise<NestExpressApplication> {
   const moduleFixture: TestingModule = await Test.createTestingModule({
     imports: [AppModule],
   }).compile();
 
-  const app = moduleFixture.createNestApplication<INestApplication<App>>();
+  const app = moduleFixture.createNestApplication<NestExpressApplication>();
   configureApp(app);
   setupSwagger(app);
   await app.init();
@@ -43,7 +42,7 @@ async function createApp(): Promise<INestApplication<App>> {
 }
 
 describe('Comments (e2e)', () => {
-  let app: INestApplication<App>;
+  let app: NestExpressApplication;
   let slug: string;
 
   beforeAll(() => {
@@ -99,7 +98,9 @@ describe('Comments (e2e)', () => {
       .set('X-CSRF-Token', csrfToken)
       .send({ body })
       .expect(201);
-    return res.headers.location;
+    const location = res.headers.location;
+    if (!location) throw new Error('expected a Location header on 201');
+    return location;
   }
 
   describe('POST /posts/:slug/comments', () => {
@@ -141,7 +142,9 @@ describe('Comments (e2e)', () => {
       });
 
       // The Location header must actually resolve.
-      await request(app.getHttpServer()).get(res.headers.location).expect(200);
+      const location = res.headers.location;
+      if (!location) throw new Error('expected a Location header on 201');
+      await request(app.getHttpServer()).get(location).expect(200);
     });
 
     it('trims the body', async () => {

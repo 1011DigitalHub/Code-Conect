@@ -1,7 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
-import type { App } from 'supertest/types.js';
 import { AppModule } from './../src/app.module.js';
 import { configureApp } from './../src/app.setup.js';
 import { setupSwagger } from './../src/swagger.js';
@@ -30,12 +29,12 @@ const newPost = {
   content: 'Começar pelo componente menor costuma ser mais fácil de manter.',
 };
 
-async function createApp(): Promise<INestApplication<App>> {
+async function createApp(): Promise<NestExpressApplication> {
   const moduleFixture: TestingModule = await Test.createTestingModule({
     imports: [AppModule],
   }).compile();
 
-  const app = moduleFixture.createNestApplication<INestApplication<App>>();
+  const app = moduleFixture.createNestApplication<NestExpressApplication>();
   configureApp(app);
   setupSwagger(app);
   await app.init();
@@ -43,7 +42,7 @@ async function createApp(): Promise<INestApplication<App>> {
 }
 
 describe('Posts (e2e)', () => {
-  let app: INestApplication<App>;
+  let app: NestExpressApplication;
 
   beforeAll(() => {
     // Same premise as the auth suite: a Secure cookie would never be
@@ -308,6 +307,9 @@ describe('Posts (e2e)', () => {
       await agent
         .post('/posts')
         .set('X-CSRF-Token', csrfToken)
+        // The point of this case is that the API rejects this value; no-script-url
+        // exists to stop a javascript: URL being *used*, not asserted against.
+        // eslint-disable-next-line no-script-url
         .send({ ...newPost, thumbnailUrl: 'javascript:alert(1)' })
         .expect(400);
     });

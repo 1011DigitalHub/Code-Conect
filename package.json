@@ -14,16 +14,30 @@
     "lint": "pnpm -r lint",
     "lint:web": "pnpm --filter web lint",
     "lint:api": "pnpm --filter api lint",
+    "typecheck": "pnpm -r typecheck",
+    "typecheck:web": "pnpm --filter web typecheck",
+    "typecheck:api": "pnpm --filter api typecheck",
     "test:web": "pnpm --filter web test",
     "test:web:a11y": "pnpm --filter web test:a11y",
     "test:api": "pnpm --filter api test",
     "test:api:e2e": "pnpm --filter api test:e2e",
     "preview:web": "pnpm --filter web preview",
     "start:api": "pnpm --filter api start:prod",
-    "db:up": "docker compose up -d --wait",
+    "db:up": "docker compose up -d --wait postgres",
     "db:down": "docker compose down",
     "db:migrate": "pnpm --filter api exec prisma migrate dev",
     "db:seed": "pnpm --filter api exec prisma db seed",
     "db:studio": "pnpm --filter api exec prisma studio"
+  },
+  "devDependencies": {
+    "lint-staged": "^17.6.0",
+    "simple-git-hooks": "^2.14.0"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "pnpm exec lint-staged"
+  },
+  "lint-staged": {
+    "apps/api/**/*.ts": ["pnpm --filter api lint"],
+    "apps/web/**/*.{ts,tsx}": ["pnpm --filter web lint"]
   }
 }

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { getMe, logout } from '../api/auth'
-import { isUnauthorized } from '../api/errors'
+import { getSession, logout } from '../api/auth'
 import type { User } from '../api/types'
 
 export type SessionStatus = 'loading' | 'authenticated' | 'anonymous'
@@ -19,7 +18,13 @@ export type Session = {
 
 // The session lives in an httpOnly cookie, invisible to JS, so there is no
 // synchronous "is there a token" check any more — the only way to know is to
-// ask the API. This probes GET /auth/me once per mount.
+// ask the API. This probes GET /auth/session once per mount.
+//
+// /auth/session, not /auth/me: this hook runs on public pages (the feed, a
+// post), where an anonymous visitor is the normal case rather than an error.
+// /auth/me answers 401 for them, which the browser logs to the console no
+// matter how the promise is handled — failing the no-console-errors browser
+// suite and Lighthouse's scored best-practices audit on the landing page.
 //
 // It lives in src/pages/ beside usePageMeta because components/ may never
 // import src/api/; pages read the session and pass it down as props.
@@ -35,19 +40,21 @@ export function useSession(): Session {
   useEffect(() => {
     const controller = new AbortController()
 
-    getMe(controller.signal)
-      .then((me) => {
-        setUser(me)
-        setStatus('authenticated')
+    getSession(controller.signal)
+      .then(({ user: me }) => {
+        if (me) {
+          setUser(me)
+          setStatus('authenticated')
+          return
+        }
+        setStatus('anonymous')
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return
-        // Anything other than a 401 (a network blip, a 500) is also treated
-        // as "not logged in" here: the feed is public, so the page still
-        // renders, it just renders the anonymous controls.
-        if (!isUnauthorized(error)) {
-          console.warn('could not read the session', error)
-        }
+        // An anonymous visitor is a 200 now, so reaching here means the probe
+        // genuinely failed (a network blip, a 500). The page is public, so it
+        // still renders — just with the anonymous controls.
+        console.warn('could not read the session', error)
         setStatus('anonymous')
       })
 

@@ -110,12 +110,13 @@ export class PostsService {
       LIMIT ${perPage} OFFSET ${(page - 1) * perPage}
     `;
 
-    if (ranked.length === 0) return { rows: [], total: 0 };
+    const [firstRanked] = ranked;
+    if (!firstRanked) return { rows: [], total: 0 };
 
     // count(*) is int8, which the driver hands back as a BigInt. It must be
     // converted here: JSON.stringify throws on a BigInt, so letting one reach
     // the controller would turn a search into a 500.
-    const total = Number(ranked[0].total);
+    const total = Number(firstRanked.total);
     const ids = ranked.map((row) => row.id);
 
     const found = await this.prisma.post.findMany({

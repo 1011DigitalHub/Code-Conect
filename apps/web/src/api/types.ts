@@ -15,6 +15,11 @@ export type LoginResponse = {
   expiresIn: number
 }
 
+// GET /auth/session: null means "anonymous visitor", not "request failed".
+export type SessionResponse = {
+  user: User | null
+}
+
 export type LoginBody = {
   email: string
   password: string

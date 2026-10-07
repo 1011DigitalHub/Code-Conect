@@ -75,7 +75,7 @@ async function seedSession(page: Page) {
 
 test.describe('Feed session switch', () => {
   test('shows Login in the side menu without a session', async ({ page }) => {
-    await jsonRoute(page, apiPath('/auth/me'), {}, 401)
+    await jsonRoute(page, apiPath('/auth/session'), { user: null })
     await jsonRoute(page, apiPath('/posts'), emptyFeed)
 
     await page.goto('/')
@@ -86,12 +86,14 @@ test.describe('Feed session switch', () => {
 
   test('shows Sair in the side menu with a session', async ({ page }) => {
     await seedSession(page)
-    await jsonRoute(page, apiPath('/auth/me'), {
-      id: 1,
-      name: 'Ana Souza',
-      email: 'ana@exemplo.com',
-      createdAt: '2026-10-02T12:00:00.000Z',
-      links: { self: '/users/1' },
+    await jsonRoute(page, apiPath('/auth/session'), {
+      user: {
+        id: 1,
+        name: 'Ana Souza',
+        email: 'ana@exemplo.com',
+        createdAt: '2026-10-02T12:00:00.000Z',
+        links: { self: '/users/1' },
+      },
     })
     await jsonRoute(page, apiPath('/posts'), emptyFeed)
 
@@ -103,12 +105,14 @@ test.describe('Feed session switch', () => {
 
   test('signing out returns to Login and stays on the feed', async ({ page }) => {
     await seedSession(page)
-    await jsonRoute(page, apiPath('/auth/me'), {
-      id: 1,
-      name: 'Ana Souza',
-      email: 'ana@exemplo.com',
-      createdAt: '2026-10-02T12:00:00.000Z',
-      links: { self: '/users/1' },
+    await jsonRoute(page, apiPath('/auth/session'), {
+      user: {
+        id: 1,
+        name: 'Ana Souza',
+        email: 'ana@exemplo.com',
+        createdAt: '2026-10-02T12:00:00.000Z',
+        links: { self: '/users/1' },
+      },
     })
     await jsonRoute(page, apiPath('/posts'), emptyFeed)
     await jsonRoute(page, apiPath('/auth/logout'), {}, 204)

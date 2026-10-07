@@ -51,7 +51,7 @@ describe('api client', () => {
 
     await api.post('/auth/login', {})
 
-    expect(requests[0].headers.get('X-CSRF-Token')).toBe('nonce.mac')
+    expect(requests[0]?.headers.get('X-CSRF-Token')).toBe('nonce.mac')
   })
 
   it('sends no X-CSRF-Token on a GET', async () => {
@@ -60,7 +60,7 @@ describe('api client', () => {
 
     await api.get('/auth/me')
 
-    expect(requests[0].headers.has('X-CSRF-Token')).toBe(false)
+    expect(requests[0]?.headers.has('X-CSRF-Token')).toBe(false)
   })
 
   it('bootstraps a csrf token before an unsafe request when none is set', async () => {

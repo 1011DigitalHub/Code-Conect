@@ -2,13 +2,13 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AxiosError, AxiosHeaders, type AxiosResponse } from 'axios'
 import { MemoryRouter, Route, Routes } from 'react-router'
-import { getMe } from '../../api/auth'
+import { getSession } from '../../api/auth'
 import { createComment, listComments } from '../../api/comments'
 import { getPost } from '../../api/posts'
 import { expectNoA11yViolations } from '../../test/axe'
 import { PostPage } from './PostPage'
 
-vi.mock('../../api/auth', () => ({ getMe: vi.fn(), logout: vi.fn() }))
+vi.mock('../../api/auth', () => ({ getSession: vi.fn(), logout: vi.fn() }))
 vi.mock('../../api/posts', () => ({
   getPost: vi.fn(),
   likePost: vi.fn(),
@@ -68,7 +68,7 @@ describe('PostPage', () => {
   })
 
   it('renders the post and its comments', async () => {
-    vi.mocked(getMe).mockRejectedValue(apiError(401))
+    vi.mocked(getSession).mockResolvedValue({ user: null })
     vi.mocked(getPost).mockResolvedValue(post)
     vi.mocked(listComments).mockResolvedValue({
       data: [
@@ -93,7 +93,7 @@ describe('PostPage', () => {
   })
 
   it('shows a not-found state for an unknown slug, with no redirect', async () => {
-    vi.mocked(getMe).mockRejectedValue(apiError(401))
+    vi.mocked(getSession).mockResolvedValue({ user: null })
     vi.mocked(getPost).mockRejectedValue(apiError(404))
     vi.mocked(listComments).mockResolvedValue(emptyComments)
 
@@ -108,7 +108,7 @@ describe('PostPage', () => {
   })
 
   it('shows the CTA to log in instead of the comment form when signed out', async () => {
-    vi.mocked(getMe).mockRejectedValue(apiError(401))
+    vi.mocked(getSession).mockResolvedValue({ user: null })
     vi.mocked(getPost).mockResolvedValue(post)
     vi.mocked(listComments).mockResolvedValue(emptyComments)
 
@@ -119,12 +119,14 @@ describe('PostPage', () => {
   })
 
   it('submits a comment and it appears in the list', async () => {
-    vi.mocked(getMe).mockResolvedValue({
-      id: 2,
-      name: 'Bruno Lima',
-      email: 'bruno@exemplo.com',
-      createdAt: '2026-10-02T12:00:00.000Z',
-      links: { self: '/users/2' },
+    vi.mocked(getSession).mockResolvedValue({
+      user: {
+        id: 2,
+        name: 'Bruno Lima',
+        email: 'bruno@exemplo.com',
+        createdAt: '2026-10-02T12:00:00.000Z',
+        links: { self: '/users/2' },
+      },
     })
     vi.mocked(getPost).mockResolvedValue(post)
     vi.mocked(listComments).mockResolvedValue(emptyComments)
@@ -148,7 +150,7 @@ describe('PostPage', () => {
   })
 
   it('sets the page title to the post title and the description to the excerpt', async () => {
-    vi.mocked(getMe).mockRejectedValue(apiError(401))
+    vi.mocked(getSession).mockResolvedValue({ user: null })
     vi.mocked(getPost).mockResolvedValue(post)
     vi.mocked(listComments).mockResolvedValue(emptyComments)
 
@@ -166,7 +168,7 @@ describe('PostPage', () => {
   })
 
   it('has no WCAG 2.2 AA violations', async () => {
-    vi.mocked(getMe).mockRejectedValue(apiError(401))
+    vi.mocked(getSession).mockResolvedValue({ user: null })
     vi.mocked(getPost).mockResolvedValue(post)
     vi.mocked(listComments).mockResolvedValue(emptyComments)
 

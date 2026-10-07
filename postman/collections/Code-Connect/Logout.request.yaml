@@ -1,0 +1,19 @@
+$kind: http-request
+method: POST
+url: '{{baseUrl}}/auth/logout'
+order: 3500
+headers:
+  X-CSRF-Token: '{{csrfToken}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('encerra a sessão com 204', function () {
+        pm.response.to.have.status(204);
+      });
+      pm.test('limpa o cookie de sessão', function () {
+        // Um token JWT capturado antes do logout continua válido até
+        // expirar — ver SECURITY.md. O que o logout garante é que o
+        // cookie em si não fica mais no jar.
+        pm.expect(pm.cookies.has('access_token')).to.be.false;
+      });

@@ -31,4 +31,12 @@ describe('SocialLogin', () => {
 
     await expectNoA11yViolations(container)
   })
+
+  it('disables every button and renders fine with no onSelect at all', async () => {
+    const { container } = render(<SocialLogin providers={providers} disabled />)
+
+    expect(screen.getByRole('button', { name: 'Github' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Gmail' })).toBeDisabled()
+    await expectNoA11yViolations(container)
+  })
 })

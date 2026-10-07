@@ -29,7 +29,7 @@ import { LOGIN_THROTTLE } from '../common/throttle.constants.js';
 import { UserEntity } from '../users/entities/user.entity.js';
 import { UsersService } from '../users/users.service.js';
 import { AuthService } from './auth.service.js';
-import type { JwtPayload } from './auth.types.js';
+import type { JwtPayload, MaybeAuthenticatedRequest } from './auth.types.js';
 import {
   ACCESS_TOKEN_COOKIE,
   CSRF_COOKIE,
@@ -42,6 +42,7 @@ import { CurrentUser } from './current-user.decorator.js';
 import { mintCsrfToken, sessionKey } from './csrf.js';
 import { LoginDto } from './dto/login.dto.js';
 import { LoginResponseDto } from './dto/login-response.dto.js';
+import { SessionResponseDto } from './dto/session-response.dto.js';
 import { NoCsrf } from './no-csrf.decorator.js';
 import { Public } from './public.decorator.js';
 
@@ -120,6 +121,41 @@ export class AuthController {
   logout(@Res({ passthrough: true }) res: Response): void {
     res.clearCookie(ACCESS_TOKEN_COOKIE, getClearCookieOptions());
     res.clearCookie(CSRF_COOKIE, getClearCookieOptions());
+  }
+
+  // The public counterpart of GET /auth/me, for a page that has to render for
+  // anonymous and logged-in visitors alike (the feed). /auth/me answers 401
+  // without a session — right for a private page, but on a public one the
+  // browser logs that 401 to the console, which trips both the no-console-
+  // errors browser suite and Lighthouse's scored best-practices audit. This
+  // answers 200 with `user: null` instead.
+  //
+  // /auth/me deliberately keeps its 401: besides serving the private profile
+  // page, it is the canary proving the global guard is fail-closed
+  // (test/guard.e2e-spec.ts).
+  @Public()
+  @Get('session')
+  @ApiOperation({
+    summary: 'Sessão atual, se houver',
+    description:
+      'Público. Devolve `user: null` para um visitante anônimo em vez de 401, para que uma página pública possa se adaptar à sessão sem gerar erro no console do navegador.',
+  })
+  @ApiOkResponse({ type: SessionResponseDto })
+  async session(
+    @Req() req: MaybeAuthenticatedRequest,
+  ): Promise<SessionResponseDto> {
+    // @Public() routes are optionally authenticated (see AuthGuard): req.user
+    // is set when a valid cookie came along, and absent otherwise.
+    const sub = req.user?.sub;
+    if (sub === undefined) return { user: null };
+
+    try {
+      return { user: await this.usersService.findById(sub) };
+    } catch (error) {
+      // A valid token for a user that no longer exists is simply not a session.
+      if (error instanceof NotFoundException) return { user: null };
+      throw error;
+    }
   }
 
   @Get('me')

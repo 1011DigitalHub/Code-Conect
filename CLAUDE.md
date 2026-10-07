@@ -11,6 +11,8 @@ pnpm monorepo (`pnpm-workspace.yaml` → `apps/*`) with two apps:
 
 The apps don't share code yet; there's no `packages/` folder for shared libraries. The web app talks to the API only over HTTP.
 
+This file (the "hub") stays short on purpose: commands plus an index. Architecture, security and workflow rules live in the modular "spoke" files under `.github/ai-guidelines/` linked below — read the relevant one(s) for the area you're working in.
+
 ## Commands
 
 Run these from the repo root. The root `package.json` wraps per-app scripts with `pnpm --filter`:
@@ -21,8 +23,10 @@ pnpm dev               # runs web (vite) and api (nest start --watch) together
 pnpm dev:web | pnpm dev:api
 pnpm build             # builds all apps (web: tsc -b && vite build; api: nest build)
 pnpm lint              # oxlint in every app
+pnpm typecheck         # tsc -b / tsc --noEmit in every app (separate from build; also checks test files on the API)
+pnpm audit --audit-level=high   # dependency vulnerabilities; CI fails on this (.github/workflows/security.yml)
 pnpm test:web          # web component tests (*.test.tsx), including axe checks
-pnpm test:web:a11y     # web browser suites (Playwright, e2e/*.e2e.ts): accessibility and SEO
+pnpm test:web:a11y     # web browser suites (Playwright, e2e/*.e2e.ts): accessibility, SEO and security headers
 pnpm test:api          # api unit tests (*.spec.ts), no database needed
 pnpm test:api:e2e      # api e2e tests (test/*.e2e-spec.ts, separate vitest config); needs pnpm db:up
 pnpm start:api         # node dist/main (needs a build first)
@@ -31,6 +35,8 @@ pnpm db:down           # stop it; data stays in the code-connect-pgdata volume
 pnpm db:migrate        # prisma migrate dev: apply migrations / create one after editing schema.prisma
 pnpm db:studio         # Prisma Studio, to browse the data
 ```
+
+The hardened production images (`apps/api/Dockerfile`, `apps/web/Dockerfile`) aren't part of the day-to-day loop above — `pnpm dev` against `pnpm db:up`'s postgres is faster. Build and smoke-test them locally with `docker compose up --build api web` (needs `JWT_SECRET`/`CORS_ORIGINS`/`VITE_API_URL` in the root `.env`, see `.env.example`); `pnpm dev`/`pnpm db:up` stays the normal workflow.
 
 To run any other app script: `pnpm api <script>` / `pnpm web <script>`. Examples:
 
@@ -43,302 +49,13 @@ pnpm api format                            # prettier (api only)
 pnpm web build && pnpm web exec vite preview --host 127.0.0.1 --port 5174   # production build to audit with Lighthouse
 ```
 
-## Frontend architecture (`apps/web`)
+## Development Guidelines & Architecture Docs
 
-### Atomic Design
+Detailed, framework-specific rules live in `.github/ai-guidelines/` instead of this file, so each concern can be read (and reused across tools/LLMs) on its own:
 
-Components live in `src/components/`, one level per folder:
-
-| Level | Folder | What goes there |
-|---|---|---|
-| Atoms | `atoms/` | Smallest UI building blocks (Button, Input, Label, Icon, Avatar). No business logic, no data fetching; they render props. |
-| Molecules | `molecules/` | Small groups of atoms that work as one unit (SearchField = Input + Button, FormField = Label + Input + error text). |
-| Organisms | `organisms/` | Self-contained sections of the UI (Header, PostCard list, CommentForm). Can hold local state and trigger callbacks. |
-| Templates | `templates/` | Page layouts that arrange organisms and expose slots/children. No real data. |
-| Pages | `src/pages/` | Templates filled with real data. The only level that fetches from the API or reads route params. |
-
-Rules:
-- A component imports only from its own level or lower levels (a molecule never imports an organism).
-- Each component has its own folder: `ComponentName/ComponentName.tsx`, `ComponentName/ComponentName.test.tsx` and an `index.ts` that re-exports it.
-- Keep API calls out of `components/`. Pages (or hooks they use) fetch data and pass it down as props. Components never import from `src/api/`.
-
-### API layer: Axios (`src/api/`)
-
-- `client.ts` is the only Axios instance. `baseURL` comes from `VITE_API_URL` (default `http://localhost:3000`, see `.env.example`). A request interceptor adds `Authorization: Bearer <token>`; a response interceptor drops the token on a `401` for a request that carried one.
-- One file per resource (`auth.ts`, `users.ts`) with typed functions that return `response.data`. Types in `types.ts` mirror the Swagger document.
-- `tokenStorage.ts` holds the JWT: `localStorage` when "Lembrar-me" is checked, `sessionStorage` otherwise. Storage access is guarded with try/catch. Never log the token.
-- Pages turn failures into messages with `getErrorMessage` (`errors.ts`, pt-BR, by status; `429` reads `Retry-After`) and show them with `FormError`. Don't show the API's own messages.
-- Private pages (`/perfil`) redirect to `/login` without a token and are not added to `e2e/routes.ts`; they get their own browser suite (`e2e/profile.e2e.ts`) with a fake API through `page.route`.
-
-### Styling: Tailwind CSS
-
-- Style with Tailwind utility classes in JSX. Don't add new `.css` files or CSS modules per component; `src/index.css` only holds the Tailwind import and global base styles.
-- Put design tokens (colors, fonts, spacing) in the Tailwind theme, not as hard-coded values scattered through components.
-- **No arbitrary values in classes.** Don't write `w-[407px]`, `text-[15px]`, `bg-[#81FE88]` or similar. Map every value from the design to a token:
-  - **Sizes** (width, height, spacing, max-width, inset, radius): use the nearest step of Tailwind's scale instead of the exact pixel value. The spacing scale is 4px per step (`w-102` = 408px, `size-4.5` = 18px), container sizes cover large widths (`max-w-sm` = 384px, `max-w-2xl` = 672px, `max-w-5xl` = 1024px), fractions cover percentages (`left-1/12`, `w-1/4`) and ratios use the native syntax (`aspect-4/5`). A difference of a few pixels from the Figma value is acceptable.
-  - **Colors**: only project palette names (`bg-surface`, `text-primary`, `text-danger`). Never hex values in classes, and never Tailwind's default colors (`red-400`, `gray-500`) directly. For a new color, extend the palette with a `--color-<name>` token in the `@theme` block of `src/index.css` (it can point at a default color, e.g. `--color-danger: var(--color-red-400)`). Name tokens by role (`danger`, `surface`), not by hue.
-  - **Typography**: Figma style-guide sizes live as `--text-*` tokens (`text-subtitle`, `text-paragraph-sm`, `text-label`); use them or the default scale (`text-lg`).
-  - **Anything else** with no token (for example an `object-position`): add a named utility with `@utility` in `src/index.css`.
-  - Composing an image from several Figma SVG parts: place them with coordinates inside one `<svg viewBox>` (`<image x y width height>`) instead of percentage `inset-[...]` classes.
-- Component variants (size, color, state) are driven by props that map to class sets. Don't make the caller pass raw class strings for that.
-- **Use `class-variance-authority` (CVA) to define those class sets** once a component has a variant prop (size, color, state) or a boolean that toggles classes. Call `cva()` at module scope, outside the component function, with the base (always-on) classes as the first argument and a `variants` object as the second; set `defaultVariants` instead of defaulting props in the function signature. Derive the component's variant props with `VariantProps<typeof theComponentCva>` instead of hand-writing a prop type and a parallel `Record<Variant, string>` lookup:
-  ```tsx
-  const button = cva('inline-flex items-center rounded-lg px-4 py-3 transition', {
-    variants: {
-      variant: { primary: 'bg-primary text-ink', secondary: 'bg-surface text-offwhite' },
-      fullWidth: { true: 'w-full', false: '' },
-    },
-    defaultVariants: { variant: 'primary', fullWidth: false },
-  })
-
-  export type ButtonProps = VariantProps<typeof button> & { ... }
-
-  export function Button({ variant, fullWidth, ...props }: ButtonProps) {
-    return <button className={button({ variant, fullWidth })} {...props} />
-  }
-  ```
-  A component with no variants (a single, fixed class string) stays a plain template literal — don't introduce `cva()` for it. Multi-word boolean variant names (e.g. `fullWidth`) and numeric variant keys (e.g. `level: 1 | 2` on `Heading`) both work as plain object keys in `cva()`. This project doesn't use a `cn()`/`clsx` merge helper: components that take CVA variants `Omit` or simply don't expose `className`, so there's never an incoming class string to merge with the generated one.
-  - **A new look for an existing component is a new key in its existing `variants` object, not a new conditional elsewhere.** When `Button` needed a secondary look for icon-led controls (like, logout), the fix was adding `ghost` next to `primary` inside its one `cva()` call (`atoms/Button/Button.tsx`), so every consumer keeps picking a `variant` instead of some callers getting a raw class string.
-  - **CVA is for picking a class set, not for branching markup or props.** When two states of a component need different DOM, different handlers, or different required props — not just different classes — model that as a discriminated union on the props type and an early `if`/return, the same way you'd structure any other conditional component; don't stretch `cva()` to cover it. `LikeButton` (`molecules/LikeButton/LikeButton.tsx`) renders a `TextLink` to `/login` when `authenticated: false` and a `Button` with `onToggle`/`liked` when `authenticated: true` — two different components with different props, decided with a type guard, not a variant. `SessionLink` follows the same shape for signed-in vs signed-out.
-  - A molecule that wraps a CVA atom still derives the atom's variant from domain state instead of asking its own caller to pass it: `FormField` and `TextareaField` both `Omit<AtomProps, 'id' | 'invalid'>` and pass `invalid={Boolean(error)}` to `Input`/`Textarea` themselves.
-- Setup: Tailwind v4 via the `@tailwindcss/vite` plugin in `vite.config.ts`. There is no `tailwind.config.js`; v4 is configured in CSS, so theme tokens go in an `@theme` block in `src/index.css`. The VS Code extension `bradlc.vscode-tailwindcss` is recommended in `.vscode/extensions.json`.
-
-### Component tests
-
-- **Every component needs a test** covering its essential use: it renders with the required props, and its main interaction or behavior works (click calls the callback, input updates, conditional content shows). Don't create a component without its `*.test.tsx`.
-- Test through what the user sees (roles, labels, text), not implementation details or Tailwind classes.
-- Every component test file also has a `has no WCAG 2.2 AA violations` case that renders the component and calls `expectNoA11yViolations(container)` from `src/test/axe.ts` (see Accessibility below).
-- The web app uses Vitest with `jsdom`, `@testing-library/react`, `@testing-library/user-event` and `@testing-library/jest-dom` (configured in `vite.config.ts`, setup file `src/test/setup.ts`, `globals: true`). Run with `pnpm test:web` or `pnpm web test:watch`.
-
-### Accessibility: WCAG 2.2 level AA
-
-The web app must conform to **WCAG 2.2 level AA** (which includes level A). A change that breaks an AA criterion isn't done, even if the feature works.
-
-**Automated tests (two layers, both required):**
-
-1. **Components (Vitest + `axe-core`)**: `expectNoA11yViolations(container)` in `src/test/axe.ts` runs the axe rules tagged `wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa`, `wcag22a` and `wcag22aa` (list in `src/test/wcag.ts`). It fails with one line per violation. jsdom has no layout, so contrast and target size are turned off here and checked in layer 2.
-2. **Pages in a real browser (Playwright + `@axe-core/playwright`)**: `apps/web/e2e/a11y.e2e.ts` runs against the production build (`vite build` + `vite preview`) at three widths: desktop 1440px, tablet 768px and mobile 320px. For each route in `e2e/routes.ts` it checks:
-   - the full axe AA rule set, including color contrast and target size;
-   - 1.4.10 Reflow: no horizontal scrolling;
-   - 1.4.12 Text Spacing: no text cut off when spacing is increased;
-   - 2.4.2 Page Titled: a title in the form `<Page> | Code Connect`;
-   - 2.1.1 Keyboard and 2.4.7 Focus Visible: every control can be reached with Tab and shows a focus indicator.
-
-   **Every new public route must be added to `e2e/routes.ts`.** The SEO suite (`e2e/seo.e2e.ts`) and Lighthouse CI (`lighthouserc.cjs`) use the same list.
-
-**Rules when building UI:**
-- Semantic HTML first: native `button`, `a`, `input` and `label`, plus headings in order. Use ARIA only when no native element fits.
-- Every control has an accessible name (visible label, `aria-label` only when there is no visible text). Decorative images use `alt=""` or `aria-hidden="true"`; informative ones get a descriptive `alt`.
-- Contrast:
-  - At least **4.5:1** for text and **3:1** for large text (≥24px, or ≥18.66px bold) and for UI parts (borders, icons, focus rings).
-  - Check a new color token against every background it is used on before adding it to `@theme`.
-- Visible keyboard focus on every interactive element (`focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary`). Never remove the outline without a replacement.
-- Targets of at least 24×24px (2.5.8).
-- Each page calls `usePageMeta('<Page>', '<description>')` (`src/pages/usePageMeta.ts`), which sets `document.title` to `<Page> | Code Connect` and the page's meta description. Don't use React 19's `<title>` or `<meta>` elements: `index.html` already has a `<title>` and a default description, and the browser keeps showing the first one.
-- Forms:
-  - Every field has a `<label>`, plus `autoComplete` for personal data (1.3.5).
-  - Errors are shown as text (`role="alert"`) and linked to the field with `aria-describedby` and `aria-invalid`.
-  - Don't rely on color alone to signal an error.
-- Content works at 320px wide and at 200% zoom. Never block zoom in the viewport meta tag.
-
-**Manual checks:** automated tests cover only part of WCAG. Before closing a feature, also:
-- use the page with the keyboard only;
-- test with a screen reader (NVDA on Windows);
-- check it at 200% browser zoom.
-
-Each plan's verification step lists these checks.
-
-**Playwright gotchas on this machine (Windows):**
-- The config uses `channel: 'chromium'` (new headless mode), because the old headless shell stops answering `Tab` key presses.
-- It uses `workers: 1`, because parallel browsers hang.
-- After a failing test, the runner can hang while restarting the browser. To list every failure, run one test at a time with `-g`.
-
-### Performance and SEO (Lighthouse)
-
-Every page must pass a Lighthouse audit, not only Login and Cadastro. A page that misses these targets isn't done.
-
-**Targets (Lighthouse desktop, per route):**
-- **100** in Accessibility, Best Practices and SEO; **≥ 90** in Performance.
-- Core Web Vitals: LCP ≤ 2.5 s, CLS ≤ 0.1, TBT ≤ 200 ms.
-- Agentic Browsing: every audit passes (accessibility tree, `llms.txt`, CLS).
-
-**How to measure:**
-- **CI (main source of truth):** the GitHub Action `.github/workflows/lighthouse.yml` runs Lighthouse CI on every push to `main` and every PR that touches `apps/web`, and can be started by hand (`gh workflow run lighthouse.yml`). It builds the app, serves it with `vite preview`, audits every route in `e2e/routes.ts` three times (desktop preset) and fails if a target below is missed (`apps/web/lighthouserc.cjs`). The job summary shows a table of scores and LCP/CLS/TBT per route, and the JSON/HTML reports are in the `lighthouse-reports` artifact (`gh run download <id> -n lighthouse-reports`). LHCI bundles Lighthouse 12, which has no Agentic Browsing category; `e2e/seo.e2e.ts` covers `llms.txt` and `robots.txt`.
-- Locally, the Lighthouse CLI hangs on this Windows machine; use Chrome DevTools instead.
-- Always audit the production build (`pnpm web build`, then `vite preview`, see Commands). Never audit `vite dev`: its unminified, development-mode bundle (several MB) produces false "Minify JavaScript", "Unused JavaScript" and "Total byte weight" findings and slow FCP/LCP.
-- Use an incognito window without extensions. Extensions such as password managers add long tasks and break the bfcache.
-- Record the scores and LCP/CLS/TBT in the page's plan (see Execution plans).
-
-**Images:**
-- Photos and banners are WebP (or AVIF), never large PNG/JPG. Aim for ≤ ~200 KB per image, exported at the largest size the layout actually renders. Convert once with `pnpm dlx sharp-cli -i <file> -o <dir> -f webp -q 75`.
-- Every `<img>` has `width` and `height` (its intrinsic size), so the browser reserves its space; classes still set the rendered size.
-- The LCP image of a page (usually the banner/hero) gets `fetchPriority="high"` and never `loading="lazy"`. Images below the fold get `loading="lazy"`.
-- Small icons and logos are SVG. Don't keep unused files in `public/`: everything there ships with the build (design references go in `plan/assets/`).
-
-**Fonts:**
-- Self-host fonts with `@fontsource/*`, imported in `src/main.tsx`, only the weights the design uses (today Prompt 400 and 600). No third-party font stylesheets (Google Fonts): they block the first render and add external origins.
-
-**JavaScript and CSS:**
-- Nothing render-blocking in `index.html`: no external stylesheets or synchronous scripts.
-- Check a dependency's size before adding it (prefer small, tree-shakeable packages). When the bundle grows, load heavy routes with `React.lazy` + `Suspense`.
-- Avoid long tasks (> 50 ms) during load; defer non-critical work.
-
-**Layout stability:**
-- No layout shifts: reserve space for images, embeds and late content (`width`/`height`, `aspect-*`), and don't insert content above what is already on screen.
-
-**SEO:**
-- Every page calls `usePageMeta(title, description)`. The description is unique per page, 50 to 160 characters, in pt-BR. `e2e/seo.e2e.ts` checks it for every route.
-- One `h1` per page and headings in order; links are real `<a href>` with descriptive text; `<html lang="pt-BR">` stays.
-- `public/robots.txt` and `public/llms.txt` must exist (otherwise the SPA fallback serves `index.html` and both are reported invalid). Update `llms.txt` (an H1 and links to the public routes) when a public route is added.
-
-**Best practices:**
-- No errors in the browser console; no permission requests (location, notifications) on page load.
-- Security headers (CSP, HSTS, COOP, X-Frame-Options) belong to the hosting setup; add them when the app is deployed.
-
-## Backend architecture (`apps/api`)
-
-### Module layout
-
-One NestJS feature module per resource, in `src/<resource>/` (plural, kebab-case):
-
-```
-src/posts/
-  posts.module.ts
-  posts.controller.ts        # HTTP only: routing, status codes, headers, DTO binding
-  posts.service.ts           # business logic; knows nothing about HTTP
-  posts.controller.spec.ts
-  posts.service.spec.ts
-  dto/create-post.dto.ts     # request bodies
-  dto/update-post.dto.ts
-  entities/post.entity.ts    # resource representation
-```
-
-Controllers stay thin and delegate to services. Services throw Nest HTTP exceptions (`NotFoundException`, `ConflictException`, ...) or domain errors that a filter maps to them. Register every feature module in `AppModule`. Generate with `pnpm api exec nest g resource <name>`, then fix imports to use `.js` extensions (see gotchas).
-
-### REST rules
-
-Every endpoint must follow REST principles:
-
-- **Resources, not actions.** URLs are plural nouns: `/posts`, `/posts/:id`, `/posts/:postId/comments`. No verbs in paths (`/createPost`, `/posts/:id/delete` are wrong). Nest at most one level deep; beyond that, use top-level resources with filters.
-- **HTTP methods by semantics:**
-  - `GET` reads and never changes state.
-  - `POST` on a collection creates.
-  - `PUT` replaces the whole resource (idempotent).
-  - `PATCH` updates part of it.
-  - `DELETE` removes it (idempotent).
-- **Status codes:**
-  - `200` for reads and updates that return a body.
-  - `201 Created` with a `Location` header and the created resource for `POST`.
-  - `204 No Content` for `DELETE` and updates without a body.
-  - `400` for malformed input, `422` for validation that fails on well-formed input (pick one convention and use it everywhere).
-  - `401`/`403` for authentication/authorization, `404` for a missing resource, `409` for conflicts (duplicates, state clashes).
-  - Never return `200` with an error in the body.
-  - Set codes explicitly with `@HttpCode()` when Nest's default is wrong, for example `@HttpCode(204)` on `DELETE`.
-- **Stateless.** Each request carries everything needed (for example the auth token in `Authorization`). No server-side session state between requests.
-- **Representations.** JSON in and out, `camelCase` fields. Responses return resource representations (entities/response DTOs), never raw persistence objects or internal fields.
-- **Collections.** Filtering, sorting and pagination go in query params (`?page=1&limit=20&sort=-createdAt&authorId=1`). Paginated responses include the data plus pagination metadata and links (`self`, `next`, `prev`).
-- **Hypermedia.** Resources include links to themselves and to related resources where useful (for example a post links to its comments).
-- **Consistent errors.** Keep Nest's default error shape (`statusCode`, `message`, `error`) across the whole API. Don't invent per-endpoint formats.
-- **Validation.** Validate every body, param and query with DTOs and a global `ValidationPipe` (`whitelist: true`, `forbidNonWhitelisted: true`, `transform: true`). Use `ParseIntPipe`/`ParseUUIDPipe` for ids. The pipe is set up in `configureApp` (`src/app.setup.ts`), which `main.ts` and the e2e tests both call, so tests run with the same validation as production.
-- **Caching and concurrency.** `GET` responses may use `ETag`/`Cache-Control`. Don't make `GET` responses uncacheable by mixing in side effects.
-
-### Security: authentication and authorization
-
-Auth lives in `src/auth/` (`AuthGuard`, JWT) and users in `src/users/`. Users are stored in PostgreSQL through Prisma (see Database below and `plan/PersistenciaDados.md`).
-
-**JWT:**
-- Sign and verify with `@nestjs/jwt`. The secret comes from `JWT_SECRET` (see `getJwtSecret()` in `auth/auth.constants.ts`). Never hard-code a secret, never commit one, and never log tokens. In production the API must refuse to start without `JWT_SECRET`.
-- Tokens are short-lived (`JWT_EXPIRES_IN`, in seconds, default 1 hour). The payload holds only what the guard needs (`sub` = user id, `email`). Never put a password, hash or other sensitive data in it: a JWT is signed, not encrypted.
-- The token travels only in `Authorization: Bearer <token>`. Don't accept it in the URL or query string, and keep the API stateless.
-- The login response is `{ accessToken, tokenType, expiresIn }`.
-
-**Auth Guard:**
-- Follow the NestJS "Authentication" guide: an `AuthGuard` implementing `CanActivate` that reads the Bearer header, calls `JwtService.verifyAsync` with the secret, and stores the payload in `request.user`. Any missing, malformed, expired or invalid token throws `UnauthorizedException`, with no detail about why.
-- Protect each route explicitly with `@UseGuards(AuthGuard)` and `@ApiBearerAuth()`, or register the guard globally and mark public routes with a decorator. Never leave a route unprotected by accident: a new endpoint that returns user data must have a guard and an e2e test for the `401` case.
-- Derive the user from the token (`request.user.sub`), never from an id sent by the client. A valid token for a user that no longer exists is a `401`.
-- Use the typed `JwtPayload` and `AuthenticatedRequest` in `auth/auth.types.ts`, not `any`.
-
-**Passwords and credentials:**
-- Hash passwords with `scrypt` + a random salt and compare with `timingSafeEqual` (`users/password.ts`), or another adaptive hash (argon2, bcrypt). Never store, log or return a plain password or hash. Responses use `UserEntity`, which has no password field.
-- Login failures return the same `401` message for an unknown email and a wrong password, so the API doesn't reveal which emails are registered.
-- Passwords are 8 to 72 characters. Normalize emails (trim, lowercase) before comparing or storing them.
-
-**General:**
-- Responses return response DTOs or entities, never raw stored records. `ValidationPipe` with `whitelist` and `forbidNonWhitelisted` stops mass assignment (a client can't set `id` or `role`).
-- Errors keep Nest's default shape and don't leak stack traces, SQL or internal messages.
-- Read secrets and settings from environment variables (`JWT_SECRET`, `JWT_EXPIRES_IN`, `PORT`, `DATABASE_URL`). Keep `.env` files out of git and commit a `.env.example` next to each one (`.gitignore` ignores `.env.*` except `.env.example`).
-- **CORS** is set in `configureApp` through `getCorsOptions()` (`src/cors.ts`). Allowed origins come from `CORS_ORIGINS` (comma-separated; dev default is the Vite origins; in production, without it, every origin is refused). Never `*`, and no credentials: the token travels in the `Authorization` header. `Location` and `Retry-After` are exposed to the browser.
-- **Rate limiting** (`@nestjs/throttler`, in-memory, per IP) applies only where `ThrottlerGuard` is used: `POST /auth/login` (5/min) and `POST /users` (3/min), with values in `common/throttle.constants.ts`. Excess requests get `429` with `Retry-After`; document `@ApiTooManyRequestsResponse` on any new limited route.
-- Still to do at deploy time: `app.set('trust proxy', ...)` behind a reverse proxy (otherwise every user shares one IP for rate limiting), security headers (`helmet`), and a shared store (Redis) if there is more than one instance.
-- Run `pnpm audit` when adding auth-related dependencies.
-
-### Database: PostgreSQL + Prisma
-
-- **PostgreSQL 18 in Docker**, defined in `docker-compose.yml` at the repo root. Data lives in the named volume `code-connect-pgdata`, so it survives `docker compose down`. `docker compose down -v` deletes it; only run that on purpose. The port is bound to `127.0.0.1` only. `docker/postgres/init/` runs only when the volume is created empty and creates the `codeconnect_test` database.
-- **Prisma 7** (`prisma-client` generator, `@prisma/adapter-pg`). Chosen over Drizzle, TypeORM and MikroORM; the reasons are in `plan/PersistenciaDados.md`.
-  - Schema: `apps/api/prisma/schema.prisma`. Models are PascalCase singular in code and mapped to snake_case plural tables/columns (`@@map("users")`, `@map("password_hash")`).
-  - After changing the schema, run `pnpm db:migrate --name <change>` and commit the generated folder under `prisma/migrations/`. Never edit a migration that is already committed.
-  - The client is generated into `apps/api/src/generated/prisma` (git-ignored, also ignored by oxlint and Prettier) by `postinstall` and `build`. Import it as `../generated/prisma/client.js`.
-  - `pnpm-workspace.yaml` overrides `mysql2` and `deepmerge-ts` (transitive dependencies of the Prisma CLI that `prisma@7.10.0` pins at vulnerable versions; the API doesn't use either at runtime). Keep the overrides until a stable Prisma release bumps them, then remove them and re-run `pnpm audit`.
-  - Keep `prisma` and `@prisma/client` on the same version. The npm `latest` tag of `prisma` may point at a prerelease, so add or upgrade with an explicit version.
-- **Access**: inject `PrismaService` (`src/prisma/`, global module) into services only, never into controllers. Map Prisma errors to Nest exceptions in the service (unique violation `P2002` → `ConflictException`). Never return a Prisma record directly; wrap it in the response entity (`UserEntity`).
-- **Environment**: `apps/api/.env` holds `DATABASE_URL` and `TEST_DATABASE_URL`; the root `.env` holds `POSTGRES_PASSWORD` for Docker Compose. Both are git-ignored; copy them from the `.env.example` files. `src/load-env.ts` loads `apps/api/.env` with `process.loadEnvFile()` and must stay the first import of `main.ts`.
-- **Tests**: unit tests mock `PrismaService` (or the service that uses it) and need no database. E2E tests run against `TEST_DATABASE_URL`: `test/global-setup.ts` refuses to run if it equals `DATABASE_URL` and runs `prisma migrate deploy`, and `resetDatabase(app)` (`test/db.ts`) truncates the tables before each test. Test files run sequentially (`fileParallelism: false`).
-
-### API documentation: Swagger (OpenAPI)
-
-The Swagger setup is in `src/swagger.ts` (`setupSwagger`, called from `main.ts` and the e2e tests): UI at `/api/docs`, JSON at `/api/docs-json`. Every endpoint must be documented, and a change to an endpoint isn't done until its Swagger is updated.
-
-- **No CLI plugin.** Vitest doesn't go through `nest build`, so document explicitly. Every DTO and entity field has `@ApiProperty({ example, description })`, with `minLength`/`maxLength`/`enum`/`format` when they apply, matching the `class-validator` rules.
-- Each controller has `@ApiTags('<resource>')`. Each handler has `@ApiOperation({ summary })` (in pt-BR, short) and one response decorator for the success code (`@ApiOkResponse`, `@ApiCreatedResponse`, ...), with `type` set to a response class (arrays use `type: [X]`).
-- Document every error the endpoint can return (`@ApiBadRequestResponse`, `@ApiUnauthorizedResponse`, `@ApiConflictResponse`, `@ApiNotFoundResponse`, ...) with `type: ErrorResponseDto` (`common/dto/error-response.dto.ts`), which mirrors Nest's default error shape.
-- Protected routes carry `@ApiBearerAuth()`, so Swagger UI sends the token after "Authorize". Public routes don't.
-- Document inputs through DTO classes (`@Body`, `@Query`, `@Param`), not inline types, because only classes reach the OpenAPI document. Response types must be classes too.
-- Swagger examples never contain real data or real secrets. Use obvious fakes (`maria@exemplo.com`, `senha-segura-123`).
-- Each feature's e2e test asserts that its paths appear in `GET /api/docs-json` (see `test/auth.e2e-spec.ts`). Before deploying, decide whether `/api/docs` stays public; if not, disable it or protect it in production.
-
-### Tests
-
-Each controller and service gets a colocated `*.spec.ts` (see the existing `app.controller.spec.ts` for the pattern with `Test.createTestingModule`). Each endpoint also gets an e2e test in `apps/api/test/` with supertest that asserts the status code, the important headers (such as `Location`) and the response body.
-
-## Execution plans (`plan/`)
-
-Every execution plan for this project lives in `plan/` at the repo root, one Markdown file per feature. Name the file after the feature in PascalCase and in Portuguese, for example `plan/PaginaLogin.md` or `plan/PaginaCadastro.md`.
-
-- Once a plan is approved, save it in `plan/` before implementing it.
-- If the scope changes during or after implementation (a swapped asset, a changed component), update the plan file with a dated note explaining what changed and why. Don't create a new file for the change.
-- Plans follow the structure of `plan/PaginaLogin.md`: context, implementation steps, tests, commits and verification.
-- Web plans include accessibility: the tests step lists the axe case for each new component and the new routes added to `e2e/routes.ts`. The verification step runs `pnpm test:web:a11y` and the manual checks (keyboard only, screen reader, 200% zoom).
-- Web plans for a page also include performance and SEO: the page's meta description, its LCP image and how it is optimized, and, in the verification step, a Lighthouse table (scores per category plus LCP, CLS and TBT) measured on the production build.
-- When a plan lists measurements from the design, it also names the Tailwind token each one maps to (for example "407px → `w-102`", "`#81FE88` → `primary`"), following the styling rules above. New colors go in the plan's theme step as `--color-*` tokens.
-
-## Git: Conventional Commits
-
-Both apps use [Conventional Commits](https://www.conventionalcommits.org/):
-
-```
-<type>(<scope>): <description>
-
-[optional body]
-
-[optional footer(s)]
-```
-
-- **Types:**
-  - `feat`, `fix`
-  - `docs`, `style` (formatting only)
-  - `refactor`, `perf`, `test`
-  - `build` (deps, bundler), `ci`, `chore`, `revert`
-- **Scopes:** `web` or `api` for changes to one app. Use `root` (or leave the scope out) for monorepo-level files such as the root `package.json`, `pnpm-workspace.yaml` or `CLAUDE.md`. If a change touches both apps, split it into one commit per app when possible.
-- Write the description in the imperative mood, lowercase, with no trailing period, and keep it at 72 characters or fewer. Examples: `feat(api): add posts resource`, `test(web): cover Button click behavior`.
-- Mark breaking changes with `!` after the type/scope (`feat(api)!: rename /users to /members`) and a `BREAKING CHANGE:` footer.
-- One logical change per commit. A component commit includes its test.
-
-## Conventions / gotchas
-
-- **API is native ESM** (`"type": "module"`, `module: nodenext`). Relative imports **must** use the `.js` extension (e.g. `import { AppService } from './app.service.js'`), even from `.ts` files. `main.ts` uses top-level `await bootstrap()`.
-- The API uses Vitest, not Jest: `globals: true` (`describe`/`it`/`expect` need no imports), and `vite-tsconfig-paths` resolves tsconfig path aliases. Unit tests are colocated in `src/` as `*.spec.ts`; e2e tests live in `apps/api/test/`.
-- API lint treats `typescript/no-floating-promises` as an error, so await or explicitly handle every promise.
-- API Prettier: single quotes, trailing commas. The web app has no Prettier config.
-- `.gitattributes` enforces LF line endings (the repo is developed on Windows).
-- The `apps/*/README.md` files are unmodified framework templates and don't document the project.
+- [`.github/ai-guidelines/frontend-architecture.md`](.github/ai-guidelines/frontend-architecture.md) — Atomic Design component structure, the Axios API layer (`src/api/`), and Tailwind CSS styling/token rules for `apps/web`.
+- [`.github/ai-guidelines/frontend-ux-seo.md`](.github/ai-guidelines/frontend-ux-seo.md) — Component testing conventions, WCAG 2.2 AA accessibility (automated + manual), and Lighthouse performance/SEO targets (including image and font handling) for `apps/web`.
+- [`.github/ai-guidelines/backend-architecture.md`](.github/ai-guidelines/backend-architecture.md) — NestJS module layout, REST conventions (resources, status codes, validation), test colocation and Swagger/OpenAPI documentation for `apps/api`.
+- [`.github/ai-guidelines/security-standards.md`](.github/ai-guidelines/security-standards.md) — Unified frontend + backend security: session cookies, CSRF, the fail-closed Auth Guard, BOLA/IDOR, password hashing, rate limiting and reverse-proxy (`TRUST_PROXY`) rules.
+- [`.github/ai-guidelines/database-persistence.md`](.github/ai-guidelines/database-persistence.md) — PostgreSQL 18 + Prisma 7: schema/migrations, query minimization (`omit`), raw SQL rules and test database setup.
+- [`.github/ai-guidelines/development-workflow.md`](.github/ai-guidelines/development-workflow.md) — Execution plans (`plan/`), PR validation workflows, Conventional Commits, and cross-cutting conventions/gotchas (ESM imports, lint-staged, Docker images).

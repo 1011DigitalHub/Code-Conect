@@ -122,7 +122,7 @@ async function mockPost(page: Page) {
 }
 
 async function openAsVisitor(page: Page) {
-  await jsonRoute(page, apiPath('/auth/me'), {}, 401)
+  await jsonRoute(page, apiPath('/auth/session'), { user: null })
   await mockPost(page)
   await page.goto(`/posts/${SLUG}`)
   await page.getByRole('heading', { level: 1, name: TITLE }).waitFor()
@@ -130,12 +130,14 @@ async function openAsVisitor(page: Page) {
 
 async function openAsMember(page: Page) {
   await seedSession(page)
-  await jsonRoute(page, apiPath('/auth/me'), {
-    id: 2,
-    name: 'Bruno Lima',
-    email: 'bruno@exemplo.com',
-    createdAt: '2026-10-02T12:00:00.000Z',
-    links: { self: '/users/2' },
+  await jsonRoute(page, apiPath('/auth/session'), {
+    user: {
+      id: 2,
+      name: 'Bruno Lima',
+      email: 'bruno@exemplo.com',
+      createdAt: '2026-10-02T12:00:00.000Z',
+      links: { self: '/users/2' },
+    },
   })
   await mockPost(page)
   await page.goto(`/posts/${SLUG}`)

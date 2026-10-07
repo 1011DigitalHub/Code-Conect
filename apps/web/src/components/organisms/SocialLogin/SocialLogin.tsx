@@ -9,14 +9,16 @@ export type SocialProvider = {
 
 export type SocialLoginProps = {
   providers: SocialProvider[]
-  onSelect: (providerId: string) => void
+  onSelect?: (providerId: string) => void
   label?: string
+  disabled?: boolean
 }
 
 export function SocialLogin({
   providers,
   onSelect,
   label = 'ou entre com outras contas',
+  disabled = false,
 }: SocialLoginProps) {
   return (
     <section className="flex flex-col gap-2">
@@ -27,7 +29,8 @@ export function SocialLogin({
             <SocialButton
               name={provider.name}
               icon={provider.icon}
-              onClick={() => onSelect(provider.id)}
+              onClick={onSelect ? () => onSelect(provider.id) : undefined}
+              disabled={disabled}
             />
           </li>
         ))}

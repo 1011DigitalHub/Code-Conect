@@ -24,5 +24,13 @@ export type TextLinkProps = Omit<ComponentProps<typeof Link>, 'className' | 'to'
 
 // Client-side navigation through react-router, so moving between pages doesn't reload the app.
 export function TextLink({ href, variant, ...props }: TextLinkProps) {
+  // The feed builds hrefs from API data (`/posts/${post.slug}`), so this is a
+  // live check, not a theoretical one: it fails loudly instead of quietly
+  // becoming a javascript: URL XSS vector. react-router's <Link> does not
+  // validate this itself.
+  if (!href.startsWith('/')) {
+    throw new Error(`TextLink: href must be a relative path starting with "/", got "${href}"`)
+  }
+
   return <Link to={href} className={textLink({ variant })} {...props} />
 }

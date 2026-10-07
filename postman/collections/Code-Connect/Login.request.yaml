@@ -5,6 +5,8 @@ order: 2000
 headers:
   - key: Content-Type
     value: application/json
+  - key: X-CSRF-Token
+    value: '{{csrfToken}}'
 body:
   type: json
   content: |-
@@ -16,7 +18,17 @@ scripts:
   - type: afterResponse
     language: text/javascript
     code: |-
-      if (pm.response.code === 200) {
-        const json = pm.response.json();
-        pm.environment.set("token", json.accessToken);
+      pm.test('a sessão não vem mais no corpo da resposta', function () {
+        pm.response.to.have.status(200);
+        pm.expect(pm.response.json()).to.not.have.property('accessToken');
+      });
+      pm.test('o cookie de sessão é HttpOnly e SameSite=Strict', function () {
+        const accessToken = pm.cookies.get('access_token');
+        pm.expect(accessToken, 'access_token cookie').to.be.a('string').and.not.empty;
+      });
+      // Login rotata o csrf_token para o vinculado à sessão nova — o token
+      // anônimo do bootstrap acima não valida mais a partir daqui.
+      const csrfToken = pm.cookies.get('csrf_token');
+      if (csrfToken) {
+        pm.environment.set('csrfToken', csrfToken);
       }

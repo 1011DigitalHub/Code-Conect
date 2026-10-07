@@ -7,10 +7,16 @@ const validExcerpt =
   'Como quebrar uma tela grande em componentes pequenos e reaproveitáveis sem perder a legibilidade.'
 const validContent = 'Um corpo de post com tamanho suficiente para passar.'
 
+// The excerpt and content fixtures have to be long enough to pass validation,
+// and userEvent waits on a timer between keystrokes — ~170 characters of that
+// crossed the 5s default timeout under full-suite load. No test here asserts
+// on the typing sequence itself, so the delay buys nothing.
+const type = (element: Element, text: string) => userEvent.type(element, text, { delay: null })
+
 async function fillValid() {
-  await userEvent.type(screen.getByLabelText('Título'), 'Componentes React')
-  await userEvent.type(screen.getByLabelText(/^Resumo/), validExcerpt)
-  await userEvent.type(screen.getByLabelText(/^Conteúdo/), validContent)
+  await type(screen.getByLabelText('Título'), 'Componentes React')
+  await type(screen.getByLabelText(/^Resumo/), validExcerpt)
+  await type(screen.getByLabelText(/^Conteúdo/), validContent)
 }
 
 describe('CreatePostForm', () => {
@@ -34,7 +40,7 @@ describe('CreatePostForm', () => {
     render(<CreatePostForm onSubmit={onSubmit} />)
 
     await fillValid()
-    await userEvent.type(
+    await type(
       screen.getByLabelText(/^Imagem de capa/),
       '/posts/capa.webp',
     )
@@ -49,9 +55,9 @@ describe('CreatePostForm', () => {
     const onSubmit = vi.fn()
     render(<CreatePostForm onSubmit={onSubmit} />)
 
-    await userEvent.type(screen.getByLabelText('Título'), 'Um título')
-    await userEvent.type(screen.getByLabelText(/^Resumo/), 'Curto.')
-    await userEvent.type(screen.getByLabelText(/^Conteúdo/), validContent)
+    await type(screen.getByLabelText('Título'), 'Um título')
+    await type(screen.getByLabelText(/^Resumo/), 'Curto.')
+    await type(screen.getByLabelText(/^Conteúdo/), validContent)
     await userEvent.click(screen.getByRole('button', { name: 'Publicar' }))
 
     expect(onSubmit).not.toHaveBeenCalled()
@@ -64,9 +70,9 @@ describe('CreatePostForm', () => {
     const onSubmit = vi.fn()
     render(<CreatePostForm onSubmit={onSubmit} />)
 
-    await userEvent.type(screen.getByLabelText('Título'), 'Oi')
-    await userEvent.type(screen.getByLabelText(/^Resumo/), validExcerpt)
-    await userEvent.type(screen.getByLabelText(/^Conteúdo/), validContent)
+    await type(screen.getByLabelText('Título'), 'Oi')
+    await type(screen.getByLabelText(/^Resumo/), validExcerpt)
+    await type(screen.getByLabelText(/^Conteúdo/), validContent)
     await userEvent.click(screen.getByRole('button', { name: 'Publicar' }))
 
     expect(onSubmit).not.toHaveBeenCalled()
@@ -80,7 +86,7 @@ describe('CreatePostForm', () => {
     render(<CreatePostForm onSubmit={onSubmit} />)
 
     await fillValid()
-    await userEvent.type(screen.getByLabelText(/^Imagem de capa/), 'capa.webp')
+    await type(screen.getByLabelText(/^Imagem de capa/), 'capa.webp')
     await userEvent.click(screen.getByRole('button', { name: 'Publicar' }))
 
     expect(onSubmit).not.toHaveBeenCalled()

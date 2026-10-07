@@ -37,7 +37,7 @@ describe('CommentList', () => {
   })
 
   it('uses the singular for one comment', () => {
-    render(<CommentList comments={[comments[0]]} now={now} />)
+    render(<CommentList comments={comments.slice(0, 1)} now={now} />)
 
     expect(
       screen.getByRole('heading', { level: 2, name: '1 comentário' }),

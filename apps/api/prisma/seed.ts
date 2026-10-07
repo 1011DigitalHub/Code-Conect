@@ -360,18 +360,26 @@ async function main(): Promise<void> {
   try {
     const passwordHash = await hashPassword(DEV_PASSWORD);
 
-    const users = [];
+    const userIds: number[] = [];
     for (const person of people) {
-      users.push(
-        await prisma.user.upsert({
-          where: { email: person.email },
-          // Keep an existing account's password as it is, so a developer who
-          // changed it locally does not get it reset on every seed.
-          update: { name: person.name },
-          create: { ...person, passwordHash },
-        }),
-      );
+      const user = await prisma.user.upsert({
+        where: { email: person.email },
+        // Keep an existing account's password as it is, so a developer who
+        // changed it locally does not get it reset on every seed.
+        update: { name: person.name },
+        create: { ...person, passwordHash },
+      });
+      userIds.push(user.id);
     }
+
+    // The fixtures below reference people by their index in `people`. A bad
+    // index is a typo in the fixture data, so fail loudly instead of writing
+    // a row with an undefined author.
+    const userIdAt = (index: number): number => {
+      const id = userIds[index];
+      if (id === undefined) throw new Error(`seed: no seeded user at index ${index}`);
+      return id;
+    };
 
     const postIdBySlug = new Map<string, number>();
     for (const post of posts) {
@@ -391,7 +399,7 @@ async function main(): Promise<void> {
           excerpt: post.excerpt,
           content: post.content,
           thumbnailUrl: post.thumbnailUrl,
-          authorId: users[post.author].id,
+          authorId: userIdAt(post.author),
           createdAt: daysAgoToDate(post.daysAgo),
         },
       });
@@ -413,7 +421,7 @@ async function main(): Promise<void> {
         await prisma.comment.createMany({
           data: interaction.comments.map((comment, index) => ({
             postId,
-            authorId: users[comment.author].id,
+            authorId: userIdAt(comment.author),
             body: comment.body,
             // Spread the thread out after the post was published.
             createdAt: new Date(Date.now() - (interaction.comments.length - index) * 3_600_000),
@@ -427,7 +435,7 @@ async function main(): Promise<void> {
         const result = await prisma.like.createMany({
           data: interaction.likes.map((person) => ({
             postId,
-            userId: users[person].id,
+            userId: userIdAt(person),
           })),
           skipDuplicates: true,
         });
@@ -438,7 +446,7 @@ async function main(): Promise<void> {
     const withoutThumbnail = posts.filter((post) => post.thumbnailUrl === null).length;
     console.log(
       [
-        `seeded ${users.length} users, ${posts.length} posts, ${commentCount} comments, ${likeCount} new likes`,
+        `seeded ${userIds.length} users, ${posts.length} posts, ${commentCount} comments, ${likeCount} new likes`,
         `thumbnails: ${withoutThumbnail} null, ${posts.length - withoutThumbnail} pointing at a missing file`,
         `every account's password is "${DEV_PASSWORD}"`,
       ].join('\n'),

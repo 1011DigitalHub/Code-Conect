@@ -1,0 +1,32 @@
+$kind: http-request
+method: POST
+url: "{{baseUrl}}/users"
+order: 1100
+description: >-
+  Confirma que o ValidationPipe global (whitelist + forbidNonWhitelisted)
+  rejeita campos que o cliente não deveria poder definir, em vez de
+  silenciosamente ignorá-los ou — pior — aceitá-los.
+headers:
+  Content-Type: application/json
+  X-CSRF-Token: '{{csrfToken}}'
+body:
+  type: json
+  content: |-
+    {
+        "name": "Ana Invasora",
+        "email": "ana-mass-assignment@exemplo.com",
+        "password": "senha-segura-1234",
+        "id": 99,
+        "role": "admin",
+        "passwordHash": "hacked-hash"
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('rejeita campos extras com 400', function () {
+        pm.response.to.have.status(400);
+      });
+      pm.test('nomeia os campos rejeitados, mas nunca ecoa os valores do atacante', function () {
+        pm.expect(pm.response.text()).to.not.match(/admin|hacked-hash/i);
+      });

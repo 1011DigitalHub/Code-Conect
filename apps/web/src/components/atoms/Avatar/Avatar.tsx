@@ -22,10 +22,10 @@ export type AvatarProps = VariantProps<typeof avatar> & {
 // Up to two initials, so "Ana Souza" reads as AS and "Ana" as A.
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
-  if (parts.length === 0) return '?'
-  const first = parts[0][0]
-  const last = parts.length > 1 ? parts[parts.length - 1][0] : ''
-  return (first + last).toUpperCase()
+  const first = parts[0]
+  if (!first) return '?'
+  const last = parts.length > 1 ? parts.at(-1) : undefined
+  return (first.charAt(0) + (last?.charAt(0) ?? '')).toUpperCase()
 }
 
 // Decorative: the author's name is always rendered as text next to it, so

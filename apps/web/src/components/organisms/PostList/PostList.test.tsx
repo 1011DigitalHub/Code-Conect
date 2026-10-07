@@ -76,7 +76,7 @@ describe('PostList', () => {
       .getAllByRole('button')
       .filter((button) => (button as HTMLButtonElement).disabled)
     expect(disabled).toHaveLength(1)
-    expect(disabled[0].getAttribute('aria-label')).toContain('Post número 2')
+    expect(disabled[0]?.getAttribute('aria-label')).toContain('Post número 2')
   })
 
   it('renders an empty list without complaint', () => {

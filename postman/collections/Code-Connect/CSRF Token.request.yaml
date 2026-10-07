@@ -1,0 +1,18 @@
+$kind: http-request
+method: GET
+url: '{{baseUrl}}/auth/csrf'
+order: 900
+description: >-
+  Bootstrap: emite o cookie csrf_token (não-HttpOnly) que as próximas
+  requisições de escrita precisam ecoar no header X-CSRF-Token. Roda sempre
+  primeiro na coleção — inclusive antes do cadastro, que já é um método
+  inseguro (POST).
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('emite o cookie csrf_token legível', function () {
+        const csrfToken = pm.cookies.get('csrf_token');
+        pm.expect(csrfToken, 'csrf_token cookie').to.be.a('string').and.not.empty;
+        pm.environment.set('csrfToken', csrfToken);
+      });

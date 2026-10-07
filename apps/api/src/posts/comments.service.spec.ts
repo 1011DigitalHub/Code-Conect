@@ -52,7 +52,7 @@ describe('CommentsService.list', () => {
       }),
     );
     expect(result.data).toHaveLength(1);
-    expect(result.data[0].links).toEqual({
+    expect(result.data[0]?.links).toEqual({
       self: '/posts/um-post/comments/1',
       post: '/posts/um-post',
     });

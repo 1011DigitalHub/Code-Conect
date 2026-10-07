@@ -1,10 +1,10 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { AxiosError, AxiosHeaders } from 'axios'
-import { getMe, logout } from '../api/auth'
+import { getSession, logout } from '../api/auth'
 import { useSession } from './useSession'
 
 vi.mock('../api/auth', () => ({
-  getMe: vi.fn(),
+  getSession: vi.fn(),
   logout: vi.fn(),
 }))
 
@@ -28,12 +28,12 @@ function httpError(status: number): AxiosError {
 
 describe('useSession', () => {
   beforeEach(() => {
-    vi.mocked(getMe).mockReset()
+    vi.mocked(getSession).mockReset()
     vi.mocked(logout).mockReset()
   })
 
   it('starts as loading and reports not authenticated while probing', () => {
-    vi.mocked(getMe).mockReturnValue(new Promise(() => {}))
+    vi.mocked(getSession).mockReturnValue(new Promise(() => {}))
 
     const { result } = renderHook(() => useSession())
 
@@ -44,7 +44,7 @@ describe('useSession', () => {
   })
 
   it('becomes authenticated with the user when the probe succeeds', async () => {
-    vi.mocked(getMe).mockResolvedValue(me)
+    vi.mocked(getSession).mockResolvedValue({ user: me })
 
     const { result } = renderHook(() => useSession())
 
@@ -53,8 +53,11 @@ describe('useSession', () => {
     expect(result.current.user).toEqual(me)
   })
 
-  it('becomes anonymous on a 401', async () => {
-    vi.mocked(getMe).mockRejectedValue(httpError(401))
+  // An anonymous visitor is the normal case on a public page, so the endpoint
+  // reports it as a 200 with user: null rather than a 401 the browser would
+  // log to the console.
+  it('becomes anonymous when the probe reports no session', async () => {
+    vi.mocked(getSession).mockResolvedValue({ user: null })
 
     const { result } = renderHook(() => useSession())
 
@@ -66,7 +69,7 @@ describe('useSession', () => {
     // The feed is public, so a flaky probe must still render the page — just
     // with the anonymous controls.
     vi.spyOn(console, 'warn').mockImplementation(() => {})
-    vi.mocked(getMe).mockRejectedValue(httpError(500))
+    vi.mocked(getSession).mockRejectedValue(httpError(500))
 
     const { result } = renderHook(() => useSession())
 
@@ -74,7 +77,7 @@ describe('useSession', () => {
   })
 
   it('signs out through the API and drops the local state', async () => {
-    vi.mocked(getMe).mockResolvedValue(me)
+    vi.mocked(getSession).mockResolvedValue({ user: me })
     vi.mocked(logout).mockResolvedValue()
 
     const { result } = renderHook(() => useSession())
@@ -90,7 +93,7 @@ describe('useSession', () => {
   })
 
   it('still signs out locally when the logout request fails', async () => {
-    vi.mocked(getMe).mockResolvedValue(me)
+    vi.mocked(getSession).mockResolvedValue({ user: me })
     vi.mocked(logout).mockRejectedValue(httpError(500))
 
     const { result } = renderHook(() => useSession())
@@ -104,7 +107,7 @@ describe('useSession', () => {
   })
 
   it('forgets the session when a request reveals the cookie expired', async () => {
-    vi.mocked(getMe).mockResolvedValue(me)
+    vi.mocked(getSession).mockResolvedValue({ user: me })
 
     const { result } = renderHook(() => useSession())
     await waitFor(() => expect(result.current.isAuthenticated).toBe(true))
@@ -119,12 +122,12 @@ describe('useSession', () => {
   })
 
   it('aborts the probe when unmounted', () => {
-    vi.mocked(getMe).mockReturnValue(new Promise(() => {}))
+    vi.mocked(getSession).mockReturnValue(new Promise(() => {}))
 
     const { unmount } = renderHook(() => useSession())
     unmount()
 
-    const signal = vi.mocked(getMe).mock.calls[0][0]
+    const signal = vi.mocked(getSession).mock.calls[0]?.[0]
     expect(signal?.aborted).toBe(true)
   })
 })
