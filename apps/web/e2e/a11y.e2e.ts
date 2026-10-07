@@ -69,8 +69,13 @@ for (const route of routes) {
     // WCAG 2.1.1 Keyboard and 2.4.7 Focus Visible: every control is reachable with Tab
     // and shows a focus indicator.
     test('reaches every control with Tab and shows a visible focus', async ({ page }) => {
+      // :disabled controls (e.g. the not-yet-implemented social login
+      // buttons) are correctly excluded from the Tab sequence by the
+      // browser itself, so they must be excluded here too.
       const controls = await page
-        .locator('a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])')
+        .locator(
+          'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
+        )
         .count()
       const withoutIndicator: string[] = []
       const reached = new Set<string>()

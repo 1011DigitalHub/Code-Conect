@@ -4,6 +4,7 @@ url: "{{baseUrl}}/users"
 order: 1000
 headers:
   Content-Type: application/json
+  X-CSRF-Token: '{{csrfToken}}'
 body:
   type: json
   content: |-
@@ -12,3 +13,18 @@ body:
         "email": "MariaJulia2@exemplo.com",
         "password": "senha-segura-1234"
     }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('cadastra com 201', function () {
+        pm.response.to.have.status(201);
+      });
+      pm.test('nunca devolve a senha ou o hash', function () {
+        pm.expect(pm.response.text()).to.not.match(/password|senha-segura-1234/i);
+      });
+      pm.test('envia os headers do helmet', function () {
+        pm.expect(pm.response.headers.get('X-Content-Type-Options')).to.eql('nosniff');
+        pm.expect(pm.response.headers.get('Strict-Transport-Security')).to.exist;
+        pm.expect(pm.response.headers.has('X-Powered-By')).to.be.false;
+      });

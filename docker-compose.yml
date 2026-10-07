@@ -21,6 +21,52 @@ services:
       timeout: 5s
       retries: 10
 
+  # The two hardened production images (apps/api/Dockerfile,
+  # apps/web/Dockerfile). Not needed for day-to-day development — `pnpm
+  # dev` against `pnpm db:up`'s postgres is faster — this is for building
+  # and smoke-testing the actual deployable images locally
+  # (`docker compose up api web`). DATABASE_URL points at the `postgres`
+  # service by its compose network name, not `localhost`: inside a
+  # container, `localhost` is the container itself, not the host or a
+  # sibling service.
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: code-connect-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-codeconnect}:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-codeconnect}
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env (min. 32 caracteres)}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+    ports:
+      # Only reachable from this machine, like postgres above.
+      - '127.0.0.1:3000:3000'
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        # Build-time: Vite inlines this into the bundle, so it must be the
+        # browser-reachable API URL, not the compose network name above.
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
+    container_name: code-connect-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      # Run-time: substituted into the CSP by nginx at container start
+      # (apps/web/default.conf.template) — same value, different stage.
+      API_ORIGIN: ${VITE_API_URL:-http://localhost:3000}
+    ports:
+      - '127.0.0.1:8080:8080'
+
 volumes:
   pgdata:
     name: code-connect-pgdata

@@ -13,16 +13,19 @@ export function getCorsOrigins(): string[] {
     .filter(Boolean);
 }
 
-// Only the known web origins may read responses in the browser. No `*`, and no
-// credentials: the token travels in the Authorization header, not in a cookie.
-// In production without CORS_ORIGINS the list is empty, so every origin is refused.
+// Only the known web origins may read responses in the browser, and only
+// those origins get Access-Control-Allow-Credentials — never combined with a
+// wildcard. The session travels in an httpOnly cookie, so the browser must
+// be told to send/receive credentials; Authorization is no longer in the
+// allowlist since AuthGuard dropped the Bearer bridge. In production without
+// CORS_ORIGINS the list is empty, so every origin is refused.
 export function getCorsOptions(): CorsOptions {
   return {
     origin: getCorsOrigins(),
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'X-CSRF-Token'],
     exposedHeaders: ['Location', 'Retry-After'],
     maxAge: 600,
-    credentials: false,
+    credentials: true,
   };
 }

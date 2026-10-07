@@ -5,9 +5,14 @@ allowBuilds:
   '@scarf/scarf': false
   esbuild: false
   prisma: true
+  simple-git-hooks: true
 # Audit fixes for transitive dependencies of the Prisma CLI (prisma@7.10.0 pins the
 # vulnerable versions). Neither is used at runtime: the API talks to PostgreSQL through
 # @prisma/adapter-pg. Remove these when a stable Prisma release bumps them.
 overrides:
   mysql2: ^3.23.1
   deepmerge-ts: ^8.0.0
+  # Transitive dependency of postcss (via vite/vitest, dev-only — never
+  # ships in the production build). Remove once vite/postcss bump it
+  # themselves and re-run `pnpm audit`.
+  source-map-js: ^1.2.2

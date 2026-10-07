@@ -1,9 +1,15 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "ignorePatterns": ["src/generated/**"],
+  "plugins": ["import", "promise", "node", "typescript", "oxc"],
   "rules": {
-    "typescript/no-explicit-any": "off",
-    "typescript/no-floating-promises": "error"
+    "typescript/no-explicit-any": "error",
+    "typescript/no-floating-promises": "error",
+    "no-eval": "error",
+    "no-new-func": "error",
+    "no-implied-eval": "error",
+    "no-script-url": "error",
+    "no-console": "warn"
   },
   "env": {
     "node": true

@@ -1,0 +1,17 @@
+version: 2
+updates:
+  - package-ecosystem: pnpm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      # Minor/patch bumps across the monorepo land as one PR instead of
+      # dozens; a major bump (e.g. the next Prisma release) still gets its
+      # own PR, since those need a human to read the changelog.
+      minor-and-patch:
+        update-types: ['minor', 'patch']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

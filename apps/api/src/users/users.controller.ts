@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Post, Res } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiConflictResponse,
@@ -7,8 +7,9 @@ import {
   ApiTags,
   ApiTooManyRequestsResponse,
 } from '@nestjs/swagger';
-import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
+import { Public } from '../auth/public.decorator.js';
 import { ErrorResponseDto } from '../common/dto/error-response.dto.js';
 import { SIGN_UP_THROTTLE } from '../common/throttle.constants.js';
 import { CreateUserDto } from './dto/create-user.dto.js';
@@ -20,7 +21,11 @@ import { UsersService } from './users.service.js';
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  @UseGuards(ThrottlerGuard)
+  // ThrottlerGuard itself is global now (see AppModule); @Throttle just
+  // overrides the 'default' named throttler's limit for this route — adding
+  // @UseGuards(ThrottlerGuard) here too would run the guard twice per
+  // request and double-count against that same limit.
+  @Public()
   @Throttle({ default: SIGN_UP_THROTTLE })
   @Post()
   @ApiOperation({ summary: 'Cadastra um usuário' })

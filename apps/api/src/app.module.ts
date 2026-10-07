@@ -1,21 +1,41 @@
 import { Module } from '@nestjs/common';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
+import { AuthGuard } from './auth/auth.guard.js';
 import { AuthModule } from './auth/auth.module.js';
+import { CsrfGuard } from './auth/csrf.guard.js';
 import { DEFAULT_THROTTLE } from './common/throttle.constants.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { UsersModule } from './users/users.module.js';
 
 @Module({
   imports: [
-    // The guard is not global: only the routes that use ThrottlerGuard are limited.
     ThrottlerModule.forRoot([{ name: 'default', ...DEFAULT_THROTTLE }]),
     PrismaModule,
     UsersModule,
     AuthModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    // All three global guards live in this one array, so their order is
+    // explicit and doesn't depend on Nest's cross-module resolution order
+    // (which isn't guaranteed for APP_GUARD providers declared in different
+    // modules — this used to be split between here and AuthModule).
+    //
+    // Rate limiting runs first: it must count a request even when the next
+    // guard would reject it, or an unauthenticated flood against a
+    // protected route is never actually limited (a guard that throws stops
+    // the chain, so anything after it never runs). Then AuthGuard, so a
+    // request with no session gets 401 rather than a CSRF 403. CsrfGuard
+    // derives its key from the raw access_token cookie (not request.user),
+    // so it is functionally order-independent with AuthGuard — that order
+    // only decides which status code wins when both would reject.
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: AuthGuard },
+    { provide: APP_GUARD, useClass: CsrfGuard },
+  ],
 })
 export class AppModule {}

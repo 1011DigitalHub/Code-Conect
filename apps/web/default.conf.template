@@ -1,0 +1,42 @@
+server {
+  # >1024, so the non-root nginx user (set in the Dockerfile) can bind it:
+  # the Linux kernel reserves ports below 1024 for root.
+  listen 8080;
+  server_name _;
+  root /usr/share/nginx/html;
+  index index.html;
+
+  # The same headers vite.config.ts's preview.headers sends for local
+  # dev/CI (Playwright, Lighthouse) — this is the one that actually reaches
+  # real users. Keep the two in sync by hand; nginx has no way to import
+  # vite.config.ts's values at build time.
+  #
+  # API_ORIGIN is substituted by the official nginx image's own entrypoint
+  # (this file lives in /etc/nginx/templates/, auto-envsubst'd into
+  # /etc/nginx/conf.d/ on container start — see the Dockerfile) rather than
+  # baked in at build time, so the same image works against any deployment
+  # without a rebuild. Defaults to a same-origin-looking placeholder; set
+  # the real API origin via the API_ORIGIN environment variable.
+  add_header Content-Security-Policy "default-src 'self'; connect-src 'self' ${API_ORIGIN}; img-src 'self' data:; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" always;
+  add_header Strict-Transport-Security "max-age=15552000; includeSubDomains" always;
+  add_header X-Content-Type-Options "nosniff" always;
+  add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+  add_header Permissions-Policy "geolocation=(), camera=(), microphone=()" always;
+  add_header Cross-Origin-Opener-Policy "same-origin" always;
+
+  # SPA fallback: every unmatched path serves index.html so react-router's
+  # client-side routes (e.g. /perfil) work on a hard refresh.
+  location / {
+    try_files $uri $uri/ /index.html;
+  }
+
+  # robots.txt and llms.txt must be served as real files, not fall through
+  # to the SPA (e2e/seo.e2e.ts checks their exact content-type).
+  location = /robots.txt {
+    try_files $uri =404;
+  }
+
+  location = /llms.txt {
+    try_files $uri =404;
+  }
+}

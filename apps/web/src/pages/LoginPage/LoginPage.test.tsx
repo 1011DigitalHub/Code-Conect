@@ -4,7 +4,6 @@ import { AxiosError, AxiosHeaders, type AxiosResponse } from 'axios'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { vi } from 'vitest'
 import { login } from '../../api/auth'
-import { clearToken, getToken } from '../../api/tokenStorage'
 import { renderWithRouter } from '../../test/renderWithRouter'
 import { LoginPage } from './LoginPage'
 import { expectNoA11yViolations } from '../../test/axe'
@@ -40,7 +39,6 @@ async function fillAndSubmit({ remember = false } = {}) {
 describe('LoginPage', () => {
   afterEach(() => {
     vi.resetAllMocks()
-    clearToken()
   })
 
   it('renders the login form, social providers and sign-up link', () => {
@@ -55,8 +53,9 @@ describe('LoginPage', () => {
     expect(screen.getByLabelText('Email')).toBeInTheDocument()
     expect(screen.getByLabelText('Senha')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Login' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Github' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Gmail' })).toBeInTheDocument()
+    // Not implemented yet (see plan/LoginSocial.md) — rendered, but disabled.
+    expect(screen.getByRole('button', { name: 'Github' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Gmail' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Github' }).querySelector('img')).toHaveAttribute(
       'src',
       '/icons/github.svg',
@@ -71,28 +70,33 @@ describe('LoginPage', () => {
     )
   })
 
-  it('signs in, keeps the token for the session only and goes to the profile', async () => {
-    vi.mocked(login).mockResolvedValue({ accessToken: 'jwt', tokenType: 'Bearer', expiresIn: 3600 })
+  it('signs in and goes to the profile; the session is the server-set cookie, not local storage', async () => {
+    vi.mocked(login).mockResolvedValue({ tokenType: 'Bearer', expiresIn: 3600 })
     renderLoginRoutes()
 
     await fillAndSubmit()
 
     expect(await screen.findByText('Tela de perfil')).toBeInTheDocument()
-    expect(login).toHaveBeenCalledWith({ email: 'ana@exemplo.com', password: 'segredo-123' })
-    expect(getToken()).toBe('jwt')
-    expect(sessionStorage.length).toBe(1)
+    expect(login).toHaveBeenCalledWith({
+      email: 'ana@exemplo.com',
+      password: 'segredo-123',
+      remember: false,
+    })
+    // Regression guard: the token must never land in Web Storage again.
     expect(localStorage.length).toBe(0)
+    expect(sessionStorage.length).toBe(0)
   })
 
-  it('keeps the token across sessions when "Lembrar-me" is checked', async () => {
-    vi.mocked(login).mockResolvedValue({ accessToken: 'jwt', tokenType: 'Bearer', expiresIn: 3600 })
+  it('sends remember: true to the API when "Lembrar-me" is checked', async () => {
+    vi.mocked(login).mockResolvedValue({ tokenType: 'Bearer', expiresIn: 604800 })
     renderLoginRoutes()
 
     await fillAndSubmit({ remember: true })
 
     expect(await screen.findByText('Tela de perfil')).toBeInTheDocument()
-    expect(localStorage.length).toBe(1)
-    expect(sessionStorage.length).toBe(0)
+    expect(login).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'ana@exemplo.com', remember: true }),
+    )
   })
 
   it('shows the error and stays on the page when the credentials are wrong', async () => {
@@ -104,7 +108,6 @@ describe('LoginPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Email ou senha inválidos.')
     expect(screen.queryByText('Tela de perfil')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Login' })).toBeEnabled()
-    expect(getToken()).toBeNull()
   })
 
   it('has no WCAG 2.2 AA violations', async () => {
