@@ -24,11 +24,12 @@ export default defineConfig({
   ],
   webServer: {
     // Production build: what users get, and much lighter than the dev server under parallel load.
-    // The build itself runs beforehand (see the "test:a11y" script) — chaining it into this
-    // command via "&&" used to hang Playwright's teardown on CI: tree-killing a shell running
-    // "build && preview" didn't reliably reach the preview server's process, leaving it (and the
-    // job) stuck for the full runner timeout after every test had already passed.
-    command: `pnpm exec vite preview --host ${host} --port ${port} --strictPort`,
+    // The build itself runs beforehand (see the "test:a11y" script), and this calls vite's own
+    // bin script through `node` directly instead of `pnpm exec vite` — on CI, tree-killing a
+    // `pnpm exec` invocation after the suite finishes didn't reliably reach the preview server
+    // underneath its pnpm/sh wrapper processes, leaving it (and the job) stuck until the runner
+    // timeout. A single `node <script>` process has nothing to not reach.
+    command: `node node_modules/vite/bin/vite.js preview --host ${host} --port ${port} --strictPort`,
     url: `http://${host}:${port}`,
     reuseExistingServer: !process.env.CI,
   },
