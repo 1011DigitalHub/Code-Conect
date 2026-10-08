@@ -87,15 +87,25 @@ O desenho original assumia que `exception.getResponse()` sempre devolve o objeto
 
 `AllExceptionsFilter` replica os dois casos do `BaseExceptionFilter` original do Nest (não são invenção própria), com um teste unitário para cada um provado por reversão deliberada antes de ficar confiado nele.
 
+### Um terceiro caso, esse sim um bug de segurança: `isHttpError` aceitava `expose: false`
+
+Achado pela revisão da PR #16 (`isHttpError` só checava `typeof err.expose === 'boolean'`, nunca o valor). O pacote `http-errors` usa `expose = status < 500` por padrão — ou seja, `expose: false` é exatamente o sinal de "isto é um 5xx interno, não devolva esta mensagem ao cliente". A versão original do `isHttpError` deixava passar um erro nesse formato com `expose: false` do mesmo jeito que o `PayloadTooLargeError` (`expose: true`) — vazando a mensagem interna sem máscara e, pior, sem logar (o branch retorna antes da chamada ao `logger.error`). O próprio comentário que eu tinha escrito no código já afirmava que só `expose: true` era seguro; o código não checava isso. Corrigido para `err.expose === true`, com um caso unitário dedicado (`expose: false` deve mascarar e logar, igual a qualquer erro desconhecido), verificado por reversão deliberada antes de confiar nele.
+
+### Duas sugestões da revisão, verificadas e **não aplicadas**
+
+- **Documentar `@ApiTooManyRequestsResponse` em `GET /`.** Verificado contra o próprio código: em todo o projeto, esse decorator só aparece em handlers com um `@Throttle()` explícito que sobrescreve o limite padrão (`CREATE_POST_THROTTLE`, `CREATE_COMMENT_THROTTLE`, `SIGN_UP_THROTTLE`, `LOGIN_THROTTLE`) — nunca numa rota sob o limite global padrão, como o próprio `GET /posts` (`posts.controller.ts`, handler `list`) já demonstra. `GET /` usa o limite padrão, sem override; aplicar a sugestão a essa única rota criaria a inconsistência que ela tentava evitar.
+- **Mover a rota de `AppController` para `src/health/health.controller.ts`.** Decisão já tomada e aprovada antes desta fase começar: `GET /` mantém o endereço raiz que os e2e já tratavam como "a health route" (ver Contexto), e o controller raiz do Nest é exatamente onde esse endereço já vivia. Criar um segundo controller só moveria o handler para um módulo com o nome certo, sem mudar nenhum comportamento — `HealthService` (que faz o trabalho real) já mora em `src/health/`.
+
 ### Por que fecha uma lacuna real
 
 O `ErrorResponseDto` existe desde o início como *documentação* do formato padrão do Nest. Com o filter, o formato passa a ser garantido inclusive no caminho hoje menos previsível — a exceção que ninguém escreveu. E o log é a única diferença entre "deu 500 em produção" e "deu 500 em produção por isto, nesta rota".
 
 ### Testes
 
-- `all-exceptions.filter.spec.ts` (4 casos): `HttpException` com corpo-objeto sai idêntica; `HttpException` com corpo-string (tipo `ThrottlerException`) sai embrulhada em `{ statusCode, message }`; erro no formato `http-errors` (tipo `PayloadTooLargeError`) sai com o próprio status, sem máscara; `Error` cru sai como `500` mascarado com o logger chamado só nesse caso.
-- `test/security.e2e-spec.ts` ganha um caso provando que uma falha inesperada (banco fora do ar, via `HealthService` sobrescrito) não vaza stack trace nem detalhe interno no corpo.
-- A suíte de e2e **inteira** é a rede de proteção: foi exatamente rodá-la por completo, não só os testes novos, que achou os dois casos acima — `throttle.e2e-spec.ts` e o `413` em `security.e2e-spec.ts` acusaram na hora.
+- `all-exceptions.filter.spec.ts` (5 casos): `HttpException` com corpo-objeto sai idêntica; erro `http-errors` com `expose: true` (tipo `PayloadTooLargeError`) sai com o próprio status, sem máscara; erro `http-errors` com `expose: false` sai mascarado e logado, igual a um erro desconhecido; `HttpException` com corpo-string (tipo `ThrottlerException`) sai embrulhada em `{ statusCode, message }`; `Error` cru sai como `500` mascarado com o logger chamado só nesse caso.
+- `test/security.e2e-spec.ts`: o caso de falha inesperada (banco fora do ar, via `HealthService` sobrescrito) não vaza stack trace nem detalhe interno no corpo; o caso de `413` agora também verifica o corpo (`{ statusCode: 413, message: 'request entity too large' }`), não só o status.
+- `test/app.e2e-spec.ts` ganha o caso que todo outro módulo já tinha: `GET /` aparece em `GET /api/docs-json`.
+- A suíte de e2e **inteira** é a rede de proteção: foi exatamente rodá-la por completo, não só os testes novos, que achou os dois primeiros casos (`throttle.e2e-spec.ts` e o `413` em `security.e2e-spec.ts` acusaram na hora); o terceiro (`expose: false`) só a revisão achou, porque nenhum middleware real do projeto produz esse formato hoje.
 
 → `feat(api): enforce the documented error shape with a global exception filter`
 
@@ -109,8 +119,10 @@ A imagem runtime é `node:22-alpine` e instala **apenas** `dumb-init` — não t
 
 ```dockerfile
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+  CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 ```
+
+Lê `process.env.PORT` (mesmo fallback de `src/env.ts`) em vez de fixar `3000`: `EXPOSE` é só documentação e não muda a porta real que o processo escuta, então um container iniciado com outro `PORT` checaria a porta errada e ficaria `unhealthy` para sempre. Achado na revisão da PR #16.
 
 `start-period` generoso porque `PrismaService.onModuleInit` conecta no boot: antes disso a API legitimamente não responde, e sem essa janela o container seria marcado unhealthy durante a própria partida.
 
