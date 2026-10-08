@@ -128,11 +128,13 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      # Not "production": that would turn on Secure cookies, which the browser
-      # refuses to send over the suite's http origins, and would require
-      # CORS_ORIGINS (src/cors.ts defaults to the Vite/preview origins outside
-      # production, which is exactly what Playwright serves on).
-      NODE_ENV: test
+      # NODE_ENV is deliberately NOT set here: `pnpm test:web:a11y` runs
+      # `vite build`, which reads it, and a job-level value bundles React's
+      # development build (576 kB instead of 347 kB) — the suite would then
+      # audit something users never get. The API needs it, so it is set on that
+      # process alone, in playwright.config.ts's webServer env. "test" rather
+      # than "production" there keeps cookies non-Secure, which the http
+      # preview origin needs, and lets src/cors.ts default to the Vite origins.
       DATABASE_URL: postgresql://codeconnect:codeconnect-ci-only@localhost:5432/codeconnect
       # CI-only, never a real secret: src/env.ts requires 32+ characters.
       JWT_SECRET: ci-only-jwt-secret-not-a-real-secret-32-chars-minimum
@@ -149,6 +151,12 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      # Built here rather than chained into playwright.config.ts's webServer,
+      # so the command it supervises is a plain `node dist/main.js` it can
+      # actually tree-kill on teardown.
+      - name: Build the API the browser suites run against
+        run: pnpm --filter api build
 
       - name: Apply migrations and seed the feed the suites audit
         run: |

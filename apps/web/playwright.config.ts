@@ -41,11 +41,23 @@ export default defineConfig({
       // empty or error state would not measure the page this project ships.
       // Needs `pnpm db:up && pnpm db:migrate && pnpm db:seed` run first; this
       // only starts the already-migrated, already-seeded API.
-      command: process.env.CI ? 'pnpm build && pnpm start:prod' : 'pnpm start:dev',
+      //
+      // On CI this is `node dist/main.js`, not `pnpm start:prod`, and the build
+      // is a separate CI step rather than being chained in here — for exactly
+      // the reason the preview server above stopped going through `pnpm exec`.
+      // Playwright's teardown tree-kill does not reliably reach a node process
+      // buried under pnpm/sh wrappers: every test passed and the job then hung
+      // in teardown until the runner timeout, with pnpm/sh/node left as orphans.
+      command: process.env.CI ? 'node dist/main.js' : 'pnpm start:dev',
       cwd: '../api',
       url: `http://localhost:${apiPort}`,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
+      // src/env.ts validates NODE_ENV at boot and refuses to start without it.
+      // It is set here, on the API process alone, rather than on the CI job:
+      // `vite build` reads NODE_ENV too, and a job-level value bundles React's
+      // development build (576 kB instead of 347 kB).
+      env: { NODE_ENV: 'test' },
     },
   ],
 })
