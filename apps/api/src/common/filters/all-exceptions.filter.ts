@@ -11,14 +11,21 @@ import type { Request, Response } from 'express';
 // Express middleware (body-parser's PayloadTooLargeError, for one) throws
 // errors shaped like the "http-errors" package — expose/statusCode/status —
 // rather than a Nest HttpException, because it runs before Nest's router
-// even sees the request. Same signature Nest's own BaseExceptionFilter
-// checks for, copied here so a 10kb-over request still 413s instead of
-// falling into the generic masked 500 below.
+// even sees the request. Copied from the signature Nest's own
+// BaseExceptionFilter checks for, so a 10kb-over request still 413s instead
+// of falling into the generic masked 500 below.
+//
+// expose === true specifically, not just typeof 'boolean': the http-errors
+// package sets it to (status < 500), which is exactly "safe for a client to
+// see". An error in this shape with expose: false is a 5xx the library
+// itself says not to return as-is — treating it as pass-through would leak
+// that message unmasked and, since this branch returns before the logger
+// call below, unlogged too.
 function isHttpError(err: unknown): err is { statusCode: number; message: string } {
   return (
     err instanceof Error &&
     'expose' in err &&
-    typeof err.expose === 'boolean' &&
+    err.expose === true &&
     'statusCode' in err &&
     typeof err.statusCode === 'number' &&
     'status' in err &&

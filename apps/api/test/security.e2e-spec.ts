@@ -222,15 +222,20 @@ describe('Security regressions (e2e)', () => {
   });
 
   describe('JSON body size limit', () => {
-    it('413s a payload over the 10kb limit', async () => {
+    it('413s a payload over the 10kb limit, through AllExceptionsFilter', async () => {
       const agent = request.agent(app.getHttpServer());
       const csrfToken = await fetchCsrfToken(agent);
 
-      await agent
+      const res = await agent
         .post('/users')
         .set('X-CSRF-Token', csrfToken)
         .send({ ...newUser, name: 'a'.repeat(20_000) })
         .expect(413);
+
+      // PayloadTooLargeError never reaches Nest's router, so this also
+      // confirms the filter's isHttpError passthrough — not just the status
+      // code body-parser itself would have produced anyway.
+      expect(res.body).toEqual({ statusCode: 413, message: 'request entity too large' });
     });
 
     it('accepts a normal-sized payload', async () => {

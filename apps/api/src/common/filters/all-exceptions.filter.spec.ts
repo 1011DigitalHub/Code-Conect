@@ -67,6 +67,32 @@ describe('AllExceptionsFilter', () => {
     expect(errorSpy).not.toHaveBeenCalled();
   });
 
+  // The security-relevant branch of isHttpError: expose: false means the
+  // http-errors package itself judged this message unsafe for a client to
+  // see (its default is status < 500, so this is a 5xx in that shape, not
+  // a 4xx). It must mask and log exactly like any other unknown error —
+  // treating it as pass-through would both leak the internal message and
+  // skip the log line that's the only server-side record of it.
+  it('masks and logs an http-errors-shaped error that has expose: false', () => {
+    const { host, status, json } = mockHost();
+    const exception = Object.assign(new Error('upstream connection refused'), {
+      expose: false,
+      statusCode: 503,
+      status: 503,
+    });
+
+    handle(exception, host);
+
+    expect(status).toHaveBeenCalledWith(500);
+    expect(json).toHaveBeenCalledWith({
+      statusCode: 500,
+      message: 'Internal server error',
+      error: 'Internal Server Error',
+    });
+    expect(JSON.stringify(json.mock.calls[0])).not.toMatch(/upstream connection refused/);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+  });
+
   // ThrottlerException (and other HttpExceptions built from a plain string
   // rather than an object) is the real-world case this guards: it caught a
   // regression where the string came back as the entire response body
