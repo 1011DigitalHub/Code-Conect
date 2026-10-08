@@ -25,10 +25,33 @@ describe('TextLink', () => {
     // proves the guard works.
     const scriptUrl = ['java', 'script:alert(1)'].join('')
     expect(() => renderWithRouter(<TextLink href={scriptUrl}>x</TextLink>)).toThrow(
-      /relative path/,
+      /same-origin path/,
     )
     expect(() => renderWithRouter(<TextLink href="http://evil.example.com">x</TextLink>)).toThrow(
-      /relative path/,
+      /same-origin path/,
     )
+  })
+
+  // "//evil.example" starts with "/", same as a real site-relative path, but
+  // a browser resolves it as protocol-relative — an absolute URL on
+  // evil.example, not a path on this site. "/\evil.example" reaches the same
+  // vector through a leading backslash, which the WHATWG URL Standard
+  // normalizes into a second forward slash for http/https. "/\t/evil.example"
+  // and "/\n/evil.example" reach it too: the URL parser strips embedded
+  // tab/newline characters before resolving, so they normalize into the
+  // protocol-relative form above.
+  it('rejects a protocol-relative href, closing off an open redirect', () => {
+    expect(() => renderWithRouter(<TextLink href="//evil.example">x</TextLink>)).toThrow(
+      /same-origin path/,
+    )
+    expect(() => renderWithRouter(<TextLink href="/\evil.example">x</TextLink>)).toThrow(
+      /same-origin path/,
+    )
+    expect(() =>
+      renderWithRouter(<TextLink href={'/\t/evil.example'}>x</TextLink>),
+    ).toThrow(/same-origin path/)
+    expect(() =>
+      renderWithRouter(<TextLink href={'/\n/evil.example'}>x</TextLink>),
+    ).toThrow(/same-origin path/)
   })
 })
