@@ -27,38 +27,7 @@ O controller injeta um `HealthService`, que injeta o `PrismaService`. A regra do
 
 ### O probe
 
-No `HealthService` — versão atual, depois dos achados da 4ª e 5ª rodadas de revisão (ver seções próprias abaixo):
-
-```ts
-const PROBE_TIMEOUT_MS = 3_000; // menor que o --timeout=5s do Docker
-const PROBE_CACHE_MS = 1_500;   // coalescing + cache, ver a seção da 5ª rodada
-
-isDatabaseReachable(): Promise<boolean> {
-  const now = Date.now();
-  if (!this.cached || this.cached.expiresAt <= now) {
-    this.cached = { expiresAt: now + PROBE_CACHE_MS, result: this.probe() };
-  }
-  return this.cached.result;
-}
-
-private async probe(): Promise<boolean> {
-  let timer: NodeJS.Timeout | undefined;
-  try {
-    await Promise.race([
-      this.prisma.$queryRaw`SELECT 1`,
-      new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => reject(new Error(`probe exceeded ${PROBE_TIMEOUT_MS}ms`)), PROBE_TIMEOUT_MS);
-      }),
-    ]);
-    return true;
-  } catch (error) {
-    this.logger.error('database health probe failed', error instanceof Error ? error.stack : String(error));
-    return false;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-```
+No `HealthService` original desta seção: um `try/catch` simples em torno de `this.prisma.$queryRaw\`SELECT 1\``. As rodadas 4, 5, 7 e 8 de revisão (seções próprias abaixo) adicionaram, nesta ordem, logging, timeout, cache com coalescing, e depois duas correções no próprio cache — o código final em `src/health/health.service.ts` não corresponde mais a um snippet único e estável o bastante para repetir aqui sem ficar desatualizado de novo a cada rodada; ler o arquivo é a fonte de verdade.
 
 **Sem `@nestjs/terminus`**: é uma dependência e um modelo mental inteiro para o que aqui são ~20 linhas, e o Docker só precisa de um 200. Separar liveness de readiness fica registrado como **não-objetivo**, não como dívida — revisitar se algum dia houver um orquestrador que distinga os dois.
 
@@ -168,6 +137,16 @@ A exceção ao rate limit global ficou documentada em `.github/ai-guidelines/sec
 
 2. **O log do filtro usava `request.url`, que inclui a query string.** Nenhuma rota atual passa segredo na query string, mas nada impede uma futura de receber um token ou e-mail ali — e esse log roda em **todo** `500` mascarado. Trocado para `request.path` (sem a query string). Novo caso em `all-exceptions.filter.spec.ts` com `url` e `path` deliberadamente diferentes no mock, provando que o log usa o segundo. Verificado por reversão deliberada.
 
+### 8ª rodada: o fix da 7ª ainda não cancelava a consulta real — só parava de esperar por ela
+
+O `pending` da 7ª rodada resolve corretamente para o *chamador*: ninguém espera mais do que o timeout. Mas `Promise.race` não cancela a promise perdedora — ela continua correndo. Com o banco travado (não fora do ar: uma conexão presa, que nunca rejeita nem resolve) e `GET /` sem rate limit, o ciclo completo (3s de timeout + 1500ms de cache) se repetia indefinidamente, e **cada ciclo disparava uma nova consulta real**, enquanto a(s) anterior(es) continuavam presas e seguravam suas conexões no pool — o mesmo esgotamento da 7ª rodada, só que mais lento (a cada ~4,5s em vez de a cada 1500ms). A garantia "at most one `$queryRaw` is ever running" documentada no `security-standards.md` ainda não se sustentava nesse cenário específico.
+
+Corrigido com um segundo nível de coalescing, separado do `pending` (que coalesce *chamadores* dentro do tempo de vida de uma sondagem) e do `cached` (que evita sondagens repetidas num resultado já resolvido): um campo `inFlightQuery` guarda a referência da consulta real (`SELECT 1` via `$queryRaw`) e só é substituído quando ela **de fato** se resolve (via `.finally()`), não quando o nosso timeout desiste de esperar por ela. Enquanto `inFlightQuery` não for `null`, qualquer novo ciclo de `probe()` reaproveita a mesma consulta em andamento em vez de iniciar outra — mesmo que isso signifique correr a mesma consulta travada contra um novo timeout de 3s a cada ciclo.
+
+Novo caso em `health.service.spec.ts`, verificado por reversão deliberada (removendo o `inFlightQuery` e confirmando que `$queryRaw` é chamado 2 vezes em vez de 1, depois restaurando): sondagem nunca resolve, o timeout de 3s dispara (resolvendo `false` para o chamador), a janela de cache de 1500ms também passa, uma segunda chamada não dispara uma segunda consulta real.
+
+A lição, registrada em `security-standards.md`: `Promise.race` contra um timeout limita quanto tempo um *chamador* espera, não quanto tempo a operação perdedora continua correndo — qualquer futuro "corrida contra timeout" num recurso que não suporta cancelamento real precisa da mesma resposta em duas partes.
+
 ### Outra sugestão da revisão, verificada e **não aplicada**
 
 - **Documentar `@ApiTooManyRequestsResponse` em `GET /`.** Verificado contra o próprio código: em todo o projeto, esse decorator só aparece em handlers com um `@Throttle()` explícito que sobrescreve o limite padrão (`CREATE_POST_THROTTLE`, `CREATE_COMMENT_THROTTLE`, `SIGN_UP_THROTTLE`, `LOGIN_THROTTLE`) — nunca numa rota sob o limite global padrão, como o próprio `GET /posts` (`posts.controller.ts`, handler `list`) já demonstra. `GET /` agora nem está sob o limite padrão (`@SkipThrottle()`, 4ª rodada), o que torna a sugestão ainda menos aplicável do que antes.
@@ -179,7 +158,7 @@ O `ErrorResponseDto` existe desde o início como *documentação* do formato pad
 ### Testes
 
 - `all-exceptions.filter.spec.ts` (8 casos): `HttpException` com corpo-objeto sai idêntica; `response.headersSent` termina a conexão com `end()` em vez de tentar re-setar status; erro `http-errors` com `expose: true` (tipo `PayloadTooLargeError`) sai com o próprio status e com `error` computado do status, sem máscara; erro `http-errors` com `expose: false` sai mascarado e logado, igual a um erro desconhecido; `HttpException` com corpo-string (tipo `ThrottlerException`) sai embrulhada em `{ statusCode, message, error }`; `Error` cru sai como `500` mascarado com o logger chamado só nesse caso; o log usa `request.path`, não `request.url` (mock com os dois valores deliberadamente diferentes); um valor lançado que não é `Error` (`throw { code: 'P2002' }`) cai no mesmo caminho mascarado/logado, sem crashar.
-- `health.service.spec.ts` (7 casos): reachable quando o banco responde (e confirma que `$queryRaw` foi chamado); chamadas concorrentes coalescem numa única chamada a `$queryRaw`; uma nova chamada após a janela de 1500ms dispara um novo probe; **uma sondagem travada além da janela de 1500ms não dispara uma segunda consulta real** (o bug da 7ª rodada); not reachable e loga quando o banco lança; not reachable quando o probe nunca resolve (com `vi.useFakeTimers()` + `vi.advanceTimersByTimeAsync`, provando o timeout sem esperar 3s reais); o timer do timeout é limpo quando a query resolve primeiro (`vi.getTimerCount()`).
+- `health.service.spec.ts` (8 casos): reachable quando o banco responde (e confirma que `$queryRaw` foi chamado); chamadas concorrentes coalescem numa única chamada a `$queryRaw`; uma nova chamada após a janela de 1500ms dispara um novo probe; uma sondagem travada além da janela de 1500ms não dispara uma segunda consulta real (o bug da 7ª rodada); **uma sondagem travada através de vários ciclos completos (timeout + cache) continua sem disparar uma segunda consulta real** (o bug da 8ª rodada — `Promise.race` não cancela a perdedora); not reachable e loga quando o banco lança; not reachable quando o probe nunca resolve (com `vi.useFakeTimers()` + `vi.advanceTimersByTimeAsync`, provando o timeout sem esperar 3s reais); o timer do timeout é limpo quando a query resolve primeiro (`vi.getTimerCount()`).
 - `test/security.e2e-spec.ts`: o caso de falha inesperada (banco fora do ar, via `HealthService` sobrescrito) não vaza stack trace nem detalhe interno no corpo; o caso de `413` verifica o corpo inteiro, incluindo `error: 'Payload Too Large'`.
 - `test/app.e2e-spec.ts` ganha o caso que todo outro módulo já tinha: `GET /` aparece em `GET /api/docs-json`.
 - `test/throttle.e2e-spec.ts` ganha o caso do `@SkipThrottle()`: mais de 100 requisições a `/`, todas `200`.
