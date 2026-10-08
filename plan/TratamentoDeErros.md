@@ -38,7 +38,7 @@ O `name` precisa casar com o começo do `<title>` real: `a11y.e2e.ts` monta a as
 Arquivos: `ErrorBoundary.tsx`, `ErrorBoundary.test.tsx`, `index.ts`.
 
 - Nível **organism**: mantém estado local e renderiza uma seção autossuficiente da UI, importando apenas de níveis iguais ou inferiores — o que a regra de Atomic Design do `CLAUDE.md` permite.
-- Precisa ser **class component** (`getDerivedStateFromError` + `componentDidCatch`). React 19 não tem equivalente em hook, e não vale uma dependência nova (`react-error-boundary`) por um componente de ~40 linhas.
+- Precisa ser **class component** (`getDerivedStateFromError` + `componentDidCatch`). React 19 não tem equivalente em hook, e não vale uma dependência nova (`react-error-boundary`) por essa quantidade de código.
 - Montado em `App.tsx` **dentro** do `BrowserRouter`, envolvendo `<Routes>`.
 
 ### O fallback usa HTML nativo, não os átomos do projeto
@@ -57,7 +57,11 @@ O nome do site aparece inline no `document.title` do fallback em vez de vir do `
 
 ### Reset em navegação client-side
 
-O boundary recebe uma prop `resetKey` e limpa o erro quando ela muda; `App.tsx` passa o `pathname` atual. Sem isso, o estado `failed` sobrevive a uma navegação client-side — o Voltar do navegador troca a URL sem remontar nada, e o fallback ficaria na tela sob um endereço sem relação com ele. Foi um bug encontrado na revisão da PR #14.
+O boundary recebe uma prop `resetKey` e limpa o erro quando ela muda; `App.tsx` passa o `location.key` do react-router. Sem isso, o estado `failed` sobrevive a uma navegação client-side — o Voltar do navegador troca a URL sem remontar nada, e o fallback ficaria na tela sob um endereço sem relação com ele. Foi um bug encontrado na revisão da PR #14.
+
+**`location.key`, não `pathname`:** a primeira correção usou `pathname` e ainda estava errada, o que a segunda passada da revisão pegou. O feed guarda termo de busca e página na query string (`useSearchParams` em `FeedPage`), então ir de `/?page=2` para `/` não muda o `pathname` e o fallback continuaria na tela. O `key` é único por entrada do histórico e muda em toda navegação, inclusive quando só a query muda.
+
+Vale registrar o limite desta correção: ela vive no `App.tsx`, que não tem teste unitário neste projeto (não existe `App.test.tsx`, e a cobertura de roteamento vem dos e2e de `routes.ts`). Os testes do boundary provam o mecanismo do `resetKey` nos dois sentidos, mas não provam que o `App` passa o valor certo.
 
 Preferido a `<ErrorBoundary key={pathname}>`: o `key` é o idioma documentado do React e seria mais curto, mas remonta todo o subtree `<Routes>` a cada navegação, o que refaria o fetch do feed sempre que alguém voltasse para `/`.
 

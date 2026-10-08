@@ -9,12 +9,16 @@ import { ProfilePage } from './pages/ProfilePage'
 import { SignUpPage } from './pages/SignUpPage'
 
 // Separate from App because useLocation only works inside the router, and the
-// boundary needs the current path to know when to clear a caught error.
+// boundary needs to know when the viewer has navigated.
 function RoutedApp() {
-  const { pathname } = useLocation()
+  // location.key, not pathname: the feed keeps its search term and page in the
+  // query string (FeedPage's useSearchParams), so going from /?page=2 back to /
+  // leaves the pathname unchanged and the fallback would stay on screen.
+  // The key is unique per history entry, so it changes on every navigation.
+  const { key } = useLocation()
 
   return (
-    <ErrorBoundary resetKey={pathname}>
+    <ErrorBoundary resetKey={key}>
       <Routes>
         {/* The feed is the entry point: it is public, so a visitor lands on
             the content rather than on a login form. */}

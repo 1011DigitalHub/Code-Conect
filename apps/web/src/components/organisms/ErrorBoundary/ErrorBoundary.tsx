@@ -2,15 +2,15 @@ import { Component, type ErrorInfo, type ReactNode } from 'react'
 
 export type ErrorBoundaryProps = {
   children: ReactNode
-  // Changing this clears a caught error. App passes the current pathname, so
-  // navigating away from a page that threw brings the app back instead of
-  // leaving the fallback on screen under an unrelated URL — which is what
-  // browser Back does, since it changes the route client-side without
-  // remounting anything.
+  // Changing this clears a caught error. App passes react-router's
+  // location.key, so navigating away from a page that threw brings the app
+  // back instead of leaving the fallback on screen under an unrelated URL —
+  // which is what browser Back does, since it changes the route client-side
+  // without remounting anything.
   //
-  // A prop rather than `<ErrorBoundary key={pathname}>`: the key idiom is
-  // shorter, but it remounts the whole <Routes> subtree on every navigation,
-  // which would refetch the feed each time someone returns to it.
+  // A prop rather than `<ErrorBoundary key={...}>`: the key idiom is shorter,
+  // but it remounts the whole <Routes> subtree on every navigation, which
+  // would refetch the feed each time someone returns to it.
   resetKey?: string
 }
 
@@ -23,7 +23,7 @@ type ErrorBoundaryState = {
 // which throws on an href that is not site-relative (see atoms/TextLink).
 //
 // A class component because getDerivedStateFromError/componentDidCatch have no
-// hook equivalent in React 19, and a dependency is not worth ~50 lines.
+// hook equivalent in React 19, and a dependency is not worth this much code.
 //
 // The fallback below is deliberately built from native h1/p/a with Tailwind
 // classes instead of the Heading and TextLink atoms: a safety net must not
@@ -45,9 +45,12 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    // The failed page already set its own title, which would otherwise still
+    // The failed page already set both of these, which would otherwise still
     // describe content that is not on screen (WCAG 2.4.2 Page Titled).
     document.title = 'Algo deu errado | Code Connect'
+    document
+      .querySelector('meta[name="description"]')
+      ?.setAttribute('content', 'Esta página do Code Connect não pôde ser exibida.')
 
     // No error reporting service in this project, so the console is the only
     // place this can go. Keeping the component stack makes it diagnosable.
