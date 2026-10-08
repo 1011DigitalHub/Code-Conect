@@ -22,21 +22,37 @@ export type TextLinkProps = Omit<ComponentProps<typeof Link>, 'className' | 'to'
     href: string
   }
 
+// Fixed, arbitrary origin used only to ask the URL parser "where would a
+// browser actually send this?" — never sent anywhere.
+const ORIGIN_CHECK_BASE = 'https://textlink.invalid'
+
 // Client-side navigation through react-router, so moving between pages doesn't reload the app.
 export function TextLink({ href, variant, ...props }: TextLinkProps) {
   // The feed builds hrefs from API data (`/posts/${post.slug}`), so this is a
   // live check, not a theoretical one: it fails loudly instead of quietly
-  // becoming a javascript: URL XSS vector. react-router's <Link> does not
-  // validate this itself.
+  // becoming a javascript: URL XSS vector or an open redirect. react-router's
+  // <Link> does not validate this itself.
   //
-  // "/" alone isn't enough: "//evil.example" also starts with "/", but a
-  // browser resolves a protocol-relative href like that as an absolute URL
-  // on evil.example, not a path on this site — an open redirect from a
-  // malicious API value. "/\" is rejected too, since some browsers
-  // normalize a leading backslash into a second forward slash before
-  // resolving the URL, reaching the same vector through a different string.
-  if (!href.startsWith('/') || href.startsWith('//') || href.startsWith('/\\')) {
-    throw new Error(`TextLink: href must be a relative path starting with "/", got "${href}"`)
+  // Checked by outcome, not by prefix: resolve href with the same WHATWG URL
+  // parser a browser uses, against a fixed base, and require the result to
+  // land back on that base's origin. A prefix denylist has to enumerate every
+  // string that normalizes into a cross-origin URL — "//evil.example"
+  // (protocol-relative), "/\evil.example" (the WHATWG URL Standard treats a
+  // leading backslash as a second forward slash for special schemes like
+  // http/https, in every modern browser, not just some), and "/\t/evil.example"
+  // (the parser strips embedded tab/newline/CR characters before resolving,
+  // so this normalizes to the protocol-relative form above) — and it's easy
+  // to miss one, as the tab/newline case was missed here originally. Checking
+  // the resolved origin instead closes all of these, including variants not
+  // enumerated above, in one comparison.
+  let resolvedOrigin: string
+  try {
+    resolvedOrigin = new URL(href, ORIGIN_CHECK_BASE).origin
+  } catch {
+    resolvedOrigin = ''
+  }
+  if (!href.startsWith('/') || resolvedOrigin !== ORIGIN_CHECK_BASE) {
+    throw new Error(`TextLink: href must be a same-origin path starting with "/", got "${href}"`)
   }
 
   return <Link to={href} className={textLink({ variant })} {...props} />
