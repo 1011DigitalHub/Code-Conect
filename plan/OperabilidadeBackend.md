@@ -78,15 +78,24 @@ O caminho de `503` é coberto no unitário do service com o `PrismaService` mock
 - **Stack trace completo no terminal da API.** `Logger` do `@nestjs/common` com escopo próprio: `logger.error(mensagem, error.stack)`, mais método e rota. A saída HTTP fica mascarada; o diagnóstico fica no log.
 - **`HttpException` não é logada.** Um `401` por senha errada é operação normal, e logar 4xx transforma o log em ruído que ninguém lê.
 
+### "`HttpException` passa intacta" tinha duas pegadinhas, achadas só ao rodar o e2e inteiro
+
+O desenho original assumia que `exception.getResponse()` sempre devolve o objeto `{ statusCode, message, error }`. Dois casos reais quebraram essa suposição, e os dois só apareceram rodando a suíte completa — nenhum unitário do primeiro rascunho cobria:
+
+1. **`ThrottlerException` (e qualquer `HttpException` construída com uma string simples).** `getResponse()` devolve a string crua, não um objeto. O `BaseExceptionFilter` padrão do Nest embrulha isso em `{ statusCode, message }`; sem replicar esse passo, a string virava o corpo inteiro da resposta e derrubava as três asserções de `429` em `throttle.e2e-spec.ts`.
+2. **`PayloadTooLargeError` do `body-parser`.** Lançado pelo middleware antes do router do Nest ver a requisição, então nunca é uma `HttpException` — mas carrega o mesmo formato do pacote `http-errors` (`expose`/`statusCode`/`status`) que o filtro padrão do Nest também trata como caso especial. Sem replicar isso, um payload 10kb acima do limite virava um `500` mascarado em vez do `413` que `security.e2e-spec.ts` já esperava.
+
+`AllExceptionsFilter` replica os dois casos do `BaseExceptionFilter` original do Nest (não são invenção própria), com um teste unitário para cada um provado por reversão deliberada antes de ficar confiado nele.
+
 ### Por que fecha uma lacuna real
 
 O `ErrorResponseDto` existe desde o início como *documentação* do formato padrão do Nest. Com o filter, o formato passa a ser garantido inclusive no caminho hoje menos previsível — a exceção que ninguém escreveu. E o log é a única diferença entre "deu 500 em produção" e "deu 500 em produção por isto, nesta rota".
 
 ### Testes
 
-- `all-exceptions.filter.spec.ts`: `HttpException` sai idêntica; `Error` cru sai como o 500 mascarado; o logger é chamado no segundo caso e **não** no primeiro.
-- `test/security.e2e-spec.ts` ganha um caso provando que uma falha inesperada não vaza stack trace nem detalhe interno no corpo.
-- A suíte de e2e **inteira** é a rede de proteção: se o filter quebrar o formato de alguma exceção documentada, são aquelas 25+ asserções que acusam.
+- `all-exceptions.filter.spec.ts` (4 casos): `HttpException` com corpo-objeto sai idêntica; `HttpException` com corpo-string (tipo `ThrottlerException`) sai embrulhada em `{ statusCode, message }`; erro no formato `http-errors` (tipo `PayloadTooLargeError`) sai com o próprio status, sem máscara; `Error` cru sai como `500` mascarado com o logger chamado só nesse caso.
+- `test/security.e2e-spec.ts` ganha um caso provando que uma falha inesperada (banco fora do ar, via `HealthService` sobrescrito) não vaza stack trace nem detalhe interno no corpo.
+- A suíte de e2e **inteira** é a rede de proteção: foi exatamente rodá-la por completo, não só os testes novos, que achou os dois casos acima — `throttle.e2e-spec.ts` e o `413` em `security.e2e-spec.ts` acusaram na hora.
 
 → `feat(api): enforce the documented error shape with a global exception filter`
 
@@ -153,7 +162,9 @@ pnpm build
 
 `pnpm test:web` e `test:web:a11y` não são necessários: esta fase não toca `apps/web`. O `lighthouse.yml` não muda, mas vale conferir que o job segue verde — é ele que exercita o probe de readiness contra a rota nova.
 
-Manual, sem cobertura automatizada possível:
+Todos os comandos acima rodaram verdes: `pnpm typecheck` e `pnpm lint` sem erros nos dois apps, `pnpm test:api` com 166 testes (22 arquivos), `pnpm test:api:e2e` com 98 testes (8 arquivos) contra o Postgres real, `pnpm build` compilando `apps/api` e `apps/web`.
 
-- `docker compose up --build api web` → confirmar que o `web` só sai de `created` depois de o `api` ficar `healthy`. Exige `JWT_SECRET`, `CORS_ORIGINS` e `VITE_API_URL` no `.env` da raiz, que hoje só tem as chaves `POSTGRES_*` — preencher a partir do `.env.example` antes do teste.
-- `docker stop` no container da API: o shutdown deve seguir em ~0,6–0,7s, sem regressão no `enableShutdownHooks` que o `main.ts` já garante.
+Manuais — **executados em 2026-10-08**, resultado abaixo:
+
+- [x] `docker compose up --build api web` → confirmado pelo próprio log de startup do compose: `api` passa por `Starting → Started → Waiting → Healthy` antes de `web` saber de `Created` para `Starting`. `docker compose ps` reporta os dois como `(healthy)`, `curl http://127.0.0.1:3000/` devolve `{"status":"ok"}` e `curl http://127.0.0.1:8080/` devolve `200`. Precisou preencher `CORS_ORIGINS` e `VITE_API_URL` no `.env` da raiz (que só tinha `JWT_SECRET` e as chaves `POSTGRES_*`) a partir do `.env.example`, como previsto.
+- [x] `docker stop` no container da API → `real 0m0.681s`, dentro da faixa esperada de ~0,6–0,7s. Sem regressão no `enableShutdownHooks` do `main.ts`.
