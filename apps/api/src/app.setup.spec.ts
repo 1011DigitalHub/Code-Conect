@@ -13,12 +13,12 @@ async function configuredAppWithTrustProxy(trustProxy: string | undefined) {
   vi.stubEnv('TRUST_PROXY', trustProxy as string);
 
   const { AppController } = await import('./app.controller.js');
-  const { AppService } = await import('./app.service.js');
+  const { HealthService } = await import('./health/health.service.js');
   const { configureApp } = await import('./app.setup.js');
 
   const moduleFixture: TestingModule = await Test.createTestingModule({
     controllers: [AppController],
-    providers: [AppService],
+    providers: [{ provide: HealthService, useValue: { isDatabaseReachable: () => true } }],
   }).compile();
   const app = moduleFixture.createNestApplication<NestExpressApplication>();
   configureApp(app);
