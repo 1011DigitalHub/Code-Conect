@@ -28,6 +28,34 @@ describe('HealthService', () => {
     expect(errorSpy).not.toHaveBeenCalled();
   });
 
+  // GET / is @SkipThrottle()'d, so nothing else stops a flood of anonymous
+  // requests from each opening a connection in pg's pool. This is what
+  // actually bounds that: concurrent callers share the one in-flight probe
+  // instead of each starting their own.
+  it('coalesces concurrent callers into a single probe', async () => {
+    prisma.$queryRaw.mockResolvedValue([{ '?column?': 1 }]);
+
+    const [first, second] = await Promise.all([
+      service.isDatabaseReachable(),
+      service.isDatabaseReachable(),
+    ]);
+
+    expect(first).toBe(true);
+    expect(second).toBe(true);
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it('probes again once the cache window has passed', async () => {
+    vi.useFakeTimers();
+    prisma.$queryRaw.mockResolvedValue([{ '?column?': 1 }]);
+
+    await service.isDatabaseReachable();
+    await vi.advanceTimersByTimeAsync(1_501);
+    await service.isDatabaseReachable();
+
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+  });
+
   // The 503 AppController throws from this is an HttpException, so
   // AllExceptionsFilter never logs it — this is the only place the real
   // Postgres error ends up in a server-side log at all.
@@ -53,5 +81,18 @@ describe('HealthService', () => {
 
     await expect(result).resolves.toBe(false);
     expect(errorSpy).toHaveBeenCalledTimes(1);
+  });
+
+  // The timeout race leaves a dangling setTimeout behind if the query wins
+  // (the common case — it normally answers in milliseconds, long before
+  // the 3s timer). Left uncleared, that timer keeps firing and holding the
+  // event loop open for the rest of its 3s on every single health check.
+  it('clears the timeout timer once the probe settles', async () => {
+    vi.useFakeTimers();
+    prisma.$queryRaw.mockResolvedValue([{ '?column?': 1 }]);
+
+    await service.isDatabaseReachable();
+
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
