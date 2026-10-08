@@ -91,6 +91,11 @@ O desenho original assumia que `exception.getResponse()` sempre devolve o objeto
 
 Achado pela revisão da PR #16 (`isHttpError` só checava `typeof err.expose === 'boolean'`, nunca o valor). O pacote `http-errors` usa `expose = status < 500` por padrão — ou seja, `expose: false` é exatamente o sinal de "isto é um 5xx interno, não devolva esta mensagem ao cliente". A versão original do `isHttpError` deixava passar um erro nesse formato com `expose: false` do mesmo jeito que o `PayloadTooLargeError` (`expose: true`) — vazando a mensagem interna sem máscara e, pior, sem logar (o branch retorna antes da chamada ao `logger.error`). O próprio comentário que eu tinha escrito no código já afirmava que só `expose: true` era seguro; o código não checava isso. Corrigido para `err.expose === true`, com um caso unitário dedicado (`expose: false` deve mascarar e logar, igual a qualquer erro desconhecido), verificado por reversão deliberada antes de confiar nele.
 
+### Mais dois casos reais, achados na 3ª rodada de revisão
+
+1. **Sem checagem de `headersSent`.** Regressão em relação ao `BaseExceptionFilter` original do Nest, que o substitui: se algo já começou a escrever a resposta antes da exceção (um handler que faz streaming, por exemplo), chamar `response.status()` lança `ERR_HTTP_HEADERS_SENT` — sem rede de proteção própria, esse throw escapa do próprio filtro. Corrigido separando "decidir status+corpo" (`resolve`, que já loga quando é um erro desconhecido) de "escrever a resposta": se `response.headersSent`, só `response.end()`, sem tentar re-setar status. O log do branch desconhecido continua acontecendo de qualquer forma, porque roda dentro do `resolve`, antes dessa checagem. Testado com um caso dedicado, verificado por reversão deliberada.
+2. **Os ramos embrulhados (string-`HttpException` e `http-errors`) não tinham `error`.** Batem com o que o próprio `BaseExceptionFilter` do Nest faz (confirmado lendo o source), mas a regra deste projeto (`backend-architecture.md`: *"Keep Nest's default error shape (statusCode, message, error) across the whole API"*) e o próprio `ErrorResponseDto` tratam `error` como sempre presente — "espelhar o Nest" não bastava para cumprir a própria regra. Corrigido computando `error` a partir do status via `node:http`'s `STATUS_CODES` nos dois ramos, em vez de só nos dois que já tinham (o `HttpException` com corpo-objeto e o `500` mascarado).
+
 ### Duas sugestões da revisão, verificadas e **não aplicadas**
 
 - **Documentar `@ApiTooManyRequestsResponse` em `GET /`.** Verificado contra o próprio código: em todo o projeto, esse decorator só aparece em handlers com um `@Throttle()` explícito que sobrescreve o limite padrão (`CREATE_POST_THROTTLE`, `CREATE_COMMENT_THROTTLE`, `SIGN_UP_THROTTLE`, `LOGIN_THROTTLE`) — nunca numa rota sob o limite global padrão, como o próprio `GET /posts` (`posts.controller.ts`, handler `list`) já demonstra. `GET /` usa o limite padrão, sem override; aplicar a sugestão a essa única rota criaria a inconsistência que ela tentava evitar.
@@ -102,8 +107,8 @@ O `ErrorResponseDto` existe desde o início como *documentação* do formato pad
 
 ### Testes
 
-- `all-exceptions.filter.spec.ts` (5 casos): `HttpException` com corpo-objeto sai idêntica; erro `http-errors` com `expose: true` (tipo `PayloadTooLargeError`) sai com o próprio status, sem máscara; erro `http-errors` com `expose: false` sai mascarado e logado, igual a um erro desconhecido; `HttpException` com corpo-string (tipo `ThrottlerException`) sai embrulhada em `{ statusCode, message }`; `Error` cru sai como `500` mascarado com o logger chamado só nesse caso.
-- `test/security.e2e-spec.ts`: o caso de falha inesperada (banco fora do ar, via `HealthService` sobrescrito) não vaza stack trace nem detalhe interno no corpo; o caso de `413` agora também verifica o corpo (`{ statusCode: 413, message: 'request entity too large' }`), não só o status.
+- `all-exceptions.filter.spec.ts` (6 casos): `HttpException` com corpo-objeto sai idêntica; `response.headersSent` termina a conexão com `end()` em vez de tentar re-setar status; erro `http-errors` com `expose: true` (tipo `PayloadTooLargeError`) sai com o próprio status e com `error` computado do status, sem máscara; erro `http-errors` com `expose: false` sai mascarado e logado, igual a um erro desconhecido; `HttpException` com corpo-string (tipo `ThrottlerException`) sai embrulhada em `{ statusCode, message, error }`; `Error` cru sai como `500` mascarado com o logger chamado só nesse caso.
+- `test/security.e2e-spec.ts`: o caso de falha inesperada (banco fora do ar, via `HealthService` sobrescrito) não vaza stack trace nem detalhe interno no corpo; o caso de `413` verifica o corpo inteiro, incluindo `error: 'Payload Too Large'`.
 - `test/app.e2e-spec.ts` ganha o caso que todo outro módulo já tinha: `GET /` aparece em `GET /api/docs-json`.
 - A suíte de e2e **inteira** é a rede de proteção: foi exatamente rodá-la por completo, não só os testes novos, que achou os dois primeiros casos (`throttle.e2e-spec.ts` e o `413` em `security.e2e-spec.ts` acusaram na hora); o terceiro (`expose: false`) só a revisão achou, porque nenhum middleware real do projeto produz esse formato hoje.
 
@@ -118,13 +123,13 @@ Depende da etapa 1: o healthcheck precisa de um endpoint real para consultar, n�
 A imagem runtime é `node:22-alpine` e instala **apenas** `dumb-init` — não tem `curl`. Em vez de adicionar um pacote só para isso, usar o `fetch` global do Node 22:
 
 ```dockerfile
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --start-interval=2s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 ```
 
-Lê `process.env.PORT` (mesmo fallback de `src/env.ts`) em vez de fixar `3000`: `EXPOSE` é só documentação e não muda a porta real que o processo escuta, então um container iniciado com outro `PORT` checaria a porta errada e ficaria `unhealthy` para sempre. Achado na revisão da PR #16.
+Lê `process.env.PORT` em vez de fixar `3000`: `EXPOSE` é só documentação e não muda a porta real que o processo escuta, então um container iniciado com outro `PORT` checaria a porta errada e ficaria `unhealthy` para sempre. Achado na revisão da PR #16. O `||` (em vez de `??`) só cai no fallback quando `PORT` está ausente ou vazio — os dois casos que `src/env.ts`'s `readPositiveInt` também trata como "não definido" — e é o lado certo: `??` manteria um `PORT=""` explícito como string vazia na URL em vez de cair para `3000`.
 
-`start-period` generoso porque `PrismaService.onModuleInit` conecta no boot: antes disso a API legitimamente não responde, e sem essa janela o container seria marcado unhealthy durante a própria partida.
+`start-period` generoso porque `PrismaService.onModuleInit` conecta no boot: antes disso a API legitimamente não responde, e sem essa janela o container seria marcado unhealthy durante a própria partida. `start-interval` (também achado na revisão) existe porque, sem ele, a primeira checagem só roda em T+`interval` (30s) — o `web`, agora com `condition: service_healthy`, esperaria os 30s inteiros em todo cold start mesmo com a API pronta em poucos segundos. Com `start-interval=2s`, medido localmente: `healthy` em 3s.
 
 ### `apps/web/Dockerfile`
 
