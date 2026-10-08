@@ -107,4 +107,32 @@ describe('PostList', () => {
 
     await expectNoA11yViolations(container)
   })
+
+  // A missing author — a null join, a deleted account, any API-shape slip —
+  // makes PostCard throw synchronously at `post.author.name` (issue #18).
+  // CardErrorBoundary must isolate that one card instead of losing the whole
+  // feed. (A malicious post.slug cannot reach this path: PostCard always
+  // builds its TextLink href as `/posts/${post.slug}`, and that fixed literal
+  // prefix anchors the result to this origin no matter what the slug
+  // contains — confirmed by trying every vector TextLink.test.tsx rejects
+  // with the prefix prepended, none of which throw or resolve cross-origin.
+  // The realistic trigger for a per-card throw is some other malformed field,
+  // not slug.)
+  it('isolates a single bad card instead of losing the whole feed', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const broken = posts.map((p, index) =>
+      index === 2 ? { ...p, author: null as unknown as PostCardPost['author'] } : p,
+    )
+    renderWithRouter(
+      <PostList posts={broken} authenticated={false} onToggleLike={vi.fn()} now={now} />,
+    )
+
+    expect(screen.getAllByRole('listitem')).toHaveLength(posts.length - 1)
+    expect(screen.queryByText('Post número 3')).not.toBeInTheDocument()
+    expect(screen.getByText('Post número 1')).toBeInTheDocument()
+    expect(screen.getByText('Post número 5')).toBeInTheDocument()
+
+    vi.mocked(console.error).mockRestore()
+  })
 })
