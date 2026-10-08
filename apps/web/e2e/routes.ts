@@ -13,4 +13,8 @@ export const routes = [
   { name: 'Login', path: '/login' },
   { name: 'Cadastro', path: '/cadastro' },
   { name: 'Componentes React na prática', path: '/posts/componentes-react-na-pratica' },
+  // The catch-all route. Any unmatched path renders it, and the SPA serves it
+  // with HTTP 200 (try_files falls back to index.html), so the Lighthouse
+  // "successful HTTP status code" audit still passes.
+  { name: 'Página não encontrada', path: '/essa-rota-nao-existe' },
 ]

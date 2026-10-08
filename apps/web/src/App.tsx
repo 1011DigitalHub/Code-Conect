@@ -2,6 +2,7 @@ import { BrowserRouter, Route, Routes } from 'react-router'
 import { FeedPage } from './pages/FeedPage'
 import { LoginPage } from './pages/LoginPage'
 import { NewPostPage } from './pages/NewPostPage'
+import { NotFoundPage } from './pages/NotFoundPage'
 import { PostPage } from './pages/PostPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { SignUpPage } from './pages/SignUpPage'
@@ -20,6 +21,8 @@ function App() {
             ranks the static segment higher. */}
         <Route path="/posts/novo" element={<NewPostPage />} />
         <Route path="/posts/:slug" element={<PostPage />} />
+        {/* Last: anything unmatched, including a slug that no longer exists. */}
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </BrowserRouter>
   )
