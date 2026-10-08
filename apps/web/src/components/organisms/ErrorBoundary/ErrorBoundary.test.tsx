@@ -49,6 +49,25 @@ describe('ErrorBoundary', () => {
     expect(screen.getByRole('link', { name: 'Voltar para o feed' })).toHaveAttribute('href', '/')
   })
 
+  // The tag has to exist for the overwrite to be observable: index.html ships
+  // one and usePageMeta keeps it current, but jsdom starts without it, so the
+  // optional chaining in componentDidCatch would silently no-op here.
+  it('rewrites the meta description so it stops describing the content that failed', () => {
+    const meta = document.createElement('meta')
+    meta.name = 'description'
+    meta.content = 'Descrição da página que falhou'
+    document.head.append(meta)
+
+    render(
+      <ErrorBoundary>
+        <Explodes />
+      </ErrorBoundary>,
+    )
+
+    expect(meta.content).toBe('Esta página do Code Connect não pôde ser exibida.')
+    meta.remove()
+  })
+
   it('names the page in the title so it stops describing the content that failed', () => {
     render(
       <ErrorBoundary>

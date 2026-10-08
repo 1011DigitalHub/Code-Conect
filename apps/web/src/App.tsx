@@ -10,7 +10,11 @@ import { SignUpPage } from './pages/SignUpPage'
 
 // Separate from App because useLocation only works inside the router, and the
 // boundary needs to know when the viewer has navigated.
-function RoutedApp() {
+//
+// Exported for App.test.tsx, which renders it inside a MemoryRouter: App's own
+// BrowserRouter cannot be navigated from a test, and the resetKey wiring below
+// is worth pinning — it has silently regressed once already.
+export function RoutedApp() {
   // location.key, not pathname: the feed keeps its search term and page in the
   // query string (FeedPage's useSearchParams), so going from /?page=2 back to /
   // leaves the pathname unchanged and the fallback would stay on screen.
