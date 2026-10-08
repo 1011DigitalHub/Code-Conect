@@ -2,16 +2,22 @@ import { ArgumentsHost, BadRequestException, HttpException, Logger } from '@nest
 import type { Mock } from 'vitest';
 import { AllExceptionsFilter } from './all-exceptions.filter.js';
 
-function mockHost(): { host: ArgumentsHost; status: Mock; json: Mock } {
+function mockHost(options: { headersSent?: boolean } = {}): {
+  host: ArgumentsHost;
+  status: Mock;
+  json: Mock;
+  end: Mock;
+} {
   const json = vi.fn();
   const status = vi.fn(() => ({ json }));
+  const end = vi.fn();
   const host = {
     switchToHttp: () => ({
-      getResponse: () => ({ status }),
+      getResponse: () => ({ status, end, headersSent: options.headersSent ?? false }),
       getRequest: () => ({ method: 'GET', url: '/posts' }),
     }),
   } as unknown as ArgumentsHost;
-  return { host, status, json };
+  return { host, status, json, end };
 }
 
 describe('AllExceptionsFilter', () => {
@@ -46,6 +52,21 @@ describe('AllExceptionsFilter', () => {
     expect(errorSpy).not.toHaveBeenCalled();
   });
 
+  // A handler that already started writing a response (streaming, or any
+  // write before the throw) can't have its status/headers changed —
+  // calling response.status() here would throw ERR_HTTP_HEADERS_SENT. Nest's
+  // own BaseExceptionFilter guards against exactly this case.
+  it('ends the response instead of reshaping it when headers were already sent', () => {
+    const { host, status, json, end } = mockHost({ headersSent: true });
+    const exception = new BadRequestException(['email must be an email']);
+
+    handle(exception, host);
+
+    expect(end).toHaveBeenCalledTimes(1);
+    expect(status).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
+  });
+
   // body-parser's PayloadTooLargeError (via the "http-errors" package) is
   // thrown before Nest's router sees the request, so it is never an
   // HttpException — but it must still 413, not fall through to the masked
@@ -63,7 +84,11 @@ describe('AllExceptionsFilter', () => {
     handle(exception, host);
 
     expect(status).toHaveBeenCalledWith(413);
-    expect(json).toHaveBeenCalledWith({ statusCode: 413, message: 'request entity too large' });
+    expect(json).toHaveBeenCalledWith({
+      statusCode: 413,
+      message: 'request entity too large',
+      error: 'Payload Too Large',
+    });
     expect(errorSpy).not.toHaveBeenCalled();
   });
 
@@ -96,7 +121,7 @@ describe('AllExceptionsFilter', () => {
   // ThrottlerException (and other HttpExceptions built from a plain string
   // rather than an object) is the real-world case this guards: it caught a
   // regression where the string came back as the entire response body
-  // instead of { statusCode, message }, breaking every 429 assertion.
+  // instead of { statusCode, message, error }, breaking every 429 assertion.
   it('wraps an HttpException whose response is a plain string, like ThrottlerException', () => {
     const { host, status, json } = mockHost();
     const exception = new HttpException('ThrottlerException: Too Many Requests', 429);
@@ -107,6 +132,7 @@ describe('AllExceptionsFilter', () => {
     expect(json).toHaveBeenCalledWith({
       statusCode: 429,
       message: 'ThrottlerException: Too Many Requests',
+      error: 'Too Many Requests',
     });
     expect(errorSpy).not.toHaveBeenCalled();
   });

@@ -235,7 +235,11 @@ describe('Security regressions (e2e)', () => {
       // PayloadTooLargeError never reaches Nest's router, so this also
       // confirms the filter's isHttpError passthrough — not just the status
       // code body-parser itself would have produced anyway.
-      expect(res.body).toEqual({ statusCode: 413, message: 'request entity too large' });
+      expect(res.body).toEqual({
+        statusCode: 413,
+        message: 'request entity too large',
+        error: 'Payload Too Large',
+      });
     });
 
     it('accepts a normal-sized payload', async () => {
