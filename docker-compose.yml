@@ -59,7 +59,13 @@ services:
     container_name: code-connect-web
     restart: unless-stopped
     depends_on:
-      - api
+      # Not just "api exists": nginx otherwise starts serving a frontend
+      # whose API is still connecting to Prisma on a cold start. The
+      # HEALTHCHECK both images declare (see their Dockerfiles) is what
+      # compose reads to know the difference — no separate `healthcheck:`
+      # block here, so the two can't drift apart.
+      api:
+        condition: service_healthy
     environment:
       # Run-time: substituted into the CSP by nginx at container start
       # (apps/web/default.conf.template) — same value, different stage.

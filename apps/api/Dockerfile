@@ -54,3 +54,12 @@ EXPOSE 3000
 # connection on a graceful stop instead of the process being killed outright.
 ENTRYPOINT ["dumb-init", "--"]
 CMD ["node", "dist/main.js"]
+
+# The runtime stage installs nothing but dumb-init, so this uses Node 22's
+# global fetch instead of curl. GET / is the health check added in
+# src/health — a 503 (database unreachable) or a failed fetch both exit 1.
+# start-period is generous because PrismaService.onModuleInit connects on
+# boot: before that finishes the API legitimately isn't up yet, and without
+# this window the container would be marked unhealthy during its own start.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:3000/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
