@@ -58,14 +58,19 @@ describe('ErrorBoundary', () => {
     meta.content = 'Descrição da página que falhou'
     document.head.append(meta)
 
-    render(
-      <ErrorBoundary>
-        <Explodes />
-      </ErrorBoundary>,
-    )
+    try {
+      render(
+        <ErrorBoundary>
+          <Explodes />
+        </ErrorBoundary>,
+      )
 
-    expect(meta.content).toBe('Esta página do Code Connect não pôde ser exibida.')
-    meta.remove()
+      expect(meta.content).toBe('Esta página do Code Connect não pôde ser exibida.')
+    } finally {
+      // Otherwise a failed assertion above leaves the tag in document.head
+      // for the rest of this file's tests.
+      meta.remove()
+    }
   })
 
   it('names the page in the title so it stops describing the content that failed', () => {

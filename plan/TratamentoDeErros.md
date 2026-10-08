@@ -31,6 +31,8 @@ O `name` precisa casar com o começo do `<title>` real: `a11y.e2e.ts` monta a as
 
 **Trade-off aceito (soft 404):** como a resposta é 200 e a página não tem `noindex`, um buscador pode em teoria indexar um endereço inexistente como conteúdo. Não adicionamos `noindex` de propósito: ele derruba a auditoria `is-crawlable` do Lighthouse nessa rota, e o `lighthouserc.cjs` exige **SEO 100** em todas. Entre um risco teórico de indexação e furar um gate que protege todas as páginas reais, fica o primeiro. Revisitar se o site passar a ser indexado de verdade e isso aparecer no Search Console.
 
+**Consideração futura, levantada na revisão da PR #14:** o Lighthouse CI tem um `assertMatrix`, que permite relaxar uma auditoria só numa URL específica. Em tese isso isentaria `is-crawlable` apenas em `/essa-rota-nao-existe`, permitindo `noindex` ali sem afetar o SEO 100 das páginas reais — fechando o risco teórico acima em vez de só documentá-lo. Não implementado nesta rodada: exigiria confirmar que a versão do LHCI em uso suporta overrides por URL e validar que o gate das outras 4 rotas não regride. Fica registrado para avaliação própria, não como pendência desta fase.
+
 `public/llms.txt` **não** muda: a 404 não é página de conteúdo para indexar. `public/robots.txt` também não — não há o que bloquear.
 
 ## 2. `ErrorBoundary` (`src/components/organisms/ErrorBoundary/`)
@@ -61,7 +63,7 @@ O boundary recebe uma prop `resetKey` e limpa o erro quando ela muda; `App.tsx` 
 
 **`location.key`, não `pathname`:** a primeira correção usou `pathname` e ainda estava errada, o que a segunda passada da revisão pegou. O feed guarda termo de busca e página na query string (`useSearchParams` em `FeedPage`), então ir de `/?page=2` para `/` não muda o `pathname` e o fallback continuaria na tela. O `key` é único por entrada do histórico e muda em toda navegação, inclusive quando só a query muda.
 
-Vale registrar o limite desta correção: ela vive no `App.tsx`, que não tem teste unitário neste projeto (não existe `App.test.tsx`, e a cobertura de roteamento vem dos e2e de `routes.ts`). Os testes do boundary provam o mecanismo do `resetKey` nos dois sentidos, mas não provam que o `App` passa o valor certo.
+A fiação `resetKey={location.key}` chegou a ficar sem teste unitário — o `App.tsx` não tinha nenhum neste projeto, e a cobertura de roteamento vinha só dos e2e de `routes.ts`. Os testes do boundary provam o mecanismo do `resetKey` nos dois sentidos, mas não provavam que o `App` passava o valor certo, e foi exatamente esse ponto que regrediu duas vezes nesta PR. `App.test.tsx` agora fixa essa ligação: renderiza `RoutedApp` (exportado só para isso) dentro de um `MemoryRouter`, com o feed mockado para falhar na primeira renderização e funcionar depois — uma página que lança sempre não distinguiria `key` de `pathname`, já que o fallback ficaria na tela nos dois casos.
 
 Preferido a `<ErrorBoundary key={pathname}>`: o `key` é o idioma documentado do React e seria mais curto, mas remonta todo o subtree `<Routes>` a cada navegação, o que refaria o fetch do feed sempre que alguém voltasse para `/`.
 
@@ -107,7 +109,7 @@ Manuais obrigatórios do `CLAUDE.md`, na rota nova — **todos aprovados em vali
 - [x] testar com leitor de tela (NVDA no Windows) — título, `h1` e o link anunciados corretamente;
 - [x] conferir em zoom de 200% — sem rolagem horizontal e sem texto cortado.
 
-O `ErrorBoundary` não entra nesta lista: não existe caminho natural para acionar o fallback (o `TextLink` só lança com href inválido e todo caller passa literal válido), então uma verificação manual exigiria inserir um `throw` temporário. Ele fica coberto pelos 6 testes do componente, incluindo o caso axe sobre o próprio fallback.
+O `ErrorBoundary` não entra nesta lista: não existe caminho natural para acionar o fallback (o `TextLink` só lança com href inválido e todo caller passa literal válido), então uma verificação manual exigiria inserir um `throw` temporário. Ele fica coberto pelos 9 testes do componente, incluindo o caso axe sobre o próprio fallback.
 
 ### Lighthouse (build de produção, preset desktop)
 
