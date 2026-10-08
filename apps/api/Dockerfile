@@ -73,6 +73,8 @@ CMD ["node", "dist/main.js"]
 # start-interval keeps checks frequent during exactly that window — without
 # it, Docker's first check only happens at T+interval (30s), so `web`
 # (gated on `api: condition: service_healthy`) would wait a full 30s on
-# every cold start even when the api was ready in 2.
+# every cold start even when the api was ready in 2. Requires Docker Engine
+# 25+ (API 1.44+) — confirm the deploy target's engine version; this repo's
+# dev machine runs 29.8, well past it, but an older engine wasn't tested.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --start-interval=2s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
