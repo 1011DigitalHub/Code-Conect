@@ -6,6 +6,7 @@ import { AppModule } from './../src/app.module.js';
 import { configureApp } from './../src/app.setup.js';
 import { setupSwagger } from './../src/swagger.js';
 import { getJwtSecret, JWT_ALGORITHM } from './../src/auth/auth.constants.js';
+import { HealthService } from './../src/health/health.service.js';
 import { PrismaService } from './../src/prisma/prisma.service.js';
 import { fetchCsrfToken } from './cookies.js';
 import { resetDatabase } from './db.js';
@@ -221,15 +222,24 @@ describe('Security regressions (e2e)', () => {
   });
 
   describe('JSON body size limit', () => {
-    it('413s a payload over the 10kb limit', async () => {
+    it('413s a payload over the 10kb limit, through AllExceptionsFilter', async () => {
       const agent = request.agent(app.getHttpServer());
       const csrfToken = await fetchCsrfToken(agent);
 
-      await agent
+      const res = await agent
         .post('/users')
         .set('X-CSRF-Token', csrfToken)
         .send({ ...newUser, name: 'a'.repeat(20_000) })
         .expect(413);
+
+      // PayloadTooLargeError never reaches Nest's router, so this also
+      // confirms the filter's isHttpError passthrough — not just the status
+      // code body-parser itself would have produced anyway.
+      expect(res.body).toEqual({
+        statusCode: 413,
+        message: 'request entity too large',
+        error: 'Payload Too Large',
+      });
     });
 
     it('accepts a normal-sized payload', async () => {
@@ -241,6 +251,82 @@ describe('Security regressions (e2e)', () => {
         .set('X-CSRF-Token', csrfToken)
         .send(newUser)
         .expect(201);
+    });
+  });
+});
+
+// Separate app instance: overrides HealthService to throw a raw Error
+// (rather than returning false), which is the one way to make a route throw
+// something that isn't already an HttpException without faking a whole
+// database outage. GET / is the trigger because it needs no cookie, no CSRF
+// pair and no body — the failure mode under test is the filter, not auth.
+describe('Global exception filter: an unexpected failure (e2e)', () => {
+  let app: NestExpressApplication;
+
+  beforeEach(async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    })
+      .overrideProvider(HealthService)
+      .useValue({
+        isDatabaseReachable: () => {
+          throw new Error('relation "users" does not exist at line 42');
+        },
+      })
+      .compile();
+    app = moduleFixture.createNestApplication<NestExpressApplication>();
+    configureApp(app);
+    await app.init();
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('masks the failure as a generic 500 instead of leaking the real error', async () => {
+    const res = await request(app.getHttpServer()).get('/').expect(500);
+
+    expect(res.body).toEqual({
+      statusCode: 500,
+      message: 'Internal server error',
+      error: 'Internal Server Error',
+    });
+    expect(JSON.stringify(res.body)).not.toMatch(/relation|does not exist|line 42/i);
+  });
+});
+
+// Separate from the describe above: this is HealthService correctly
+// reporting the database as unreachable (returns false), not a bug the
+// filter has to mask. ServiceUnavailableException is an HttpException, so
+// it passes through AllExceptionsFilter unchanged — the backend-architecture
+// convention of asserting both status and body per endpoint had no e2e
+// coverage for this specific branch before.
+describe('GET /: the clean 503 when the database probe reports unreachable (e2e)', () => {
+  let app: NestExpressApplication;
+
+  beforeEach(async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    })
+      .overrideProvider(HealthService)
+      .useValue({ isDatabaseReachable: () => Promise.resolve(false) })
+      .compile();
+    app = moduleFixture.createNestApplication<NestExpressApplication>();
+    configureApp(app);
+    await app.init();
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('responds 503 with the documented ErrorResponseDto shape', async () => {
+    const res = await request(app.getHttpServer()).get('/').expect(503);
+
+    expect(res.body).toEqual({
+      statusCode: 503,
+      message: 'Database unreachable',
+      error: 'Service Unavailable',
     });
   });
 });

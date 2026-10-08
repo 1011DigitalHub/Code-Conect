@@ -54,3 +54,27 @@ EXPOSE 3000
 # connection on a graceful stop instead of the process being killed outright.
 ENTRYPOINT ["dumb-init", "--"]
 CMD ["node", "dist/main.js"]
+
+# The runtime stage installs nothing but dumb-init, so this uses Node 22's
+# global fetch instead of curl. GET / is the health check added in
+# src/health — a 503 (database unreachable) or a failed fetch both exit 1.
+# Reads process.env.PORT rather than hardcoding 3000: EXPOSE above is
+# documentation only and doesn't change what the process actually binds to,
+# so a container started with a different PORT would otherwise probe the
+# wrong port and report unhealthy forever. The fallback only ever triggers
+# on an unset or empty PORT (the same two cases src/env.ts's own
+# readPositiveInt treats as "use the default"), so || is fine here — `??`
+# would actually be wrong, since an explicit PORT="" would then survive into
+# the URL as a literal empty string instead of falling back.
+#
+# start-period is generous because PrismaService.onModuleInit connects on
+# boot: before that finishes the API legitimately isn't up yet, and without
+# this window the container would be marked unhealthy during its own start.
+# start-interval keeps checks frequent during exactly that window — without
+# it, Docker's first check only happens at T+interval (30s), so `web`
+# (gated on `api: condition: service_healthy`) would wait a full 30s on
+# every cold start even when the api was ready in 2. Requires Docker Engine
+# 25+ (API 1.44+) — confirm the deploy target's engine version; this repo's
+# dev machine runs 29.8, well past it, but an older engine wasn't tested.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --start-interval=2s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"

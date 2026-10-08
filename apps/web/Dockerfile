@@ -56,3 +56,9 @@ EXPOSE 8080
 # needed here), and nginx's master process forwards SIGTERM to its workers
 # and exits cleanly on its own.
 CMD ["nginx", "-g", "daemon off;"]
+
+# nginx:alpine already ships busybox's wget, so no package install needed.
+# --spider skips downloading the body — the status code alone proves nginx
+# is serving.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+  CMD wget -q --spider http://127.0.0.1:8080/ || exit 1

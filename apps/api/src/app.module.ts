@@ -1,12 +1,13 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller.js';
-import { AppService } from './app.service.js';
 import { AuthGuard } from './auth/auth.guard.js';
 import { AuthModule } from './auth/auth.module.js';
 import { CsrfGuard } from './auth/csrf.guard.js';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 import { DEFAULT_THROTTLE } from './common/throttle.constants.js';
+import { HealthModule } from './health/health.module.js';
 import { PostsModule } from './posts/posts.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { UsersModule } from './users/users.module.js';
@@ -15,13 +16,13 @@ import { UsersModule } from './users/users.module.js';
   imports: [
     ThrottlerModule.forRoot([{ name: 'default', ...DEFAULT_THROTTLE }]),
     PrismaModule,
+    HealthModule,
     UsersModule,
     AuthModule,
     PostsModule,
   ],
   controllers: [AppController],
   providers: [
-    AppService,
     // All three global guards live in this one array, so their order is
     // explicit and doesn't depend on Nest's cross-module resolution order
     // (which isn't guaranteed for APP_GUARD providers declared in different
@@ -38,6 +39,9 @@ import { UsersModule } from './users/users.module.js';
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_GUARD, useClass: CsrfGuard },
+    // Runs after the guards: a guard's own rejection (401/403/429) is
+    // already an HttpException and passes through this filter unchanged.
+    { provide: APP_FILTER, useClass: AllExceptionsFilter },
   ],
 })
 export class AppModule {}

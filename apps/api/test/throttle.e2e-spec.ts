@@ -105,4 +105,15 @@ describe('Rate limiting (e2e)', () => {
     expect(res.body).toMatchObject({ statusCode: 429 });
     expect(Number(res.headers['retry-after'])).toBeGreaterThan(0);
   });
+
+  // GET / is deliberately @SkipThrottle()'d (see app.controller.ts): it
+  // reads nothing sensitive and changes no state, so a probe polling past
+  // the default limit must never 429 — the health check becoming the
+  // reason infrastructure reads the service as unhealthy would defeat its
+  // own purpose.
+  it('never limits GET /, past the default global limit', async () => {
+    for (let i = 0; i < DEFAULT_THROTTLE.limit + 5; i++) {
+      await request(app.getHttpServer()).get('/').expect(200);
+    }
+  });
 });

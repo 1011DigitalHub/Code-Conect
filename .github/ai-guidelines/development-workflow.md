@@ -60,7 +60,7 @@ Both apps use [Conventional Commits](https://www.conventionalcommits.org/):
 
 ## Conventions / gotchas
 
-- **API is native ESM** (`"type": "module"`, `module: nodenext`). Relative imports **must** use the `.js` extension (e.g. `import { AppService } from './app.service.js'`), even from `.ts` files. `main.ts` uses top-level `await bootstrap()`.
+- **API is native ESM** (`"type": "module"`, `module: nodenext`). Relative imports **must** use the `.js` extension (e.g. `import { HealthService } from './health/health.service.js'`), even from `.ts` files. `main.ts` uses top-level `await bootstrap()`.
 - The API uses Vitest, not Jest: `globals: true` (`describe`/`it`/`expect` need no imports), and `vite-tsconfig-paths` resolves tsconfig path aliases. Unit tests are colocated in `src/` as `*.spec.ts`; e2e tests live in `apps/api/test/`.
 - API lint treats `typescript/no-floating-promises` as an error, so await or explicitly handle every promise.
 - API Prettier: single quotes, trailing commas. The web app has no Prettier config.
