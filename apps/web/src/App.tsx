@@ -13,7 +13,8 @@ import { SignUpPage } from './pages/SignUpPage'
 //
 // Exported for App.test.tsx, which renders it inside a MemoryRouter: App's own
 // BrowserRouter cannot be navigated from a test, and the resetKey wiring below
-// is worth pinning — it has silently regressed once already.
+// is worth pinning — it has regressed silently before (see plan/TratamentoDeErros.md
+// for the history; it rots fast as a code comment).
 export function RoutedApp() {
   // location.key, not pathname: the feed keeps its search term and page in the
   // query string (FeedPage's useSearchParams), so going from /?page=2 back to /

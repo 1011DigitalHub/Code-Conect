@@ -40,7 +40,8 @@ describe('App routing', () => {
   // rather than location.pathname, because the feed keeps its search term and
   // page in the query string: going from /?page=2 to / leaves the pathname
   // identical, so a pathname-keyed boundary never resets and strands the
-  // viewer on the fallback. That exact bug shipped twice in review.
+  // viewer on the fallback. That exact bug has shipped before — see
+  // plan/TratamentoDeErros.md for the history.
   it('clears a caught error when only the query string changes', async () => {
     render(
       <MemoryRouter initialEntries={['/?page=2']}>

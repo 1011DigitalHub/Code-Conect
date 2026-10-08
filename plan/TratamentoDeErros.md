@@ -75,11 +75,20 @@ Preferido a `<ErrorBoundary key={pathname}>`: o `key` é o idioma documentado do
 - define o título e a meta description da página;
 - `has no WCAG 2.2 AA violations`.
 
-### `ErrorBoundary.test.tsx`
+### `ErrorBoundary.test.tsx` (9 casos)
 - renderiza os filhos normalmente quando nada lança;
 - mostra o fallback quando um filho lança durante o render;
 - o fallback oferece o link de volta para `/`;
+- reescreve a meta description para não continuar descrevendo o conteúdo que falhou;
+- define o título do fallback;
+- limpa o erro quando o `resetKey` muda;
+- mantém o fallback enquanto o `resetKey` não muda;
+- mantém o fallback quando o erro é lançado durante o próprio update que muda o `resetKey` (o caso do bug de "double-catch");
 - `has no WCAG 2.2 AA violations` (no estado de fallback, que é o que importa auditar).
+
+### `App.test.tsx` (2 casos)
+- limpa um erro capturado quando só a query string muda (`/?page=2` → `/`), fixando a ligação `resetKey={location.key}` em vez de `pathname`;
+- renderiza a `NotFoundPage` para um endereço que não casa com nenhuma rota.
 
 **Sobre silenciar o `console.error`:** o React emite o erro capturado no console mesmo com o boundary funcionando, então o teste precisa de `vi.spyOn(console, 'error')`. O mock vai em `beforeEach` com `mockRestore()` em `afterEach`, nunca aplicado de forma solta no corpo do arquivo — um spy que vaza silencia erros legítimos dos outros testes da suíte e esconde regressões reais.
 
