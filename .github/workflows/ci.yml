@@ -100,10 +100,13 @@ jobs:
   # instead of performance scores.
   e2e-web:
     runs-on: ubuntu-latest
-    # Safety net: the suite itself finishes in ~1 minute. Without this, a webServer
-    # teardown hang (see playwright.config.ts) would otherwise run until the runner's
-    # default 6-hour timeout instead of failing fast.
-    timeout-minutes: 10
+    # Safety net against a webServer teardown hang (see playwright.config.ts),
+    # which would otherwise run until the runner's default 6-hour timeout.
+    # Sized well above the work rather than close to it: the suite itself takes
+    # ~2 minutes, but `playwright install --with-deps` has been measured at
+    # 9m34s on a cold runner — it apt-installs the browser's system libraries —
+    # which alone exhausted the previous 10-minute budget.
+    timeout-minutes: 25
     # "/" is the public feed, so playwright.config.ts starts the real API
     # alongside the preview server — which needs a database behind it. Auditing
     # an empty or error state would not measure the page this project ships.
