@@ -28,7 +28,14 @@ export function TextLink({ href, variant, ...props }: TextLinkProps) {
   // live check, not a theoretical one: it fails loudly instead of quietly
   // becoming a javascript: URL XSS vector. react-router's <Link> does not
   // validate this itself.
-  if (!href.startsWith('/')) {
+  //
+  // "/" alone isn't enough: "//evil.example" also starts with "/", but a
+  // browser resolves a protocol-relative href like that as an absolute URL
+  // on evil.example, not a path on this site — an open redirect from a
+  // malicious API value. "/\" is rejected too, since some browsers
+  // normalize a leading backslash into a second forward slash before
+  // resolving the URL, reaching the same vector through a different string.
+  if (!href.startsWith('/') || href.startsWith('//') || href.startsWith('/\\')) {
     throw new Error(`TextLink: href must be a relative path starting with "/", got "${href}"`)
   }
 

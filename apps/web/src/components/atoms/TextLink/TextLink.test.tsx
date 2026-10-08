@@ -31,4 +31,17 @@ describe('TextLink', () => {
       /relative path/,
     )
   })
+
+  // "//evil.example" starts with "/", same as a real site-relative path, but
+  // a browser resolves it as protocol-relative — an absolute URL on
+  // evil.example, not a path on this site. "/\evil.example" is the same
+  // vector through a string some browsers normalize into the first form.
+  it('rejects a protocol-relative href, closing off an open redirect', () => {
+    expect(() => renderWithRouter(<TextLink href="//evil.example">x</TextLink>)).toThrow(
+      /relative path/,
+    )
+    expect(() => renderWithRouter(<TextLink href="/\evil.example">x</TextLink>)).toThrow(
+      /relative path/,
+    )
+  })
 })
