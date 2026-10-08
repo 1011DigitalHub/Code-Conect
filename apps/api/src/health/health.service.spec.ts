@@ -172,4 +172,29 @@ describe('HealthService', () => {
 
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  // The 10th review round's finding: probe() is documented to never reject,
+  // but isDatabaseReachable() only reset `pending` inside the fulfillment
+  // handler. A synchronous throw building the query — before probe()'s own
+  // try even runs — would leave `pending` pointed at a permanently rejected
+  // promise, and every future call would just re-reject the same one
+  // instead of retrying: GET / stuck answering 500 until the process
+  // restarts, with no recovery even once the real problem went away.
+  it('recovers instead of getting stuck after an unexpected synchronous throw', async () => {
+    vi.useFakeTimers();
+    prisma.$queryRaw.mockImplementation(() => {
+      throw new Error('boom: synchronous failure building the query');
+    });
+
+    await expect(service.isDatabaseReachable()).resolves.toBe(false);
+
+    // Past the cache window, with the underlying problem now gone — if
+    // `pending` were stuck, this would still resolve false (or hang),
+    // never true, regardless of how long this advances or what the mock
+    // does next.
+    await vi.advanceTimersByTimeAsync(1_501);
+    prisma.$queryRaw.mockResolvedValue([{ '?column?': 1 }]);
+
+    await expect(service.isDatabaseReachable()).resolves.toBe(true);
+  });
 });

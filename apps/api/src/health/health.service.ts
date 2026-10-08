@@ -60,11 +60,28 @@ export class HealthService {
       return Promise.resolve(this.cached.value);
     }
 
-    this.pending = this.probe().then((value) => {
-      this.cached = { expiresAt: Date.now() + PROBE_CACHE_MS, value };
-      this.pending = null;
-      return value;
-    });
+    this.pending = this.probe()
+      // probe() is documented to never reject, but if it somehow still did
+      // (a synchronous throw building the query, before its own try even
+      // runs, is the one realistic way), a .then() with no reject handler
+      // would propagate that rejection and skip the reset below — `pending`
+      // would stay pointed at a permanently rejected promise forever, and
+      // every future call would just re-reject it instead of retrying. GET
+      // / stuck answering 500 until the process restarts, the one failure
+      // mode this service exists to avoid. This normalizes any such
+      // rejection to `false` *before* .then(), so the reset always runs.
+      .catch((error: unknown) => {
+        this.logger.error(
+          'database health probe rejected unexpectedly',
+          error instanceof Error ? error.stack : String(error),
+        );
+        return false;
+      })
+      .then((value) => {
+        this.cached = { expiresAt: Date.now() + PROBE_CACHE_MS, value };
+        this.pending = null;
+        return value;
+      });
     return this.pending;
   }
 
