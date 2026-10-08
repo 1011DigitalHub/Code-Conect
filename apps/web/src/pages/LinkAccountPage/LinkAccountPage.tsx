@@ -1,10 +1,8 @@
-import { useState, type FormEvent } from 'react'
+import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { linkOidcAccount } from '../../api/auth'
 import { getErrorMessage, isUnauthorized } from '../../api/errors'
-import { Button } from '../../components/atoms/Button'
-import { FormError } from '../../components/atoms/FormError'
-import { FormField } from '../../components/molecules/FormField'
+import { LinkAccountForm, type LinkAccountFormValues } from '../../components/organisms/LinkAccountForm'
 import { CenteredTemplate } from '../../components/templates/CenteredTemplate'
 import { usePageMeta } from '../usePageMeta'
 
@@ -24,7 +22,7 @@ function linkErrorMessage(error: unknown): string {
   return getErrorMessage(error)
 }
 
-export function VincularContaPage() {
+export function LinkAccountPage() {
   usePageMeta(
     'Vincular conta',
     'Confirme a senha da sua conta Code Connect para vincular o login social a ela.',
@@ -34,18 +32,16 @@ export function VincularContaPage() {
   const [searchParams] = useSearchParams()
   const providerLabel = PROVIDER_LABELS[searchParams.get('provider') ?? ''] ?? 'essa conta'
 
-  const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string>()
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+  async function handleSubmit(values: LinkAccountFormValues) {
     setSubmitting(true)
     setError(undefined)
     try {
       // The server sets the session cookie on this response; there is
       // nothing left for the client to store.
-      await linkOidcAccount(password)
+      await linkOidcAccount(values.password)
     } catch (linkError) {
       setError(linkErrorMessage(linkError))
       setSubmitting(false)
@@ -60,23 +56,7 @@ export function VincularContaPage() {
         Já existe uma conta com este email no Code Connect. Digite sua senha para vincular o login
         com {providerLabel} a ela.
       </p>
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <FormField
-          id="password"
-          name="password"
-          type="password"
-          label="Senha"
-          placeholder="******"
-          autoComplete="current-password"
-          required
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-        />
-        <FormError message={error} />
-        <Button type="submit" fullWidth disabled={submitting}>
-          {submitting ? 'Vinculando...' : 'Vincular conta'}
-        </Button>
-      </form>
+      <LinkAccountForm onSubmit={handleSubmit} submitting={submitting} error={error} />
     </CenteredTemplate>
   )
 }

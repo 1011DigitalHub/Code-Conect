@@ -71,6 +71,17 @@ describe('OIDC login (e2e)', () => {
     return createHash('sha256').update(codeVerifier).digest('base64url');
   }
 
+  // Drives a full round trip against the google provider with the given
+  // id_token claim overrides. Shared by the success and auto-link describe
+  // blocks below.
+  async function completeFlow(claims?: FakeIdTokenOptions['claims']) {
+    const { agent, flow } = await startFlow();
+    const challenge = await expectedCodeChallenge(flow.codeVerifier);
+    const code = fakeIdp.encodeCode({ expectedCodeChallenge: challenge, claims });
+    const res = await agent.get(`/auth/oidc/google/callback?code=${code}&state=${flow.state}`);
+    return { agent, res };
+  }
+
   describe('GET /auth/oidc/:provider/start', () => {
     it('rejects an unknown provider with 400', () => {
       return request(app.getHttpServer()).get('/auth/oidc/github/start').expect(400);
@@ -144,17 +155,27 @@ describe('OIDC login (e2e)', () => {
       const code = fakeIdp.encodeCode({ tokenEndpointFails: true });
       await agent.get(`/auth/oidc/google/callback?code=${code}&state=${flow.state}`).expect(400);
     });
+
+    // Not a security exception — the provider sends this instead of a code
+    // when the person clicks "cancel"/"deny" on its own consent screen, a
+    // normal outcome that deserves a friendly bounce, not a raw JSON 400 on
+    // the API's own origin.
+    it('redirects to the web app /login (not a raw error) when the provider reports ?error=', async () => {
+      const { agent, flow } = await startFlow();
+      const res = await agent.get(
+        `/auth/oidc/google/callback?error=access_denied&state=${flow.state}`,
+      );
+      expect(res.status).toBe(302);
+      expect(res.headers.location).toBe('http://localhost:5173/login');
+    });
+
+    it('answers 404 for a provider with no client_id configured, before touching any cookie', async () => {
+      vi.stubEnv('GOOGLE_CLIENT_ID', '');
+      await request(app.getHttpServer()).get('/auth/oidc/google/start').expect(404);
+    });
   });
 
   describe('GET /auth/oidc/:provider/callback — success', () => {
-    async function completeFlow(claims?: FakeIdTokenOptions['claims']) {
-      const { agent, flow } = await startFlow();
-      const challenge = await expectedCodeChallenge(flow.codeVerifier);
-      const code = fakeIdp.encodeCode({ expectedCodeChallenge: challenge, claims });
-      const res = await agent.get(`/auth/oidc/google/callback?code=${code}&state=${flow.state}`);
-      return { agent, res };
-    }
-
     it('creates a new user, signs them in, and redirects to the web app /perfil', async () => {
       const { agent, res } = await completeFlow({ sub: 'sub-new-1', email: 'nova@exemplo.com', name: 'Nova Pessoa' });
 
@@ -194,6 +215,59 @@ describe('OIDC login (e2e)', () => {
         .send({ email: 'so-oidc@exemplo.com', password: 'qualquer-coisa' })
         .expect(401);
       expect(res.body).toMatchObject({ statusCode: 401 });
+    });
+  });
+
+  describe('auto-link to an OIDC-only account (no local password to protect)', () => {
+    it('links a second provider identity automatically when the new email is verified', async () => {
+      const first = await completeFlow({ sub: 'sub-google-1', email: 'duas-contas@exemplo.com', email_verified: true });
+      const firstMe = await first.agent.get('/auth/me').expect(200);
+
+      vi.stubEnv('MICROSOFT_CLIENT_ID', 'test-client-id');
+      vi.stubEnv('MICROSOFT_CLIENT_SECRET', 'test-client-secret');
+      vi.stubEnv('MICROSOFT_AUTHORIZATION_ENDPOINT', `${fakeIdp.url}/authorize`);
+      vi.stubEnv('MICROSOFT_TOKEN_ENDPOINT', `${fakeIdp.url}/token`);
+      vi.stubEnv('MICROSOFT_JWKS_URI', `${fakeIdp.url}/jwks`);
+      vi.stubEnv('MICROSOFT_ISSUER', FAKE_IDP_ISSUER);
+
+      const agent = request.agent(app.getHttpServer());
+      const startRes = await agent.get('/auth/oidc/microsoft/start').expect(302);
+      const flow = decodeFlowCookie(setCookie(startRes, 'oidc_flow'));
+      const challenge = await expectedCodeChallenge(flow.codeVerifier);
+      const code = fakeIdp.encodeCode({
+        expectedCodeChallenge: challenge,
+        claims: { sub: 'sub-microsoft-1', email: 'duas-contas@exemplo.com', email_verified: true },
+      });
+      const res = await agent.get(`/auth/oidc/microsoft/callback?code=${code}&state=${flow.state}`);
+
+      expect(res.status).toBe(302);
+      expect(res.headers.location).toBe('http://localhost:5173/perfil');
+      const secondMe = await agent.get('/auth/me').expect(200);
+      expect(secondMe.body.id).toBe(firstMe.body.id);
+    });
+
+    // The nOAuth account-takeover shape: without this, a provider that lets
+    // an attacker set an arbitrary, unverified email on their own account
+    // would be enough to link their identity to any OIDC-only account that
+    // happens to share it — see OidcService.resolveIdentity.
+    it('refuses to auto-link when the new identity email is not verified — the existing account is untouched', async () => {
+      const first = await completeFlow({ sub: 'sub-victim', email: 'vitima@exemplo.com', email_verified: true });
+      const firstMe = await first.agent.get('/auth/me').expect(200);
+
+      const attacker = await startFlow();
+      const challenge = await expectedCodeChallenge(attacker.flow.codeVerifier);
+      const code = fakeIdp.encodeCode({
+        expectedCodeChallenge: challenge,
+        claims: { sub: 'sub-attacker', email: 'vitima@exemplo.com', email_verified: false },
+      });
+      await attacker.agent
+        .get(`/auth/oidc/google/callback?code=${code}&state=${attacker.flow.state}`)
+        .expect(401);
+
+      // The attacker never got a session, and the real owner's identity
+      // still resolves only to themselves.
+      const stillFirstMe = await first.agent.get('/auth/me').expect(200);
+      expect(stillFirstMe.body.id).toBe(firstMe.body.id);
     });
   });
 

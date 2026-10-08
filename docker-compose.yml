@@ -44,18 +44,25 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-codeconnect}:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-codeconnect}
       JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env (min. 32 caracteres)}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
-      # Login social via OIDC (plan/LoginSocial.md) — optional: everything
-      # below can stay unset and the api service still boots fine, the
-      # social buttons just fail at the provider. Only
-      # OIDC_LINKING_TOKEN_SECRET is required if set at all (min. 32 chars);
-      # it has no compose-level default on purpose, same as JWT_SECRET.
+      # Login social via OIDC (plan/LoginSocial.md) — the Google/Microsoft
+      # credentials below are optional: leave them unset and the api service
+      # still boots fine, the social buttons just answer 404 (see
+      # OidcController.start). OIDC_LINKING_TOKEN_SECRET is NOT optional —
+      # apps/api's own env.ts requires it in production unconditionally
+      # (it is cheap to generate and a wrong default is a real
+      # account-linking forgery risk the moment OIDC credentials ARE set),
+      # so this fails the same way JWT_SECRET does rather than letting the
+      # container crash-loop on an empty one with a less obvious cause.
       API_ORIGIN: ${VITE_API_URL:-http://localhost:3000}
-      WEB_APP_ORIGIN: ${CORS_ORIGINS:-http://localhost:8080}
+      # CORS_ORIGINS can be a comma-separated list; WEB_APP_ORIGIN must be
+      # exactly one origin (the callback redirects the browser to it), so
+      # this is its own var rather than reusing that one.
+      WEB_APP_ORIGIN: ${WEB_APP_ORIGIN:-http://localhost:8080}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID:-}
       MICROSOFT_CLIENT_SECRET: ${MICROSOFT_CLIENT_SECRET:-}
-      OIDC_LINKING_TOKEN_SECRET: ${OIDC_LINKING_TOKEN_SECRET:-}
+      OIDC_LINKING_TOKEN_SECRET: ${OIDC_LINKING_TOKEN_SECRET:?defina OIDC_LINKING_TOKEN_SECRET no .env (min. 32 caracteres) — obrigatório mesmo sem configurar OIDC}
     ports:
       # Only reachable from this machine, like postgres above.
       - '127.0.0.1:3000:3000'

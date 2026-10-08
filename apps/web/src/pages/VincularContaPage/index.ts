@@ -1,1 +1,0 @@
-export { VincularContaPage } from './VincularContaPage'

@@ -34,6 +34,13 @@ function buildRedirectUri(provider: OidcProvider): string {
   return `${getApiOrigin()}/auth/oidc/${provider}/callback`;
 }
 
+// Match the columns' widths in schema.prisma exactly: User.name is
+// VARCHAR(100), User.email is VARCHAR(254). A provider sending either one
+// over that width would otherwise reach UsersService.createFromOidc and
+// fail as a raw, unhandled Postgres error (a 500, not a clean rejection).
+const MAX_NAME_LENGTH = 100;
+const MAX_EMAIL_LENGTH = 254;
+
 @Injectable()
 export class OidcService {
   constructor(
@@ -123,9 +130,20 @@ export class OidcService {
     }
 
     const email = payload.email.toLowerCase();
-    const name =
+    if (email.length > MAX_EMAIL_LENGTH) {
+      throw new UnauthorizedException('O provedor não retornou os dados necessários');
+    }
+
+    // Required for every identity decision below, not just account
+    // creation: see OidcIdentityClaims.emailVerified's doc comment. Some
+    // providers send it as the string "true" rather than a boolean; both
+    // are accepted, anything else (including absent) is not verified.
+    const emailVerified = payload.email_verified === true || payload.email_verified === 'true';
+
+    const rawName =
       typeof payload.name === 'string' && payload.name.trim() ? payload.name.trim() : email.split('@')[0] || email;
-    return { sub: payload.sub, email, name };
+    const name = rawName.slice(0, MAX_NAME_LENGTH);
+    return { sub: payload.sub, email, name, emailVerified };
   }
 
   async authenticate(provider: OidcProvider, code: string, codeVerifier: string): Promise<IdentityResolution> {
@@ -138,8 +156,8 @@ export class OidcService {
   //  1. This exact (provider, sub) is already linked -> sign in as that user.
   //  2. No user has this email yet -> create one (no local password).
   //  3. A user has this email: if they have no local password either (an
-  //     OIDC-only account, already proven to control this mailbox by some
-  //     provider), link this identity too, no extra proof needed. If they
+  //     OIDC-only account) AND the provider itself confirms this email is
+  //     verified, link this identity too, no extra proof needed. If they
   //     DO have a local password, this is the collision the plan's account-
   //     linking flow exists for — never auto-merge.
   private async resolveIdentity(provider: OidcProvider, claims: OidcIdentityClaims): Promise<IdentityResolution> {
@@ -158,10 +176,28 @@ export class OidcService {
     }
 
     if (byEmail.passwordHash === null) {
+      // An unverified email is exactly the "nOAuth" shape: some providers
+      // (certain Microsoft Entra ID tenant configurations, notably) let a
+      // user set an arbitrary, unverified email on their own account —
+      // auto-linking on that alone would hand them any OIDC-only account
+      // that happens to share it, no proof of anything required. There is
+      // also no password to fall back to confirming here (that is what
+      // passwordHash === null means), so this fails closed instead of
+      // either merging unsafely or offering a linking form that could
+      // never be completed.
+      if (!claims.emailVerified) {
+        throw new UnauthorizedException(
+          'Não foi possível concluir o login. Entre com o método usado para criar a conta.',
+        );
+      }
       await this.usersService.linkProviderIdentity(byEmail.id, provider, claims.sub);
       return { kind: 'signedIn', user: byEmail };
     }
 
+    // Safe regardless of claims.emailVerified: completing this flow still
+    // requires the local account's actual password (see linkAccount below),
+    // which an attacker controlling only an unverified email claim doesn't
+    // have.
     const linkingToken = mintLinkingToken({ email: byEmail.email, provider, providerSub: claims.sub });
     return { kind: 'linkingRequired', linkingToken };
   }

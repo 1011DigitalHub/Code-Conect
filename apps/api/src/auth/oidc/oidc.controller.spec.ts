@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { verifyCsrfToken, sessionKey } from '../csrf.js';
 import { setOidcFlowCookie } from './oidc-flow-cookie.js';
@@ -38,6 +38,7 @@ describe('OidcController', () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.unstubAllEnvs();
     controller = new OidcController(oidcService as unknown as OidcService);
   });
 
@@ -49,7 +50,16 @@ describe('OidcController', () => {
       expect(redirect).not.toHaveBeenCalled();
     });
 
+    it('answers 404 instead of redirecting with an empty client_id when the provider has no credentials set', () => {
+      vi.stubEnv('GOOGLE_CLIENT_ID', '');
+      const { res, cookie, redirect } = fakeResponse();
+      expect(() => controller.start('google', res)).toThrow(NotFoundException);
+      expect(cookie).not.toHaveBeenCalled();
+      expect(redirect).not.toHaveBeenCalled();
+    });
+
     it('sets the oidc_flow cookie and redirects to the URL OidcService built', () => {
+      vi.stubEnv('GOOGLE_CLIENT_ID', 'configured-client-id');
       oidcService.buildAuthorizationUrl.mockReturnValue('https://accounts.google.com/authorize?...');
       const { res, cookie, redirect } = fakeResponse();
 
@@ -73,7 +83,7 @@ describe('OidcController', () => {
     it('rejects when there is no oidc_flow cookie at all', async () => {
       const { res } = fakeResponse();
       await expect(
-        controller.callback('google', 'code', 'state-abc', fakeRequest(undefined), res),
+        controller.callback('google', 'code', 'state-abc', undefined, fakeRequest(undefined), res),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(oidcService.authenticate).not.toHaveBeenCalled();
     });
@@ -82,7 +92,7 @@ describe('OidcController', () => {
       const { res } = fakeResponse();
       const req = fakeRequest(flowCookieHeader(flow));
       await expect(
-        controller.callback('google', 'code', 'wrong-state', req, res),
+        controller.callback('google', 'code', 'wrong-state', undefined, req, res),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(oidcService.authenticate).not.toHaveBeenCalled();
     });
@@ -91,7 +101,7 @@ describe('OidcController', () => {
       const { res } = fakeResponse();
       const req = fakeRequest(flowCookieHeader(flow));
       await expect(
-        controller.callback('microsoft', 'code', 'state-abc', req, res),
+        controller.callback('microsoft', 'code', 'state-abc', undefined, req, res),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
@@ -99,16 +109,24 @@ describe('OidcController', () => {
       const { res } = fakeResponse();
       const req = fakeRequest(flowCookieHeader(flow));
       await expect(
-        controller.callback('google', undefined, 'state-abc', req, res),
+        controller.callback('google', undefined, 'state-abc', undefined, req, res),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('always clears the oidc_flow cookie, even on rejection', async () => {
       const { res, clearCookie } = fakeResponse();
       await expect(
-        controller.callback('google', 'code', 'state', fakeRequest(undefined), res),
+        controller.callback('google', 'code', 'state', undefined, fakeRequest(undefined), res),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(clearCookie).toHaveBeenCalledWith('oidc_flow', expect.any(Object));
+    });
+
+    it('redirects to /login instead of throwing when the provider sends ?error= (e.g. the person cancelled)', async () => {
+      const { res, redirect } = fakeResponse();
+      await controller.callback('google', undefined, undefined, 'access_denied', fakeRequest(undefined), res);
+
+      expect(redirect).toHaveBeenCalledWith('http://localhost:5173/login');
+      expect(oidcService.authenticate).not.toHaveBeenCalled();
     });
 
     it('signs in and redirects to the web app /perfil on a direct match', async () => {
@@ -124,7 +142,7 @@ describe('OidcController', () => {
       const { res, cookie, redirect } = fakeResponse();
       const req = fakeRequest(flowCookieHeader(flow));
 
-      await controller.callback('google', 'the-code', 'state-abc', req, res);
+      await controller.callback('google', 'the-code', 'state-abc', undefined, req, res);
 
       expect(oidcService.authenticate).toHaveBeenCalledWith('google', 'the-code', 'verifier-xyz');
       const accessCall = cookie.mock.calls.find((c: unknown[]) => c[0] === 'access_token');
@@ -146,7 +164,7 @@ describe('OidcController', () => {
       const { res, cookie, redirect } = fakeResponse();
       const req = fakeRequest(flowCookieHeader(flow));
 
-      await controller.callback('google', 'the-code', 'state-abc', req, res);
+      await controller.callback('google', 'the-code', 'state-abc', undefined, req, res);
 
       expect(oidcService.mintSession).not.toHaveBeenCalled();
       const linkCall = cookie.mock.calls.find((c: unknown[]) => c[0] === 'linking_token');

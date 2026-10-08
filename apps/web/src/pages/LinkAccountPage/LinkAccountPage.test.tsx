@@ -6,7 +6,7 @@ import { vi } from 'vitest'
 import { linkOidcAccount } from '../../api/auth'
 import { renderWithRouter } from '../../test/renderWithRouter'
 import { expectNoA11yViolations } from '../../test/axe'
-import { VincularContaPage } from './VincularContaPage'
+import { LinkAccountPage } from './LinkAccountPage'
 
 vi.mock('../../api/auth', () => ({ linkOidcAccount: vi.fn() }))
 
@@ -16,11 +16,11 @@ function apiError(status: number) {
   return new AxiosError('failed', AxiosError.ERR_BAD_REQUEST, config, null, response)
 }
 
-function renderVincularContaRoutes(route = '/vincular-conta?provider=google') {
+function renderLinkAccountRoutes(route = '/vincular-conta?provider=google') {
   return render(
     <MemoryRouter initialEntries={[route]}>
       <Routes>
-        <Route path="/vincular-conta" element={<VincularContaPage />} />
+        <Route path="/vincular-conta" element={<LinkAccountPage />} />
         <Route path="/perfil" element={<p>Tela de perfil</p>} />
       </Routes>
     </MemoryRouter>,
@@ -32,13 +32,13 @@ async function fillAndSubmit(password = 'senha-segura-123') {
   await userEvent.click(screen.getByRole('button', { name: 'Vincular conta' }))
 }
 
-describe('VincularContaPage', () => {
+describe('LinkAccountPage', () => {
   afterEach(() => {
     vi.resetAllMocks()
   })
 
   it('renders the password form and names the provider from the query string', () => {
-    renderWithRouter(<VincularContaPage />, { route: '/vincular-conta?provider=microsoft' })
+    renderWithRouter(<LinkAccountPage />, { route: '/vincular-conta?provider=microsoft' })
 
     expect(document.title).toBe('Vincular conta | Code Connect')
     expect(screen.getByRole('heading', { level: 1, name: 'Vincular conta' })).toBeInTheDocument()
@@ -48,7 +48,7 @@ describe('VincularContaPage', () => {
   })
 
   it('falls back to generic copy for a missing or unrecognized provider', () => {
-    renderWithRouter(<VincularContaPage />, { route: '/vincular-conta' })
+    renderWithRouter(<LinkAccountPage />, { route: '/vincular-conta' })
 
     expect(screen.queryByText(/Google/)).not.toBeInTheDocument()
     expect(screen.queryByText(/Microsoft/)).not.toBeInTheDocument()
@@ -56,7 +56,7 @@ describe('VincularContaPage', () => {
 
   it('links the account and goes to the profile on success', async () => {
     vi.mocked(linkOidcAccount).mockResolvedValue({ tokenType: 'Bearer', expiresIn: 3600 })
-    renderVincularContaRoutes()
+    renderLinkAccountRoutes()
 
     await fillAndSubmit()
 
@@ -66,7 +66,7 @@ describe('VincularContaPage', () => {
 
   it('shows one generic error for a wrong password, without naming it as such', async () => {
     vi.mocked(linkOidcAccount).mockRejectedValue(apiError(401))
-    renderVincularContaRoutes()
+    renderLinkAccountRoutes()
 
     await fillAndSubmit('senha-errada')
 
@@ -78,7 +78,7 @@ describe('VincularContaPage', () => {
   })
 
   it('has no WCAG 2.2 AA violations', async () => {
-    const { container } = renderWithRouter(<VincularContaPage />)
+    const { container } = renderWithRouter(<LinkAccountPage />)
 
     await expectNoA11yViolations(container)
   })

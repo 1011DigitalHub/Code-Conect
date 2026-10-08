@@ -96,6 +96,41 @@ describe('OidcService', () => {
       );
     });
 
+    it('rejects an id_token whose email is over the 254-character column width', async () => {
+      fetchJsonOnce({ id_token: 'token' });
+      const overLongEmail = `${'a'.repeat(250)}@example.com`; // > 254 chars
+      vi.mocked(jwtVerify).mockResolvedValue({
+        payload: { iss: 'https://accounts.google.com', sub: 's1', email: overLongEmail, email_verified: true },
+      } as never);
+
+      await expect(service.authenticate('google', 'code', 'verifier')).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+
+    it('truncates a name over the 100-character column width instead of failing createFromOidc', async () => {
+      fetchJsonOnce({ id_token: 'token' });
+      const overLongName = 'a'.repeat(150);
+      vi.mocked(jwtVerify).mockResolvedValue({
+        payload: {
+          iss: 'https://accounts.google.com',
+          sub: 's1',
+          email: 'maria@exemplo.com',
+          name: overLongName,
+          email_verified: true,
+        },
+      } as never);
+      usersService.findByProviderIdentity.mockResolvedValue(null);
+      usersService.findByEmail.mockResolvedValue(null);
+      usersService.createFromOidc.mockResolvedValue({ id: 5 });
+
+      await service.authenticate('google', 'code', 'verifier');
+
+      const call = usersService.createFromOidc.mock.calls[0]![0] as { name: string };
+      expect(call.name).toHaveLength(100);
+      expect(call.name).toBe('a'.repeat(100));
+    });
+
     it('rejects an id_token missing sub or email', async () => {
       fetchJsonOnce({ id_token: 'token' });
       vi.mocked(jwtVerify).mockResolvedValue({
@@ -107,10 +142,18 @@ describe('OidcService', () => {
       );
     });
 
-    function mockValidToken(claims: { sub: string; email: string; name?: string }) {
+    function mockValidToken(claims: {
+      sub: string;
+      email: string;
+      name?: string;
+      email_verified?: boolean;
+    }) {
       fetchJsonOnce({ id_token: 'token' });
       vi.mocked(jwtVerify).mockResolvedValue({
-        payload: { iss: 'https://accounts.google.com', ...claims },
+        // email_verified defaults to true: only the auto-link assertions
+        // below care about it, everything else exercises paths that don't
+        // depend on it at all.
+        payload: { iss: 'https://accounts.google.com', email_verified: true, ...claims },
       } as never);
     }
 
@@ -156,8 +199,8 @@ describe('OidcService', () => {
       );
     });
 
-    it('auto-links a second provider identity to an existing OIDC-only account (no password to protect)', async () => {
-      mockValidToken({ sub: 'sub-2', email: 'maria@exemplo.com' });
+    it('auto-links a second provider identity to an existing OIDC-only account when the email is verified', async () => {
+      mockValidToken({ sub: 'sub-2', email: 'maria@exemplo.com', email_verified: true });
       usersService.findByProviderIdentity.mockResolvedValue(null);
       const existing = { id: 5, email: 'maria@exemplo.com', passwordHash: null };
       usersService.findByEmail.mockResolvedValue(existing);
@@ -165,6 +208,39 @@ describe('OidcService', () => {
       const resolution = await service.authenticate('google', 'code', 'verifier');
 
       expect(usersService.linkProviderIdentity).toHaveBeenCalledWith(5, 'google', 'sub-2');
+      expect(resolution).toEqual({ kind: 'signedIn', user: existing });
+    });
+
+    // The nOAuth account-takeover shape: a provider that lets a user set an
+    // arbitrary, unverified email on their own account would otherwise be
+    // enough to take over any OIDC-only account sharing it, with no proof
+    // of anything — see OidcService.resolveIdentity. There is also no
+    // password to fall back to here (passwordHash is null), so this must
+    // fail closed rather than silently merge or route to an uncompletable
+    // linking form.
+    it.each([
+      ['false', false],
+      ['missing', undefined],
+      ['a non-boolean truthy string', 'yes'],
+    ])('refuses to auto-link an OIDC-only account when email_verified is %s', async (_label, emailVerified) => {
+      mockValidToken({ sub: 'sub-2', email: 'maria@exemplo.com', email_verified: emailVerified as never });
+      usersService.findByProviderIdentity.mockResolvedValue(null);
+      usersService.findByEmail.mockResolvedValue({ id: 5, email: 'maria@exemplo.com', passwordHash: null });
+
+      await expect(service.authenticate('google', 'code', 'verifier')).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+      expect(usersService.linkProviderIdentity).not.toHaveBeenCalled();
+    });
+
+    it('accepts email_verified sent as the string "true" (some providers do this)', async () => {
+      mockValidToken({ sub: 'sub-2', email: 'maria@exemplo.com', email_verified: 'true' as never });
+      usersService.findByProviderIdentity.mockResolvedValue(null);
+      const existing = { id: 5, email: 'maria@exemplo.com', passwordHash: null };
+      usersService.findByEmail.mockResolvedValue(existing);
+
+      const resolution = await service.authenticate('google', 'code', 'verifier');
+
       expect(resolution).toEqual({ kind: 'signedIn', user: existing });
     });
 

@@ -5,6 +5,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  NotFoundException,
   Param,
   Post,
   Query,
@@ -13,6 +14,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
+  ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiResponse,
@@ -41,7 +43,7 @@ import { Public } from '../public.decorator.js';
 import { LinkAccountDto } from './dto/link-account.dto.js';
 import { clearOidcFlowCookie, readOidcFlowCookie, setOidcFlowCookie } from './oidc-flow-cookie.js';
 import { generatePkcePair, generateState, statesMatch } from './oidc-pkce.js';
-import { getWebAppOrigin, parseOidcProvider } from './oidc.constants.js';
+import { getOidcProviderConfig, getWebAppOrigin, parseOidcProvider } from './oidc.constants.js';
 import { OidcService } from './oidc.service.js';
 
 @ApiTags('auth')
@@ -56,12 +58,21 @@ export class OidcController {
   @ApiOperation({ summary: 'Inicia o login via OIDC (Google/Microsoft): redireciona para o provedor' })
   @ApiResponse({ status: 302, description: 'Redireciona para o authorization_endpoint do provedor' })
   @ApiBadRequestResponse({ type: ErrorResponseDto, description: 'provider desconhecido' })
+  @ApiNotFoundResponse({ type: ErrorResponseDto, description: 'provider sem client_id configurado' })
   @ApiTooManyRequestsResponse({ type: ErrorResponseDto })
   start(
     @Param('provider') providerParam: string,
     @Res() res: Response,
   ): void {
     const provider = parseOidcProvider(providerParam);
+    // Fails clearly instead of redirecting to the provider with an empty
+    // client_id, which would otherwise show the provider's own generic
+    // "invalid_client" error page — unhelpful either way, but this at
+    // least makes "this login method isn't set up" distinguishable from
+    // "the provider itself is down" in our own logs/metrics.
+    if (!getOidcProviderConfig(provider).clientId) {
+      throw new NotFoundException(`Login via ${provider} não está configurado`);
+    }
     const state = generateState();
     const { codeVerifier, codeChallenge } = generatePkcePair();
 
@@ -87,6 +98,7 @@ export class OidcController {
     @Param('provider') providerParam: string,
     @Query('code') code: string | undefined,
     @Query('state') state: string | undefined,
+    @Query('error') providerError: string | undefined,
     @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
@@ -95,6 +107,19 @@ export class OidcController {
     // Single-use regardless of outcome: a replayed callback URL (or one
     // reloaded by the browser) must never succeed twice off the same cookie.
     clearOidcFlowCookie(res);
+
+    // The provider redirects here with ?error=access_denied (no code) when
+    // the person cancels/declines at its own consent screen — normal,
+    // expected traffic through this endpoint, not a security exception.
+    // Bouncing them back to /login with a raw JSON 400 on the API's own
+    // origin would be jarring mid-browser-navigation; the other checks
+    // below are genuinely anomalous (tampering, an expired flow) and stay
+    // JSON errors, since a real user driven entirely by these redirects
+    // essentially never hits them.
+    if (providerError) {
+      res.redirect(`${getWebAppOrigin()}/login`);
+      return;
+    }
 
     const flowValid =
       !!flow && !!state && flow.provider === provider && statesMatch(flow.state, state);
