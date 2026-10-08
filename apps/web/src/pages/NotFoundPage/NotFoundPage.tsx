@@ -2,8 +2,12 @@ import { TextLink } from '../../components/atoms/TextLink'
 import { CenteredTemplate } from '../../components/templates/CenteredTemplate'
 import { usePageMeta } from '../usePageMeta'
 
-// Catch-all for `path="*"`. Without it an unknown address — or a post slug that
-// no longer exists — rendered a blank screen with no title and no way back.
+// Catch-all for `path="*"`: an address that matches no route, such as a stale
+// link or a typo in a static path. Without it those rendered a blank screen,
+// with no title and no way back.
+//
+// Not for a post slug that does not exist: that still matches /posts/:slug, and
+// PostPage renders its own not-found state from usePostDetail.
 export function NotFoundPage() {
   usePageMeta(
     'Página não encontrada',

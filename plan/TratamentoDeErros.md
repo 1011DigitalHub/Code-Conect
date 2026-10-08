@@ -4,7 +4,9 @@
 
 Duas lacunas que existiam desde o início do projeto, mas que o merge do feed (PR #4) promoveu a bloqueantes:
 
-1. **Nenhuma rota `path="*"`.** `src/App.tsx` tem 6 rotas (`/`, `/login`, `/cadastro`, `/perfil`, `/posts/novo`, `/posts/:slug`) e nenhuma de fallback. Uma URL desconhecida — ou um slug de post que não existe — renderiza uma **tela em branco**, sem título, sem explicação e sem caminho de volta. Com a rota paramétrica `/posts/:slug` isso deixou de ser hipotético: basta um link antigo ou um typo.
+1. **Nenhuma rota `path="*"`.** `src/App.tsx` tem 6 rotas (`/`, `/login`, `/cadastro`, `/perfil`, `/posts/novo`, `/posts/:slug`) e nenhuma de fallback. Um endereço que não casa com nenhuma delas — um link antigo, um typo em rota estática — renderiza uma **tela em branco**, sem título, sem explicação e sem caminho de volta.
+
+   **Não** é o caso de um slug de post inexistente: `/posts/<qualquer-coisa>` casa com `/posts/:slug` e nunca chega ao catch-all; quem trata é a própria `PostPage`, pelo estado `notFound` de `usePostDetail`. Esta correção foi apontada na revisão da PR #14 — a versão anterior deste plano e três comentários de código afirmavam o contrário.
 
 2. **Nenhum error boundary.** O `TextLink` (`atoms/TextLink/TextLink.tsx`) passou a **lançar** quando recebe um `href` que não começa com `/`, guarda adicionada no plano Secure by Design para fechar o vetor de `javascript:` URL. O feed é o primeiro consumidor que monta hrefs a partir de dados da API (`/posts/${post.slug}`), e `Pagination`/`LikeButton` recebem `href`/`buildHref` injetados pelo chamador. Sem boundary, uma exceção de render em qualquer ponto da árvore desmonta o app inteiro e deixa a mesma tela em branco — o oposto de falhar alto de forma útil.
 
@@ -27,6 +29,8 @@ O `name` precisa casar com o começo do `<title>` real: `a11y.e2e.ts` monta a as
 
 **Limitação conhecida, deliberada:** a SPA serve esta página com **HTTP 200**, não 404 — tanto no `vite preview` quanto no nginx de produção (`try_files $uri $uri/ /index.html` em `apps/web/default.conf.template`). É o comportamento normal de uma single-page app e mantém verde a auditoria "Page has successful HTTP status code" do Lighthouse. Um 404 de verdade exigiria o servidor conhecer as rotas do React Router; não vale essa duplicação agora.
 
+**Trade-off aceito (soft 404):** como a resposta é 200 e a página não tem `noindex`, um buscador pode em teoria indexar um endereço inexistente como conteúdo. Não adicionamos `noindex` de propósito: ele derruba a auditoria `is-crawlable` do Lighthouse nessa rota, e o `lighthouserc.cjs` exige **SEO 100** em todas. Entre um risco teórico de indexação e furar um gate que protege todas as páginas reais, fica o primeiro. Revisitar se o site passar a ser indexado de verdade e isso aparecer no Search Console.
+
 `public/llms.txt` **não** muda: a 404 não é página de conteúdo para indexar. `public/robots.txt` também não — não há o que bloquear.
 
 ## 2. `ErrorBoundary` (`src/components/organisms/ErrorBoundary/`)
@@ -47,7 +51,15 @@ Isso é uma exceção consciente à convenção de "componha a partir dos átomo
 
 Efeito colateral desejável: `<a href="/">` provoca navegação de página real em vez do roteamento client-side do `TextLink`, o que **remonta a aplicação do zero** e descarta o estado React corrompido que causou o erro. Um `<Link>` manteria a mesma árvore montada.
 
-As classes seguem as mesmas regras de sempre: só tokens da paleta (`bg-page`, `text-offwhite`, `text-primary`), nenhum valor arbitrário, e o foco visível (`focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary`) que todo elemento interativo precisa ter.
+As classes seguem as mesmas regras de sempre: só tokens da paleta (`bg-surface` e `border-page` no card, `text-offwhite`, `text-muted`, `text-primary` no texto), nenhum valor arbitrário, e o foco visível (`focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary`) que todo elemento interativo precisa ter.
+
+O nome do site aparece inline no `document.title` do fallback em vez de vir do `SITE_NAME` de `pages/usePageMeta.ts`: um organism importando de `src/pages/` inverteria a hierarquia do Atomic Design, e a mesma lógica de não depender do que se protege vale aqui.
+
+### Reset em navegação client-side
+
+O boundary recebe uma prop `resetKey` e limpa o erro quando ela muda; `App.tsx` passa o `pathname` atual. Sem isso, o estado `failed` sobrevive a uma navegação client-side — o Voltar do navegador troca a URL sem remontar nada, e o fallback ficaria na tela sob um endereço sem relação com ele. Foi um bug encontrado na revisão da PR #14.
+
+Preferido a `<ErrorBoundary key={pathname}>`: o `key` é o idioma documentado do React e seria mais curto, mas remonta todo o subtree `<Routes>` a cada navegação, o que refaria o fetch do feed sempre que alguém voltasse para `/`.
 
 ## 3. Testes essenciais (por role, label ou texto)
 
@@ -92,8 +104,17 @@ Manuais obrigatórios do `CLAUDE.md`, na rota nova:
 
 ### Lighthouse (build de produção, preset desktop)
 
-A preencher na implementação, medido conforme as regras de "Performance and SEO" do `CLAUDE.md`:
+Medido pelo Lighthouse CI na PR #14 (run `37713794113`), mediana de 3 execuções por rota. O CLI local trava nesta máquina, então o CI é a fonte oficial — como o próprio `CLAUDE.md` determina.
 
 | Rota | Performance | Acessibilidade | Best Practices | SEO | LCP | CLS | TBT |
 |---|---|---|---|---|---|---|---|
-| `/essa-rota-nao-existe` | | | | | | | |
+| `/essa-rota-nao-existe` | 100 | 100 | 100 | 100 | 0,44 s | 0,003 | 0 ms |
+
+As demais rotas na mesma execução, para contexto — nenhuma regrediu com a entrada do boundary na árvore:
+
+| Rota | Performance | Acessibilidade | Best Practices | SEO | LCP | CLS | TBT |
+|---|---|---|---|---|---|---|---|
+| `/` (feed) | 100 | 100 | 100 | 100 | 0,65 s | 0,007 | 0 ms |
+| `/login` | 100 | 100 | 100 | 100 | 0,61 s | 0,000 | 0 ms |
+| `/cadastro` | 100 | 100 | 100 | 100 | 0,60 s | 0,000 | 0 ms |
+| `/posts/componentes-react-na-pratica` | 100 | 100 | 100 | 100 | 0,69 s | 0,002 | 0 ms |

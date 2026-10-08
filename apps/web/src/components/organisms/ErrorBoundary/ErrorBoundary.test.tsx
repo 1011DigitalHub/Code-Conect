@@ -49,6 +49,53 @@ describe('ErrorBoundary', () => {
     expect(screen.getByRole('link', { name: 'Voltar para o feed' })).toHaveAttribute('href', '/')
   })
 
+  it('names the page in the title so it stops describing the content that failed', () => {
+    render(
+      <ErrorBoundary>
+        <Explodes />
+      </ErrorBoundary>,
+    )
+
+    expect(document.title).toBe('Algo deu errado | Code Connect')
+  })
+
+  // Browser Back changes the route client-side without remounting anything, so
+  // without this the fallback stayed on screen under an unrelated URL.
+  it('clears the error when the reset key changes', () => {
+    const { rerender } = render(
+      <ErrorBoundary resetKey="/posts/um-post">
+        <Explodes />
+      </ErrorBoundary>,
+    )
+    expect(screen.getByRole('heading', { name: 'Algo deu errado' })).toBeInTheDocument()
+
+    rerender(
+      <ErrorBoundary resetKey="/">
+        <p>Feed</p>
+      </ErrorBoundary>,
+    )
+
+    expect(screen.getByText('Feed')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Algo deu errado' })).not.toBeInTheDocument()
+  })
+
+  it('keeps the fallback while the reset key stays the same', () => {
+    const { rerender } = render(
+      <ErrorBoundary resetKey="/posts/um-post">
+        <Explodes />
+      </ErrorBoundary>,
+    )
+
+    rerender(
+      <ErrorBoundary resetKey="/posts/um-post">
+        <p>Conteúdo</p>
+      </ErrorBoundary>,
+    )
+
+    expect(screen.getByRole('heading', { name: 'Algo deu errado' })).toBeInTheDocument()
+    expect(screen.queryByText('Conteúdo')).not.toBeInTheDocument()
+  })
+
   it('has no WCAG 2.2 AA violations', async () => {
     const { container } = render(
       <ErrorBoundary>
