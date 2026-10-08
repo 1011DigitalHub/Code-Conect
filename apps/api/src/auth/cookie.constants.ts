@@ -3,6 +3,17 @@ import type { CookieOptions } from 'express';
 export const ACCESS_TOKEN_COOKIE = 'access_token';
 export const CSRF_COOKIE = 'csrf_token';
 export const CSRF_HEADER = 'x-csrf-token';
+// Carries { state, codeVerifier, provider } (JSON) between GET
+// /auth/oidc/:provider/start and its callback. httpOnly like access_token:
+// nothing here needs to be read by page JS, and signing it on top would add
+// nothing — tampering with it either fails our own state check or fails the
+// provider's own PKCE check, it doesn't grant anything (see plan/LoginSocial.md).
+export const OIDC_FLOW_COOKIE = 'oidc_flow';
+// Carries the signed linking_token (see auth/oidc/oidc-linking-token.ts)
+// between the callback and POST /auth/oidc/link. Unlike oidc_flow, this one
+// IS signed — it's the one artifact that, if forged, would let someone link
+// an OIDC identity to an email they don't control.
+export const LINKING_TOKEN_COOKIE = 'linking_token';
 
 type SameSite = 'strict' | 'lax' | 'none';
 
@@ -78,4 +89,44 @@ export function getCsrfCookieOptions(
 // cookie, or the browser keeps the original one alive under the old attrs.
 export function getClearCookieOptions(): CookieOptions {
   return baseCookieOptions();
+}
+
+// 5 minutes. Exported so oidc-flow-cookie.ts and oidc-linking-token.ts can
+// embed the same lifetime as an explicit `exp` in the cookie's own payload,
+// checked server-side — the Max-Age attribute alone only controls whether
+// the *browser* still sends the cookie, which is not the same guarantee as
+// the server itself refusing a stale one.
+export const OIDC_COOKIE_MAX_AGE_MS = 5 * 60 * 1000;
+
+// Both OIDC cookies are forced to SameSite=Lax regardless of COOKIE_SAMESITE:
+// oidc_flow must survive the top-level, cross-site redirect back from the
+// provider's own domain (a Strict cookie would not be sent on that
+// navigation), and linking_token is set by that same redirect. Lax still
+// only sends the cookie on a top-level GET navigation, which is exactly
+// what both of these are.
+export function getOidcFlowCookieOptions(): CookieOptions {
+  return {
+    secure: isCookieSecure(),
+    sameSite: 'lax',
+    path: '/',
+    domain: getCookieDomain(),
+    httpOnly: true,
+    maxAge: OIDC_COOKIE_MAX_AGE_MS,
+  };
+}
+
+export function getLinkingTokenCookieOptions(): CookieOptions {
+  return getOidcFlowCookieOptions();
+}
+
+// Mirrors the SameSite=Lax override above: clearing with the default
+// (COOKIE_SAMESITE-derived) attributes wouldn't reliably match the cookie
+// that was set with Lax.
+export function getClearOidcCookieOptions(): CookieOptions {
+  return {
+    secure: isCookieSecure(),
+    sameSite: 'lax',
+    path: '/',
+    domain: getCookieDomain(),
+  };
 }

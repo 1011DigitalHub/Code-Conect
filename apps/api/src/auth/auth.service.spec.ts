@@ -3,7 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { randomBytes, scrypt as scryptCb } from 'node:crypto';
 import { promisify } from 'node:util';
 import * as passwordModule from '../users/password.js';
-import { DUMMY_HASH, hashPassword, shouldRehash, verifyPassword } from '../users/password.js';
+import { hashPassword, shouldRehash, verifyPassword } from '../users/password.js';
 import type { UsersService } from '../users/users.service.js';
 import { AuthService } from './auth.service.js';
 
@@ -71,17 +71,21 @@ describe('AuthService', () => {
   });
 
   it('runs the same scrypt comparison for an unknown email as for a real one (verifies the cause, not response timing — a noisy, flaky thing to assert directly)', async () => {
-    const spy = vi.spyOn(passwordModule, 'verifyPassword');
+    // Spied on verifyUserPassword, the function AuthService actually calls
+    // now (verifyUserPassword in turn calls verifyPassword against
+    // DUMMY_HASH for a null user — covered directly in password.spec.ts).
+    const spy = vi.spyOn(passwordModule, 'verifyUserPassword');
 
     await expect(
       service.signIn('ghost@exemplo.com', 'whatever'),
     ).rejects.toBeInstanceOf(UnauthorizedException);
 
-    // Without the dummy-hash fallback, !user would short-circuit before
-    // this is ever called, and an unknown email would skip the scrypt
-    // call entirely — which is exactly the shortcut that makes an unknown
-    // email answer measurably faster than a wrong password for a real one.
-    expect(spy).toHaveBeenCalledWith('whatever', DUMMY_HASH);
+    // Without the dummy-hash fallback inside verifyUserPassword, !user
+    // would short-circuit before this is ever called, and an unknown email
+    // would skip the scrypt call entirely — which is exactly the shortcut
+    // that makes an unknown email answer measurably faster than a wrong
+    // password for a real one.
+    expect(spy).toHaveBeenCalledWith(null, 'whatever');
   });
 
   it('uses the short-lived ttl by default', async () => {

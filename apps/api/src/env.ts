@@ -111,6 +111,71 @@ function readTrustProxy(): number {
   return value;
 }
 
+// The fixed, per-environment base URL the OIDC redirect_uri is built from
+// (`${apiOrigin}/auth/oidc/:provider/callback`) — never taken from a request
+// header, which is exactly the open-redirect vector that breaks OIDC in
+// practice (see plan/LoginSocial.md). Unlike CORS_ORIGINS/JWT_SECRET, this is
+// NOT required in production: OIDC is an optional login method on top of the
+// password one, and a deployment that never configures Google/Microsoft
+// client credentials (below) shouldn't be forced to also set this just to
+// boot — the dev default being wrong in that case is harmless, since the
+// buttons already don't work without real client credentials either.
+function readApiOrigin(): string {
+  return process.env.API_ORIGIN || 'http://localhost:3000';
+}
+
+// Where the OIDC callback sends the browser back to after it sets the
+// session cookie (or, mid-linking, the linking_token cookie) — the API and
+// the web app are different origins, so this can't be a relative path like
+// the rest of the app's "/perfil" references: a relative redirect from the
+// API would navigate to the API's own origin, not the SPA's. Same
+// "optional feature" reasoning as apiOrigin above: not required at boot.
+function readWebAppOrigin(): string {
+  return process.env.WEB_APP_ORIGIN || 'http://localhost:5173';
+}
+
+// GOOGLE_CLIENT_ID/MICROSOFT_CLIENT_ID aren't secret (they're sent to the
+// browser as part of the authorization URL) and are NOT required in
+// production: unlike JWT_SECRET, OIDC is an optional login method, and a
+// deployment that doesn't want to register Google/Microsoft OAuth apps yet
+// should still boot — an unset value here just means the button-click
+// request builds an authorization URL the provider immediately rejects
+// (empty client_id), the same userfacing failure as not having the feature.
+function readOidcClientId(name: 'GOOGLE_CLIENT_ID' | 'MICROSOFT_CLIENT_ID'): string {
+  return process.env[name] || '';
+}
+
+function readOidcClientSecret(name: 'GOOGLE_CLIENT_SECRET' | 'MICROSOFT_CLIENT_SECRET'): string {
+  return process.env[name] || '';
+}
+
+// Signs the short-lived linking_token (see plan/LoginSocial.md section 4).
+// Required in production, unlike the OIDC vars above — it's a single cheap
+// secret to generate regardless of whether Google/Microsoft credentials
+// are ever configured, and a wrong default here is a real security hole
+// (forging account-linking proof) the moment OIDC credentials DO get set,
+// not just a broken button.
+// Deliberately never falls back to JWT_SECRET or CSRF_SECRET the way those
+// two fall back to each other — this token is the one step that grants
+// linking an OIDC identity to an existing local account, so it gets its own
+// key, not a shared one that would widen the blast radius of either secret
+// leaking.
+function readOidcLinkingTokenSecret(): string {
+  const DEV_SECRET = 'dev-only-linking-secret-change-me';
+  const raw = process.env.OIDC_LINKING_TOKEN_SECRET;
+  if (raw) {
+    if (raw.length < 32) {
+      errors.push('OIDC_LINKING_TOKEN_SECRET must be at least 32 characters');
+    }
+    return raw;
+  }
+  if (isProduction) {
+    errors.push('OIDC_LINKING_TOKEN_SECRET must be set in production');
+    return '';
+  }
+  return DEV_SECRET;
+}
+
 function readSwaggerEnabled(): boolean {
   const raw = process.env.SWAGGER_ENABLED;
   if (raw === undefined || raw === '') return !isProduction;
@@ -134,6 +199,13 @@ const parsed = {
   csrfSecret: process.env.CSRF_SECRET || undefined,
   trustProxy: readTrustProxy(),
   swaggerEnabled: readSwaggerEnabled(),
+  apiOrigin: readApiOrigin(),
+  webAppOrigin: readWebAppOrigin(),
+  googleClientId: readOidcClientId('GOOGLE_CLIENT_ID'),
+  googleClientSecret: readOidcClientSecret('GOOGLE_CLIENT_SECRET'),
+  microsoftClientId: readOidcClientId('MICROSOFT_CLIENT_ID'),
+  microsoftClientSecret: readOidcClientSecret('MICROSOFT_CLIENT_SECRET'),
+  oidcLinkingTokenSecret: readOidcLinkingTokenSecret(),
 };
 
 if (errors.length > 0) {

@@ -63,4 +63,55 @@ export class UsersService {
   async updatePasswordHash(id: number, passwordHash: string): Promise<void> {
     await this.prisma.user.update({ where: { id }, data: { passwordHash } });
   }
+
+  // The first lookup OidcService.resolveIdentity does on every OIDC
+  // callback: does this exact (provider, sub) already map to a user? No
+  // passwordHash override needed — OIDC sign-in never checks a local
+  // password.
+  findByProviderIdentity(provider: string, providerSub: string): Promise<StoredUser | null> {
+    return this.prisma.user.findFirst({
+      where: { identities: { some: { provider, providerSub } } },
+    });
+  }
+
+  // A brand-new account from a first-time OIDC sign-in: no passwordHash at
+  // all (not even a random one — AuthService.signIn's DUMMY_HASH fallback
+  // already makes a null hash behave exactly like a wrong password), and
+  // the identity row created in the same write so the two can never exist
+  // one without the other.
+  async createFromOidc(params: {
+    name: string;
+    email: string;
+    provider: string;
+    providerSub: string;
+  }): Promise<StoredUser> {
+    return this.prisma.user.create({
+      data: {
+        name: params.name,
+        email: params.email,
+        passwordHash: null,
+        identities: { create: { provider: params.provider, providerSub: params.providerSub } },
+      },
+    });
+  }
+
+  // Attaches a provider identity to an existing user — either the
+  // no-password-confirmation-needed auto-link (an OIDC-only account adding a
+  // second provider) or the password-confirmed manual link from POST
+  // /auth/oidc/link. The @@unique([provider, providerSub]) constraint is
+  // the actual single-use guarantee for a replayed linking_token (see
+  // oidc-linking-token.ts) — a second attempt lands here and conflicts.
+  async linkProviderIdentity(userId: number, provider: string, providerSub: string): Promise<void> {
+    try {
+      await this.prisma.oidcIdentity.create({ data: { userId, provider, providerSub } });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === UNIQUE_VIOLATION
+      ) {
+        throw new ConflictException('Identidade já vinculada a uma conta');
+      }
+      throw error;
+    }
+  }
 }

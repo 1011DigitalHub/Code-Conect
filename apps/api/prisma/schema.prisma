@@ -13,14 +13,37 @@ model User {
   id           Int      @id @default(autoincrement())
   name         String   @db.VarChar(100)
   email        String   @unique @db.VarChar(254)
-  passwordHash String   @map("password_hash")
+  // Optional: a user created via OIDC (Google/Microsoft) only has no local
+  // password. AuthService.signIn already treats a null hash as a 401,
+  // the same message as a wrong password (see password.ts's DUMMY_HASH).
+  passwordHash String?  @map("password_hash")
   createdAt    DateTime @default(now()) @map("created_at")
 
-  posts    Post[]
-  comments Comment[]
-  likes    Like[]
+  posts      Post[]
+  comments   Comment[]
+  likes      Like[]
+  identities OidcIdentity[]
 
   @@map("users")
+}
+
+// One row per (provider, external account) a user has linked. A user can
+// have at most one per provider (not enforced here — a second login from the
+// same provider resolves to the existing row via @@unique([provider,
+// providerSub]) below, never a second one), and can mix a local password
+// with one or more OIDC identities.
+model OidcIdentity {
+  id          Int      @id @default(autoincrement())
+  provider    String   @db.VarChar(20) // "google" | "microsoft"
+  providerSub String   @map("provider_sub") @db.VarChar(255) // the id_token's `sub` claim, stable per provider
+  userId      Int      @map("user_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerSub])
+  @@index([userId])
+  @@map("oidc_identities")
 }
 
 model Post {
