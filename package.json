@@ -23,9 +23,10 @@
     "test:api:e2e": "pnpm --filter api test:e2e",
     "preview:web": "pnpm --filter web preview",
     "start:api": "pnpm --filter api start:prod",
-    "db:up": "docker compose up -d --wait",
+    "db:up": "docker compose up -d --wait postgres",
     "db:down": "docker compose down",
     "db:migrate": "pnpm --filter api exec prisma migrate dev",
+    "db:seed": "pnpm --filter api exec prisma db seed",
     "db:studio": "pnpm --filter api exec prisma studio"
   },
   "devDependencies": {

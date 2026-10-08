@@ -40,4 +40,24 @@ Rules:
   - **Anything else** with no token (for example an `object-position`): add a named utility with `@utility` in `src/index.css`.
   - Composing an image from several Figma SVG parts: place them with coordinates inside one `<svg viewBox>` (`<image x y width height>`) instead of percentage `inset-[...]` classes.
 - Component variants (size, color, state) are driven by props that map to class sets. Don't make the caller pass raw class strings for that.
+- **Use `class-variance-authority` (CVA) to define those class sets** once a component has a variant prop (size, color, state) or a boolean that toggles classes. Call `cva()` at module scope, outside the component function, with the base (always-on) classes as the first argument and a `variants` object as the second; set `defaultVariants` instead of defaulting props in the function signature. Derive the component's variant props with `VariantProps<typeof theComponentCva>` instead of hand-writing a prop type and a parallel `Record<Variant, string>` lookup:
+  ```tsx
+  const button = cva('inline-flex items-center rounded-lg px-4 py-3 transition', {
+    variants: {
+      variant: { primary: 'bg-primary text-ink', secondary: 'bg-surface text-offwhite' },
+      fullWidth: { true: 'w-full', false: '' },
+    },
+    defaultVariants: { variant: 'primary', fullWidth: false },
+  })
+
+  export type ButtonProps = VariantProps<typeof button> & { ... }
+
+  export function Button({ variant, fullWidth, ...props }: ButtonProps) {
+    return <button className={button({ variant, fullWidth })} {...props} />
+  }
+  ```
+  A component with no variants (a single, fixed class string) stays a plain template literal — don't introduce `cva()` for it. Multi-word boolean variant names (e.g. `fullWidth`) and numeric variant keys (e.g. `level: 1 | 2` on `Heading`) both work as plain object keys in `cva()`. This project doesn't use a `cn()`/`clsx` merge helper: components that take CVA variants `Omit` or simply don't expose `className`, so there's never an incoming class string to merge with the generated one.
+  - **A new look for an existing component is a new key in its existing `variants` object, not a new conditional elsewhere.** When `Button` needed a secondary look for icon-led controls (like, logout), the fix was adding `ghost` next to `primary` inside its one `cva()` call (`atoms/Button/Button.tsx`), so every consumer keeps picking a `variant` instead of some callers getting a raw class string.
+  - **CVA is for picking a class set, not for branching markup or props.** When two states of a component need different DOM, different handlers, or different required props — not just different classes — model that as a discriminated union on the props type and an early `if`/return, the same way you'd structure any other conditional component; don't stretch `cva()` to cover it. `LikeButton` (`molecules/LikeButton/LikeButton.tsx`) renders a `TextLink` to `/login` when `authenticated: false` and a `Button` with `onToggle`/`liked` when `authenticated: true` — two different components with different props, decided with a type guard, not a variant. `SessionLink` follows the same shape for signed-in vs signed-out.
+  - A molecule that wraps a CVA atom still derives the atom's variant from domain state instead of asking its own caller to pass it: `FormField` and `TextareaField` both `Omit<AtomProps, 'id' | 'invalid'>` and pass `invalid={Boolean(error)}` to `Input`/`Textarea` themselves.
 - Setup: Tailwind v4 via the `@tailwindcss/vite` plugin in `vite.config.ts`. There is no `tailwind.config.js`; v4 is configured in CSS, so theme tokens go in an `@theme` block in `src/index.css`. The VS Code extension `bradlc.vscode-tailwindcss` is recommended in `.vscode/extensions.json`.

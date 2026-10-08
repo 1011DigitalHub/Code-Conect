@@ -258,6 +258,46 @@ describe('Auth (e2e)', () => {
     });
   });
 
+  describe('GET /auth/session', () => {
+    // The public counterpart of /auth/me: a 401 for an anonymous visitor
+    // would be logged to the browser console on every public page load,
+    // failing both the no-console-errors browser suite and Lighthouse's
+    // scored best-practices audit.
+    it('answers 200 with a null user for an anonymous visitor', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/auth/session')
+        .expect(200);
+      expect(res.body).toEqual({ user: null });
+    });
+
+    it('reports the user once a session cookie is present', async () => {
+      const agent = request.agent(app.getHttpServer());
+      const csrfToken = await fetchCsrfToken(agent);
+      await agent
+        .post('/users')
+        .set('X-CSRF-Token', csrfToken)
+        .send(newUser)
+        .expect(201);
+      await agent
+        .post('/auth/login')
+        .set('X-CSRF-Token', csrfToken)
+        .send({ email: newUser.email, password: newUser.password })
+        .expect(200);
+
+      const res = await agent.get('/auth/session').expect(200);
+      expect(res.body.user).toMatchObject({ id: 1, email: newUser.email });
+      expect(JSON.stringify(res.body)).not.toMatch(/password/i);
+    });
+
+    it('ignores a malformed cookie instead of rejecting it', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/auth/session')
+        .set('Cookie', 'access_token=not-a-jwt')
+        .expect(200);
+      expect(res.body).toEqual({ user: null });
+    });
+  });
+
   describe('GET /auth/csrf', () => {
     it('sets a readable (non-HttpOnly) csrf_token cookie, even with no session', async () => {
       const res = await request(app.getHttpServer()).get('/auth/csrf').expect(204);
@@ -413,6 +453,7 @@ describe('Auth (e2e)', () => {
           '/auth/login',
           '/auth/logout',
           '/auth/me',
+          '/auth/session',
           '/auth/csrf',
         ]),
       );

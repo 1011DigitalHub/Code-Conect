@@ -7,9 +7,7 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-
-const trim = ({ value }: { value: unknown }): unknown =>
-  typeof value === 'string' ? value.trim() : value;
+import { trim, trimLower } from '../../common/transforms.js';
 
 export class CreateUserDto {
   @ApiProperty({ example: 'Maria Silva', maxLength: 100 })
@@ -20,9 +18,7 @@ export class CreateUserDto {
   name: string;
 
   @ApiProperty({ example: 'maria@exemplo.com', maxLength: 254 })
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' ? value.trim().toLowerCase() : value,
-  )
+  @Transform(trimLower)
   @IsEmail()
   // The column is VARCHAR(254); without this, an over-long email reaches
   // Prisma and comes back as a 500 instead of the 400 a malformed body

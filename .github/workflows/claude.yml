@@ -18,11 +18,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          # Full history: the review diffs against origin/<base>, which a
+          # shallow clone does not have.
+          fetch-depth: 0
 
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Without this the action suppresses Claude's own output, so the job
+          # log cannot tell "reviewed and found nothing" apart from "never
+          # ran" — which is exactly how a 2.3s green check went unnoticed.
+          show_full_output: true
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
@@ -39,12 +45,29 @@ jobs:
 
             A branch do PR já está disponível no diretório de trabalho atual.
 
+            Para ler as mudanças, use:
+
+            ```
+            git diff origin/${{ github.event.pull_request.base.ref }}...HEAD -- . ':(exclude)pnpm-lock.yaml' ':(exclude)apps/api/src/generated/**'
+            ```
+
+            Não use `gh pr diff`: ele não aceita pathspec e traz o
+            `pnpm-lock.yaml` inteiro, que em um bump de dependência tem
+            milhares de linhas e consome o orçamento de tokens sem agregar
+            nada à revisão. O lockfile e o cliente Prisma gerado estão fora
+            de escopo - são arquivos gerados, não escritos à mão.
+
             Use `gh pr comment` para feedback geral.
             Use `mcp__github_inline_comment__create_inline_comment` (com
             `confirmed: true`) para apontar problemas em linhas específicas.
             Poste apenas comentários no GitHub - não devolva o texto da
             revisão como mensagem de saída.
 
+          # max-turns was 5, which was not enough to read a large diff and
+          # still post: the review of the feed PR (183 files) died with
+          # error_max_turns before commenting, having spent the budget anyway.
+          # Everything inside the block below is passed to the CLI verbatim —
+          # a "#" line in there would become an argument, not a comment.
           claude_args: |
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
-            --max-turns 5
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(git diff:*),Bash(gh pr comment:*),Bash(gh pr view:*)"
+            --max-turns 20

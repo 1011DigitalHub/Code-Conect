@@ -100,10 +100,44 @@ jobs:
   # instead of performance scores.
   e2e-web:
     runs-on: ubuntu-latest
-    # Safety net: the suite itself finishes in ~1 minute. Without this, a webServer
-    # teardown hang (see playwright.config.ts) would otherwise run until the runner's
-    # default 6-hour timeout instead of failing fast.
-    timeout-minutes: 10
+    # Safety net against a webServer teardown hang (see playwright.config.ts),
+    # which would otherwise run until the runner's default 6-hour timeout.
+    # Sized well above the work rather than close to it: the suite itself takes
+    # ~2 minutes, but `playwright install --with-deps` has been measured at
+    # 9m34s on a cold runner — it apt-installs the browser's system libraries —
+    # which alone exhausted the previous 10-minute budget.
+    timeout-minutes: 25
+    # "/" is the public feed, so playwright.config.ts starts the real API
+    # alongside the preview server — which needs a database behind it. Auditing
+    # an empty or error state would not measure the page this project ships.
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: codeconnect
+          POSTGRES_PASSWORD: codeconnect-ci-only
+          # Explicit, though it is also what POSTGRES_DB would default to from
+          # POSTGRES_USER. The entrypoint creates it, so this job needs no
+          # CREATE DATABASE step of its own.
+          POSTGRES_DB: codeconnect
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U codeconnect"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # NODE_ENV is deliberately NOT set here: `pnpm test:web:a11y` runs
+      # `vite build`, which reads it, and a job-level value bundles React's
+      # development build (576 kB instead of 347 kB) — the suite would then
+      # audit something users never get. The API needs it, so it is set on that
+      # process alone, in playwright.config.ts's webServer env. "test" rather
+      # than "production" there keeps cookies non-Secure, which the http
+      # preview origin needs, and lets src/cors.ts default to the Vite origins.
+      DATABASE_URL: postgresql://codeconnect:codeconnect-ci-only@localhost:5432/codeconnect
+      # CI-only, never a real secret: src/env.ts requires 32+ characters.
+      JWT_SECRET: ci-only-jwt-secret-not-a-real-secret-32-chars-minimum
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -117,6 +151,17 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      # Built here rather than chained into playwright.config.ts's webServer,
+      # so the command it supervises is a plain `node dist/main.js` it can
+      # actually tree-kill on teardown.
+      - name: Build the API the browser suites run against
+        run: pnpm --filter api build
+
+      - name: Apply migrations and seed the feed the suites audit
+        run: |
+          pnpm --filter api exec prisma migrate deploy
+          pnpm db:seed
 
       - name: Install the browser Playwright drives (new headless Chromium)
         working-directory: apps/web

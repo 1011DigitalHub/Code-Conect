@@ -5,11 +5,13 @@ on:
     branches: [main]
     paths:
       - 'apps/web/**'
+      - 'apps/api/**'
       - 'pnpm-lock.yaml'
       - '.github/workflows/lighthouse.yml'
   pull_request:
     paths:
       - 'apps/web/**'
+      - 'apps/api/**'
       - 'pnpm-lock.yaml'
       - '.github/workflows/lighthouse.yml'
   workflow_dispatch:
@@ -27,6 +29,26 @@ jobs:
     defaults:
       run:
         working-directory: apps/web
+    # "/" is now the public feed, which fetches real posts from the API, so
+    # auditing it needs a real database and a running API behind vite
+    # preview — auditing an empty or error state would not measure the page
+    # this project ships. Mirrors the local setup in apps/web/playwright.config.ts.
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: codeconnect
+          POSTGRES_PASSWORD: lighthouse-ci
+          POSTGRES_DB: codeconnect
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U codeconnect -d codeconnect"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://codeconnect:lighthouse-ci@localhost:5432/codeconnect
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -40,6 +62,47 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      - name: Build the API
+        working-directory: apps/api
+        run: pnpm run build
+
+      - name: Apply migrations
+        working-directory: apps/api
+        run: pnpm exec prisma migrate deploy
+
+      - name: Seed mock posts
+        working-directory: apps/api
+        run: pnpm exec prisma db seed
+
+      - name: Start the API
+        working-directory: apps/api
+        # CORS_ORIGINS must include the vite preview origin the web build
+        # below is served from. VITE_API_URL is left unset on the web build:
+        # its default (http://localhost:3000) already matches PORT here.
+        #
+        # NODE_ENV and JWT_SECRET live on this step rather than at job level on
+        # purpose. src/env.ts validates both at boot and refuses to start
+        # without them, but `vite build` further down reads NODE_ENV too — a
+        # job-level "test" would hand Lighthouse an unminified development
+        # bundle and invent performance findings (see CLAUDE.md, "Never audit
+        # vite dev"). "test" rather than "production" keeps cookies non-Secure,
+        # which the http preview origin needs.
+        env:
+          PORT: 3000
+          CORS_ORIGINS: http://127.0.0.1:5174
+          NODE_ENV: test
+          # CI-only, never a real secret: src/env.ts requires 32+ characters.
+          JWT_SECRET: ci-only-jwt-secret-not-a-real-secret-32-chars-minimum
+        run: |
+          nohup node dist/main.js > api.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:3000 > /dev/null && exit 0
+            sleep 2
+          done
+          echo "API did not become ready in time"
+          cat api.log
+          exit 1
 
       - run: pnpm build
 

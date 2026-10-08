@@ -1,9 +1,10 @@
 import { NotFoundException, UnauthorizedException } from '@nestjs/common';
-import type { Request, Response } from 'express';
+import type { Response } from 'express';
 import { UserEntity } from '../users/entities/user.entity.js';
 import type { UsersService } from '../users/users.service.js';
 import { AuthController } from './auth.controller.js';
 import type { AuthService } from './auth.service.js';
+import type { MaybeAuthenticatedRequest } from './auth.types.js';
 import { sessionKey, verifyCsrfToken } from './csrf.js';
 
 // Returning the mocks alongside `res` (instead of reading them back off the
@@ -16,8 +17,12 @@ function fakeResponse() {
   return { res, cookie, clearCookie };
 }
 
-function fakeRequest(cookieHeader?: string): Request {
-  return { headers: { cookie: cookieHeader } } as unknown as Request;
+// Typed as MaybeAuthenticatedRequest (a superset of Request) so a test can
+// set `user` the way AuthGuard does on an optionally-authenticated route.
+function fakeRequest(cookieHeader?: string): MaybeAuthenticatedRequest {
+  return {
+    headers: { cookie: cookieHeader },
+  } as unknown as MaybeAuthenticatedRequest;
 }
 
 describe('AuthController', () => {
@@ -160,5 +165,45 @@ describe('AuthController', () => {
     await expect(
       controller.me({ sub: 99, email: 'x@exemplo.com' }),
     ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  describe('GET /auth/session', () => {
+    // The public probe: a page that renders for anonymous and logged-in
+    // visitors alike must not provoke a 401 the browser logs to the console.
+    it('reports the user when the request carried a valid session', async () => {
+      usersService.findById.mockResolvedValue(
+        new UserEntity({
+          id: 1,
+          name: 'Maria',
+          email: 'maria@exemplo.com',
+          passwordHash: 'salt:hash',
+          createdAt: new Date(),
+        }),
+      );
+
+      const req = fakeRequest();
+      req.user = { sub: 1, email: 'maria@exemplo.com' };
+
+      const result = await controller.session(req);
+
+      expect(usersService.findById).toHaveBeenCalledWith(1);
+      expect(result.user?.name).toBe('Maria');
+    });
+
+    it('reports a null user for an anonymous visitor, without 401', async () => {
+      const result = await controller.session(fakeRequest());
+
+      expect(result).toEqual({ user: null });
+      expect(usersService.findById).not.toHaveBeenCalled();
+    });
+
+    it('reports a null user when the token names someone who no longer exists', async () => {
+      usersService.findById.mockRejectedValue(new NotFoundException());
+
+      const req = fakeRequest();
+      req.user = { sub: 99, email: 'x@exemplo.com' };
+
+      await expect(controller.session(req)).resolves.toEqual({ user: null });
+    });
   });
 });

@@ -1,19 +1,24 @@
+import { cva, type VariantProps } from 'class-variance-authority'
 import type { ReactNode } from 'react'
 import { BrandSymbol } from '../../atoms/BrandSymbol'
 import { Heading } from '../../atoms/Heading'
 import { Logo } from '../../atoms/Logo'
 
-type BannerFocus = 'center' | 'center-right'
+const banner = cva('absolute inset-0 size-full object-cover', {
+  variants: {
+    bannerFocus: {
+      center: 'object-center',
+      'center-right': 'object-center-right',
+    },
+  },
+  defaultVariants: {
+    bannerFocus: 'center',
+  },
+})
 
-const bannerFocusClasses: Record<BannerFocus, string> = {
-  center: 'object-center',
-  'center-right': 'object-center-right',
-}
-
-export type AuthTemplateProps = {
+export type AuthTemplateProps = VariantProps<typeof banner> & {
   bannerSrc: string
   bannerAlt: string
-  bannerFocus?: BannerFocus
   title: string
   subtitle: string
   children: ReactNode
@@ -25,7 +30,7 @@ export type AuthTemplateProps = {
 export function AuthTemplate({
   bannerSrc,
   bannerAlt,
-  bannerFocus = 'center',
+  bannerFocus,
   title,
   subtitle,
   children,
@@ -51,7 +56,7 @@ export function AuthTemplate({
             height={896}
             fetchPriority="high"
             decoding="async"
-            className={`absolute inset-0 size-full object-cover ${bannerFocusClasses[bannerFocus]}`}
+            className={banner({ bannerFocus })}
           />
           <div className="absolute inset-x-0 bottom-8 flex justify-center">
             <Logo />

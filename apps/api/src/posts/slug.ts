@@ -1,0 +1,45 @@
+export const SLUG_MAX_LENGTH = 160;
+
+// Path segments under /posts that are real routes on the web app, so a post
+// can never take a slug that would shadow one (a post titled "Novo" would
+// otherwise be unreachable behind /posts/novo).
+export const RESERVED_SLUGS = new Set(['novo', 'new']);
+
+// Builds a URL-safe slug: accents folded, everything that is not a letter or
+// a digit collapsed into a single hyphen, clamped to the column width.
+export function slugify(title: string): string {
+  const slug = title
+    .normalize('NFD')
+    // Strip the combining marks that NFD split off, so "prática" folds to
+    // "pratica" instead of losing the whole letter.
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, SLUG_MAX_LENGTH)
+    // The slice can leave a trailing hyphen behind.
+    .replace(/-+$/g, '');
+
+  // A title made only of punctuation or non-Latin script leaves nothing
+  // usable; the caller's uniqueness suffix turns this into "post-2" etc.
+  return slug || 'post';
+}
+
+// Appends the smallest numeric suffix that is free, keeping the result inside
+// the column width. `taken` answers "does this slug already exist?".
+export async function uniqueSlug(
+  title: string,
+  taken: (slug: string) => Promise<boolean>,
+): Promise<string> {
+  const base = slugify(title);
+  const candidate = RESERVED_SLUGS.has(base) ? `${base}-post` : base;
+
+  if (!(await taken(candidate))) return candidate;
+
+  for (let suffix = 2; ; suffix++) {
+    const tail = `-${suffix}`;
+    const trimmed = candidate.slice(0, SLUG_MAX_LENGTH - tail.length).replace(/-+$/g, '');
+    const next = `${trimmed}${tail}`;
+    if (!(await taken(next))) return next;
+  }
+}

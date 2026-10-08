@@ -1,19 +1,24 @@
+import { cva, type VariantProps } from 'class-variance-authority'
 import type { ReactNode } from 'react'
 
-type HeadingLevel = 1 | 2
+const heading = cva('text-offwhite', {
+  variants: {
+    level: {
+      1: 'text-subtitle font-semibold',
+      2: 'text-paragraph-lg font-normal',
+    },
+  },
+  defaultVariants: {
+    level: 1,
+  },
+})
 
-const levelClasses: Record<HeadingLevel, string> = {
-  1: 'text-subtitle font-semibold',
-  2: 'text-paragraph-lg font-normal',
-}
-
-export type HeadingProps = {
-  level?: HeadingLevel
+export type HeadingProps = VariantProps<typeof heading> & {
   children: ReactNode
 }
 
-export function Heading({ level = 1, children }: HeadingProps) {
-  const Tag = level === 1 ? 'h1' : 'h2'
+export function Heading({ level, children }: HeadingProps) {
+  const Tag = level === 2 ? 'h2' : 'h1'
 
-  return <Tag className={`text-offwhite ${levelClasses[level]}`}>{children}</Tag>
+  return <Tag className={heading({ level })}>{children}</Tag>
 }
