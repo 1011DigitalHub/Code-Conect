@@ -1,4 +1,20 @@
+import { matches } from 'class-validator';
+
 export const SLUG_MAX_LENGTH = 160;
+
+// What slugify()/uniqueSlug() below already guarantee by construction: no
+// leading/trailing/double hyphen, nothing outside [a-z0-9-]. Asserted again at
+// the call site (posts.service.ts) as a regression guard — if a future change
+// to either function ever breaks that invariant, this fails the create instead
+// of persisting a slug that could later reach TextLink's own guard as an
+// unexpected throw.
+export const SLUG_FORMAT = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+export function assertSlugFormat(slug: string): void {
+  if (!matches(slug, SLUG_FORMAT)) {
+    throw new Error(`Generated slug "${slug}" does not match the safe slug format`);
+  }
+}
 
 // Path segments under /posts that are real routes on the web app, so a post
 // can never take a slug that would shadow one (a post titled "Novo" would

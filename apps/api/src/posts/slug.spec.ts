@@ -1,4 +1,4 @@
-import { RESERVED_SLUGS, SLUG_MAX_LENGTH, slugify, uniqueSlug } from './slug.js';
+import { RESERVED_SLUGS, SLUG_MAX_LENGTH, assertSlugFormat, slugify, uniqueSlug } from './slug.js';
 
 describe('slugify', () => {
   it('lowercases and hyphenates', () => {
@@ -56,5 +56,24 @@ describe('uniqueSlug', () => {
     const slug = await uniqueSlug(title, (s) => Promise.resolve(existing.has(s)));
     expect(slug.length).toBeLessThanOrEqual(SLUG_MAX_LENGTH);
     expect(slug.endsWith('-2')).toBe(true);
+  });
+});
+
+describe('assertSlugFormat', () => {
+  it('accepts every shape slugify()/uniqueSlug() can actually produce', () => {
+    for (const slug of ['um-post', 'novo-post', 'um-post-3', 'post', 'a']) {
+      expect(() => assertSlugFormat(slug)).not.toThrow();
+    }
+  });
+
+  it.each([
+    ['Bad Slug', 'uppercase and a space'],
+    ['tem--hifen-duplo', 'a double hyphen'],
+    ['-comeca-com-hifen', 'a leading hyphen'],
+    ['termina-com-hifen-', 'a trailing hyphen'],
+    ['tem_underscore', 'an underscore'],
+    ['', 'an empty string'],
+  ])('rejects %j (%s)', (slug) => {
+    expect(() => assertSlugFormat(slug)).toThrow(/does not match the safe slug format/);
   });
 });

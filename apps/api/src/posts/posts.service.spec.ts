@@ -4,6 +4,19 @@ import type { PrismaService } from '../prisma/prisma.service.js';
 import { PostsService } from './posts.service.js';
 import type { PostRecord } from './entities/post.entity.js';
 
+// uniqueSlug() always returns a safe slug in practice (see slug.spec.ts) — the
+// only way to exercise the assertSlugFormat() regression guard in
+// posts.service.ts is to simulate a future bug in uniqueSlug() itself, which
+// needs mocking the module rather than constructor injection. The mock wraps
+// the real implementation by default (every other test in this file keeps
+// getting a real, correctly-derived slug) and only the one test below
+// overrides it, with mockResolvedValueOnce so the override can't leak.
+vi.mock('./slug.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./slug.js')>();
+  return { ...actual, uniqueSlug: vi.fn(actual.uniqueSlug) };
+});
+const { uniqueSlug } = await import('./slug.js');
+
 function record(overrides: Partial<PostRecord> = {}): PostRecord {
   return {
     id: 1,
@@ -236,6 +249,16 @@ describe('PostsService.create', () => {
     await expect(serviceWith(prisma).create(dto, 3)).rejects.toBeInstanceOf(
       ConflictException,
     );
+  });
+
+  it('rejects before persisting if uniqueSlug ever returns an unsafe slug', async () => {
+    const prisma = prismaMock();
+    vi.mocked(uniqueSlug).mockResolvedValueOnce('Bad Slug!');
+
+    await expect(serviceWith(prisma).create(dto, 3)).rejects.toThrow(
+      /does not match the safe slug format/,
+    );
+    expect(prisma.post.create).not.toHaveBeenCalled();
   });
 });
 
