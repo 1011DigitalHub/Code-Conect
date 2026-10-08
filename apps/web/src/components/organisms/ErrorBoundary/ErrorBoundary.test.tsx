@@ -96,6 +96,36 @@ describe('ErrorBoundary', () => {
     expect(screen.queryByText('Conteúdo')).not.toBeInTheDocument()
   })
 
+  // The navigation that changes the key can itself be what lands on a broken
+  // page. Resetting on that update would re-render the broken tree and throw
+  // again, so the fallback has to survive it.
+  //
+  // Counting this boundary's own log — rather than every console.error call —
+  // is what makes the assertion mean "componentDidCatch ran once": React
+  // reports caught errors on its own too, so a total count would measure
+  // React's internals as much as ours. Without the guard, this is 2.
+  it('keeps the fallback when the error is thrown during the update that changes the key', () => {
+    const { rerender } = render(
+      <ErrorBoundary resetKey="/a">
+        <p>Página sadia</p>
+      </ErrorBoundary>,
+    )
+    expect(screen.getByText('Página sadia')).toBeInTheDocument()
+
+    rerender(
+      <ErrorBoundary resetKey="/b">
+        <Explodes />
+      </ErrorBoundary>,
+    )
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Algo deu errado' })).toBeInTheDocument()
+
+    const caught = vi
+      .mocked(console.error)
+      .mock.calls.filter(([message]) => message === 'render error caught by the boundary')
+    expect(caught).toHaveLength(1)
+  })
+
   it('has no WCAG 2.2 AA violations', async () => {
     const { container } = render(
       <ErrorBoundary>

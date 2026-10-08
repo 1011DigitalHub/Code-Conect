@@ -57,8 +57,14 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     console.error('render error caught by the boundary', error, info.componentStack)
   }
 
-  componentDidUpdate(previous: ErrorBoundaryProps) {
-    if (this.state.failed && previous.resetKey !== this.props.resetKey) {
+  componentDidUpdate(previous: ErrorBoundaryProps, previousState: ErrorBoundaryState) {
+    // previousState.failed, not this.state.failed: the error has to have been
+    // on screen *before* this update. Reading current state instead meant that
+    // when the navigation changing resetKey was itself what led to a throwing
+    // page, the boundary caught the error and cleared it in the same commit —
+    // re-rendering the broken tree, throwing a second time, and logging twice
+    // while the fallback flickered. This is not a redundant check.
+    if (previousState.failed && previous.resetKey !== this.props.resetKey) {
       this.setState({ failed: false })
     }
   }

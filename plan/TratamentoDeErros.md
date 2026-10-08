@@ -101,10 +101,13 @@ pnpm build
 
 Não precisa de `pnpm test:api` nem `test:api:e2e`: esta fase não toca `apps/api`.
 
-Manuais obrigatórios do `CLAUDE.md`, na rota nova:
-- usar a página só com o teclado;
-- testar com leitor de tela (NVDA no Windows);
-- conferir em zoom de 200%.
+Manuais obrigatórios do `CLAUDE.md`, na rota nova — **todos aprovados em validação humana em 2026-10-08**, contra o build de produção servido em `http://127.0.0.1:5174` (a porta que a allowlist de CORS da API aceita; `vite preview` sem flags sobe em 4173 e quebraria as chamadas):
+
+- [x] usar a página só com o teclado — foco chega ao link de volta com indicador visível, `Enter` ativa, `Shift+Tab` percorre na ordem inversa, sem armadilha de foco;
+- [x] testar com leitor de tela (NVDA no Windows) — título, `h1` e o link anunciados corretamente;
+- [x] conferir em zoom de 200% — sem rolagem horizontal e sem texto cortado.
+
+O `ErrorBoundary` não entra nesta lista: não existe caminho natural para acionar o fallback (o `TextLink` só lança com href inválido e todo caller passa literal válido), então uma verificação manual exigiria inserir um `throw` temporário. Ele fica coberto pelos 6 testes do componente, incluindo o caso axe sobre o próprio fallback.
 
 ### Lighthouse (build de produção, preset desktop)
 
