@@ -104,6 +104,35 @@ describe('HealthService', () => {
     await expect(second).resolves.toBe(false);
   });
 
+  // The 9th review round's finding: when the timeout wins the race, the
+  // caller gets `false` immediately, but the real reason the query was
+  // stuck is still unknown at that point — logging only "gave up waiting"
+  // and never finding out why would leave an outage with no diagnosable
+  // cause. The .catch() attached to the query itself (not to the race) is
+  // what still logs the real error whenever it actually arrives, no matter
+  // how much later than the timeout that is.
+  it('logs the real failure once the underlying query eventually rejects, after the timeout already gave up', async () => {
+    vi.useFakeTimers();
+    let rejectQuery!: (error: Error) => void;
+    prisma.$queryRaw.mockReturnValue(
+      new Promise((_resolve, reject) => {
+        rejectQuery = reject;
+      }),
+    );
+
+    const result = service.isDatabaseReachable();
+    await vi.advanceTimersByTimeAsync(3_000); // our own timeout gives up first
+    await expect(result).resolves.toBe(false);
+    expect(errorSpy).toHaveBeenCalledTimes(1); // only the "gave up waiting" notice so far
+
+    const realError = new Error('server closed the connection unexpectedly');
+    rejectQuery(realError);
+    await vi.advanceTimersByTimeAsync(0); // let the dedicated .catch()'s microtask run
+
+    expect(errorSpy).toHaveBeenCalledTimes(2);
+    expect(errorSpy).toHaveBeenLastCalledWith('database health probe failed', realError.stack);
+  });
+
   // The 503 AppController throws from this is an HttpException, so
   // AllExceptionsFilter never logs it — this is the only place the real
   // Postgres error ends up in a server-side log at all.

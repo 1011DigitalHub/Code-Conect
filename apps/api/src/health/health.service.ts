@@ -14,6 +14,12 @@ const PROBE_TIMEOUT_MS = 3_000;
 // settled result below instead of starting a new probe.
 const PROBE_CACHE_MS = 1_500;
 
+// A unique rejection reason for the timeout branch of the race in probe(),
+// distinct from whatever the real query eventually rejects with — so the
+// catch there can tell "we gave up waiting" apart from "the query actually
+// failed" without string-matching an error message.
+const PROBE_TIMED_OUT = Symbol('probe-timed-out');
+
 @Injectable()
 export class HealthService {
   private readonly logger = new Logger(HealthService.name);
@@ -76,9 +82,28 @@ export class HealthService {
     // each one permanently holding its own pool connection, since nothing
     // ever cancels the ones Promise.race below already gave up waiting on.
     if (!this.inFlightQuery) {
-      this.inFlightQuery = this.prisma.$queryRaw`SELECT 1`.finally(() => {
-        this.inFlightQuery = null;
-      });
+      const query = this.prisma.$queryRaw`SELECT 1`;
+      this.inFlightQuery = query;
+      // Attached once, here, rather than relying on the race below: a
+      // timeout can give up on `query` long before it actually settles, so
+      // this is the only place guaranteed to see its real outcome whenever
+      // that eventually happens — the only place the real reason ever gets
+      // logged. The 503 AppController throws is an HttpException, and
+      // AllExceptionsFilter deliberately never logs those (a wrong password
+      // isn't a bug); without this, a database outage left zero server-side
+      // trace of why the health check failed.
+      query
+        .catch((error: unknown) => {
+          this.logger.error(
+            'database health probe failed',
+            error instanceof Error ? error.stack : String(error),
+          );
+        })
+        .finally(() => {
+          if (this.inFlightQuery === query) {
+            this.inFlightQuery = null;
+          }
+        });
     }
     const query = this.inFlightQuery;
 
@@ -93,23 +118,22 @@ export class HealthService {
       await Promise.race([
         query,
         new Promise<never>((_resolve, reject) => {
-          timer = setTimeout(() => reject(new Error(`probe exceeded ${PROBE_TIMEOUT_MS}ms`)), PROBE_TIMEOUT_MS);
+          timer = setTimeout(() => reject(PROBE_TIMED_OUT), PROBE_TIMEOUT_MS);
         }),
       ]);
       return true;
     } catch (error) {
-      // The only place the real reason ever gets logged: the 503
-      // AppController throws from this is an HttpException, and
-      // AllExceptionsFilter deliberately never logs those (a wrong
-      // password isn't a bug) — without this, a database outage left zero
-      // server-side trace of why the health check failed. Only meaningful
-      // the first time a given query rejects — a timeout on a reused
-      // `inFlightQuery` logs the same underlying cause again, which is
-      // still accurate, just repeated.
-      this.logger.error(
-        'database health probe failed',
-        error instanceof Error ? error.stack : String(error),
-      );
+      if (error === PROBE_TIMED_OUT) {
+        // The real cause isn't known yet — `query` hasn't settled — so
+        // there's nothing to log beyond the fact that we stopped waiting.
+        // The .catch() above logs the real reason once `query` actually
+        // settles, however much later that turns out to be.
+        this.logger.error(
+          `database health probe gave up waiting after ${PROBE_TIMEOUT_MS}ms; the underlying query is still running`,
+        );
+      }
+      // A non-timeout rejection here is `query` itself, already logged by
+      // the .catch() attached when it was created.
       return false;
     } finally {
       clearTimeout(timer);
