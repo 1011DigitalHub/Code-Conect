@@ -27,18 +27,35 @@ O controller injeta um `HealthService`, que injeta o `PrismaService`. A regra do
 
 ### O probe
 
-No `HealthService` — versão atual, depois dos dois achados da 4ª rodada de revisão (ver seção própria abaixo):
+No `HealthService` — versão atual, depois dos achados da 4ª e 5ª rodadas de revisão (ver seções próprias abaixo):
 
 ```ts
 const PROBE_TIMEOUT_MS = 3_000; // menor que o --timeout=5s do Docker
+const PROBE_CACHE_MS = 1_500;   // coalescing + cache, ver a seção da 5ª rodada
 
-async isDatabaseReachable(): Promise<boolean> {
+isDatabaseReachable(): Promise<boolean> {
+  const now = Date.now();
+  if (!this.cached || this.cached.expiresAt <= now) {
+    this.cached = { expiresAt: now + PROBE_CACHE_MS, result: this.probe() };
+  }
+  return this.cached.result;
+}
+
+private async probe(): Promise<boolean> {
+  let timer: NodeJS.Timeout | undefined;
   try {
-    await Promise.race([this.prisma.$queryRaw`SELECT 1`, this.timeout()]);
+    await Promise.race([
+      this.prisma.$queryRaw`SELECT 1`,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(`probe exceeded ${PROBE_TIMEOUT_MS}ms`)), PROBE_TIMEOUT_MS);
+      }),
+    ]);
     return true;
   } catch (error) {
     this.logger.error('database health probe failed', error instanceof Error ? error.stack : String(error));
     return false;
+  } finally {
+    clearTimeout(timer);
   }
 }
 ```
@@ -102,6 +119,35 @@ Achado pela revisão da PR #16 (`isHttpError` só checava `typeof err.expose ===
 2. **Probe sem timeout.** O pool do `pg` não tem timeout de query por padrão. Com o pool esgotado ou o host descartando pacotes sem fechar o socket, `GET /` ficaria pendurado para sempre em vez de responder `503` — o `--timeout=5s` do `HEALTHCHECK` do Docker esconde isso por fora, mas qualquer outro consumidor direto da rota (um load balancer, por exemplo) não tem essa proteção. Corrigido com `Promise.race` contra um timeout de 3s (menor que os 5s do Docker, para que o probe sempre perca a corrida antes do Docker matar o processo). Verificado com um teste que nunca resolve a chamada ao banco (`new Promise(() => {})`) e `vi.useFakeTimers()`, confirmando que o `HealthService` responde `false` mesmo assim — sem esse teste, o `Promise.race` poderia estar presente só na aparência (ex.: o timeout nunca realmente disparando) e nada acusaria.
 3. **`GET /` estava sob o rate limit global (100/min por IP).** Um probe de infraestrutura mais agressivo, ou que compartilhe IP com tráfego real por trás do mesmo proxy, poderia receber `429` e ser lido por engano como "unhealthy" — a própria checagem de saúde se tornando o motivo da checagem falhar. Era uma decisão de produto, não um bug: levada ao usuário, que escolheu isentar a rota com `@SkipThrottle()` (de `@nestjs/throttler`) em vez de documentar o `429` como possível. `GET /` não lê nada sensível nem muda estado, então a isenção não abre superfície de abuso real. Testado em `test/throttle.e2e-spec.ts` (não em `app.e2e-spec.ts`/`security.e2e-spec.ts` — esse já é o arquivo dedicado às asserções de `DEFAULT_THROTTLE`/`LOGIN_THROTTLE`/`SIGN_UP_THROTTLE`): mais de 100 requisições seguidas contra `/`, todas `200`. Verificado por reversão deliberada: removendo o `@SkipThrottle()`, a 101ª requisição vira `429` e o teste falha como esperado.
 
+### 5ª rodada: o `@SkipThrottle()` da 4ª rodada reabriu um problema diferente
+
+A decisão da 4ª rodada (isentar `GET /` do rate limit) resolveu o risco de infraestrutura ler um `429` como "unhealthy", mas trocou isso por outro: sem limite nenhum, cada chamada anônima a `GET /` ocupa uma conexão do pool do `pg`, e um flood nessa rota passa a disputar o pool com o resto da API — o timeout de 3s da seção anterior só para de esperar a query, não cancela nem libera a conexão mais rápido.
+
+De novo uma decisão de produto, não um bug — levada ao usuário com duas opções: um `@Throttle()` dedicado e generoso (mais simples, mas reabre parcialmente o risco da 4ª rodada e não limita o pool tão bem) ou cache + coalescing das chamadas concorrentes no próprio `HealthService` (resolve as duas rodadas ao mesmo tempo, sem reverter o `@SkipThrottle()`). Escolhido: **cache + coalescing**.
+
+`HealthService.isDatabaseReachable()` guarda a `Promise` em andamento (não só o resultado) numa janela de **1500ms** (`PROBE_CACHE_MS`):
+
+```ts
+isDatabaseReachable(): Promise<boolean> {
+  const now = Date.now();
+  if (!this.cached || this.cached.expiresAt <= now) {
+    this.cached = { expiresAt: now + PROBE_CACHE_MS, result: this.probe() };
+  }
+  return this.cached.result;
+}
+```
+
+Guardar a `Promise`, não o `boolean` resolvido, é o que faz o *coalescing* funcionar: chamadas concorrentes que chegam enquanto o probe ainda está em andamento recebem a mesma `Promise` e esperam pelo mesmo resultado, em vez de cada uma disparar sua própria `$queryRaw`. Um flood de milhares de requisições na mesma janela custa no máximo **uma** consulta real ao banco.
+
+Efeito colateral que precisou de correção: o `setTimeout` do timeout (seção anterior) nunca era limpo quando a query vencia a corrida — o caso comum, já que ela normalmente responde em milissegundos. Sem `clearTimeout` num `finally`, esse timer ficava pendurado mantendo o event loop vivo pelos 3s inteiros a cada chamada. Achado pela mesma rodada de revisão, corrigido junto.
+
+Três casos novos em `health.service.spec.ts`, cada um verificado por reversão deliberada (voltando à versão sem cache/coalescing e sem `clearTimeout`, confirmando que os testes certos falham, depois restaurando):
+- chamadas concorrentes (`Promise.all` de duas chamadas) resultam em **uma só** chamada a `$queryRaw`;
+- depois que a janela de 1500ms passa, uma nova chamada dispara um novo probe (`vi.useFakeTimers()` + `vi.advanceTimersByTimeAsync(1_501)`);
+- o timer do timeout é limpo quando a query resolve primeiro (`vi.getTimerCount()` deve ser `0`).
+
+A exceção ao rate limit global ficou documentada em `.github/ai-guidelines/security-standards.md`, como a revisão pediu: a seção de **Rate limiting** agora registra que `GET /` é a única rota isenta, e por quê — e que qualquer rota futura que precise da mesma isenção precisa da mesma proteção ao recurso que ela de fato toca, não só do decorator sozinho.
+
 ### Duas sugestões da revisão, verificadas e **não aplicadas**
 
 - **Documentar `@ApiTooManyRequestsResponse` em `GET /`.** Verificado contra o próprio código: em todo o projeto, esse decorator só aparece em handlers com um `@Throttle()` explícito que sobrescreve o limite padrão (`CREATE_POST_THROTTLE`, `CREATE_COMMENT_THROTTLE`, `SIGN_UP_THROTTLE`, `LOGIN_THROTTLE`) — nunca numa rota sob o limite global padrão, como o próprio `GET /posts` (`posts.controller.ts`, handler `list`) já demonstra. `GET /` usa o limite padrão, sem override; aplicar a sugestão a essa única rota criaria a inconsistência que ela tentava evitar.
@@ -114,7 +160,7 @@ O `ErrorResponseDto` existe desde o início como *documentação* do formato pad
 ### Testes
 
 - `all-exceptions.filter.spec.ts` (7 casos): `HttpException` com corpo-objeto sai idêntica; `response.headersSent` termina a conexão com `end()` em vez de tentar re-setar status; erro `http-errors` com `expose: true` (tipo `PayloadTooLargeError`) sai com o próprio status e com `error` computado do status, sem máscara; erro `http-errors` com `expose: false` sai mascarado e logado, igual a um erro desconhecido; `HttpException` com corpo-string (tipo `ThrottlerException`) sai embrulhada em `{ statusCode, message, error }`; `Error` cru sai como `500` mascarado com o logger chamado só nesse caso; um valor lançado que não é `Error` (`throw { code: 'P2002' }`) cai no mesmo caminho mascarado/logado, sem crashar.
-- `health.service.spec.ts` (3 casos): reachable quando o banco responde (e confirma que `$queryRaw` foi chamado); not reachable e loga quando o banco lança; not reachable quando o probe nunca resolve (com `vi.useFakeTimers()` + `vi.advanceTimersByTimeAsync`, provando o timeout sem esperar 3s reais).
+- `health.service.spec.ts` (6 casos): reachable quando o banco responde (e confirma que `$queryRaw` foi chamado); chamadas concorrentes coalescem numa única chamada a `$queryRaw`; uma nova chamada após a janela de 1500ms dispara um novo probe; not reachable e loga quando o banco lança; not reachable quando o probe nunca resolve (com `vi.useFakeTimers()` + `vi.advanceTimersByTimeAsync`, provando o timeout sem esperar 3s reais); o timer do timeout é limpo quando a query resolve primeiro (`vi.getTimerCount()`).
 - `test/security.e2e-spec.ts`: o caso de falha inesperada (banco fora do ar, via `HealthService` sobrescrito) não vaza stack trace nem detalhe interno no corpo; o caso de `413` verifica o corpo inteiro, incluindo `error: 'Payload Too Large'`.
 - `test/app.e2e-spec.ts` ganha o caso que todo outro módulo já tinha: `GET /` aparece em `GET /api/docs-json`.
 - `test/throttle.e2e-spec.ts` ganha o caso do `@SkipThrottle()`: mais de 100 requisições a `/`, todas `200`.
