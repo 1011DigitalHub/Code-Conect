@@ -153,4 +153,22 @@ describe('AllExceptionsFilter', () => {
     expect(errorSpy).toHaveBeenCalledTimes(1);
     expect(errorSpy.mock.calls[0]?.[1]).toBe(exception.stack);
   });
+
+  // JavaScript lets a `throw` be any value, not just an Error — a library
+  // that does this (a Prisma error-code object, a thrown string) must still
+  // mask and log, not bypass the check above or crash String()-ing it.
+  it('masks and logs a thrown value that is not an Error', () => {
+    const { host, status, json } = mockHost();
+    const exception = { code: 'P2002' };
+
+    handle(exception, host);
+
+    expect(status).toHaveBeenCalledWith(500);
+    expect(json).toHaveBeenCalledWith({
+      statusCode: 500,
+      message: 'Internal server error',
+      error: 'Internal Server Error',
+    });
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+  });
 });
