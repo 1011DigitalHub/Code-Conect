@@ -79,6 +79,31 @@ describe('HealthService', () => {
     await expect(second).resolves.toBe(false);
   });
 
+  // The bug the 8th review round found: Promise.race protects the caller
+  // (stops waiting after 3s) but never cancels the loser — the real
+  // $queryRaw call keeps running and holding its pool connection, with
+  // nothing tracking it once this probe() call gives up and reports false.
+  // The test above only proves the cache's own 1.5s window; this one proves
+  // the gap one level up — across *successive* probe cycles (timeout +
+  // cache, repeating roughly every 4.5s) while the underlying query never
+  // settles at all.
+  it('does not start a second real query across repeated cycles while the first never settles', async () => {
+    vi.useFakeTimers();
+    prisma.$queryRaw.mockReturnValue(new Promise(() => {}));
+
+    const first = service.isDatabaseReachable();
+    await vi.advanceTimersByTimeAsync(3_000); // this probe()'s own timeout fires
+    await expect(first).resolves.toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1_600); // past the 1.5s cache window too
+
+    const second = service.isDatabaseReachable(); // a brand-new probe() cycle
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1); // still just the original, still-stuck query
+
+    await vi.advanceTimersByTimeAsync(3_000); // let this cycle's own timeout settle too
+    await expect(second).resolves.toBe(false);
+  });
+
   // The 503 AppController throws from this is an HttpException, so
   // AllExceptionsFilter never logs it — this is the only place the real
   // Postgres error ends up in a server-side log at all.

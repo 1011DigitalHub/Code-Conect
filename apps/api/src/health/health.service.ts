@@ -19,6 +19,14 @@ export class HealthService {
   private readonly logger = new Logger(HealthService.name);
   private pending: Promise<boolean> | null = null;
   private cached: { expiresAt: number; value: boolean } | null = null;
+  // The real $queryRaw call, tracked separately from `pending`. Prisma has
+  // no cancellation for it: giving up on waiting (the timeout in probe()
+  // below) does not stop it running, and it keeps holding a pg pool
+  // connection until it actually settles — possibly long after a 3s
+  // timeout decided to answer the caller `false`. Reusing this reference
+  // across probe() calls is what stops a stuck query from being joined by
+  // another one every time the cache window expires.
+  private inFlightQuery: Promise<unknown> | null = null;
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -59,18 +67,31 @@ export class HealthService {
   // (PrismaService.onModuleInit) and may be stale since then; only a
   // round-trip query proves the database is reachable right now.
   //
-  // Raced against a timeout: pg's pool has no query timeout by default, so
-  // a stuck connection (pool exhausted, host dropping packets without
-  // closing the socket) would otherwise hang this forever instead of
-  // answering 503 — defeating the one job a health check has.
-  //
   // Never rejects: isDatabaseReachable()'s .then() above assumes this always
   // settles to a boolean, never throws.
   private async probe(): Promise<boolean> {
+    // Reuses a still-running query from a previous probe() call instead of
+    // starting a new one. Without this, every cycle where the cache expires
+    // while the database is still stuck issues another real $queryRaw —
+    // each one permanently holding its own pool connection, since nothing
+    // ever cancels the ones Promise.race below already gave up waiting on.
+    if (!this.inFlightQuery) {
+      this.inFlightQuery = this.prisma.$queryRaw`SELECT 1`.finally(() => {
+        this.inFlightQuery = null;
+      });
+    }
+    const query = this.inFlightQuery;
+
+    // Raced against a timeout: pg's pool has no query timeout by default,
+    // so a stuck connection (pool exhausted, host dropping packets without
+    // closing the socket) would otherwise hang this forever instead of
+    // answering 503 — defeating the one job a health check has. This bounds
+    // how long a *caller* waits; it does not cancel `query` itself, which
+    // is exactly why `inFlightQuery` above exists.
     let timer: NodeJS.Timeout | undefined;
     try {
       await Promise.race([
-        this.prisma.$queryRaw`SELECT 1`,
+        query,
         new Promise<never>((_resolve, reject) => {
           timer = setTimeout(() => reject(new Error(`probe exceeded ${PROBE_TIMEOUT_MS}ms`)), PROBE_TIMEOUT_MS);
         }),
@@ -81,16 +102,16 @@ export class HealthService {
       // AppController throws from this is an HttpException, and
       // AllExceptionsFilter deliberately never logs those (a wrong
       // password isn't a bug) — without this, a database outage left zero
-      // server-side trace of why the health check failed.
+      // server-side trace of why the health check failed. Only meaningful
+      // the first time a given query rejects — a timeout on a reused
+      // `inFlightQuery` logs the same underlying cause again, which is
+      // still accurate, just repeated.
       this.logger.error(
         'database health probe failed',
         error instanceof Error ? error.stack : String(error),
       );
       return false;
     } finally {
-      // Otherwise, the loser of the race above (usually this timer, since
-      // the query normally answers well under 3s) keeps the event loop
-      // alive for the rest of its 3s regardless of who actually won.
       clearTimeout(timer);
     }
   }
