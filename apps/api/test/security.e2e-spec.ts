@@ -6,6 +6,7 @@ import { AppModule } from './../src/app.module.js';
 import { configureApp } from './../src/app.setup.js';
 import { setupSwagger } from './../src/swagger.js';
 import { getJwtSecret, JWT_ALGORITHM } from './../src/auth/auth.constants.js';
+import { HealthService } from './../src/health/health.service.js';
 import { PrismaService } from './../src/prisma/prisma.service.js';
 import { fetchCsrfToken } from './cookies.js';
 import { resetDatabase } from './db.js';
@@ -242,5 +243,45 @@ describe('Security regressions (e2e)', () => {
         .send(newUser)
         .expect(201);
     });
+  });
+});
+
+// Separate app instance: overrides HealthService to throw a raw Error
+// (rather than returning false), which is the one way to make a route throw
+// something that isn't already an HttpException without faking a whole
+// database outage. GET / is the trigger because it needs no cookie, no CSRF
+// pair and no body — the failure mode under test is the filter, not auth.
+describe('Global exception filter: an unexpected failure (e2e)', () => {
+  let app: NestExpressApplication;
+
+  beforeEach(async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    })
+      .overrideProvider(HealthService)
+      .useValue({
+        isDatabaseReachable: () => {
+          throw new Error('relation "users" does not exist at line 42');
+        },
+      })
+      .compile();
+    app = moduleFixture.createNestApplication<NestExpressApplication>();
+    configureApp(app);
+    await app.init();
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('masks the failure as a generic 500 instead of leaking the real error', async () => {
+    const res = await request(app.getHttpServer()).get('/').expect(500);
+
+    expect(res.body).toEqual({
+      statusCode: 500,
+      message: 'Internal server error',
+      error: 'Internal Server Error',
+    });
+    expect(JSON.stringify(res.body)).not.toMatch(/relation|does not exist|line 42/i);
   });
 });
