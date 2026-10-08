@@ -111,45 +111,17 @@ function readTrustProxy(): number {
   return value;
 }
 
-// The fixed, per-environment base URL the OIDC redirect_uri is built from
-// (`${apiOrigin}/auth/oidc/:provider/callback`) — never taken from a request
-// header, which is exactly the open-redirect vector that breaks OIDC in
-// practice (see plan/LoginSocial.md). Unlike CORS_ORIGINS/JWT_SECRET, this is
-// NOT required in production: OIDC is an optional login method on top of the
-// password one, and a deployment that never configures Google/Microsoft
-// client credentials (below) shouldn't be forced to also set this just to
-// boot — the dev default being wrong in that case is harmless, since the
-// buttons already don't work without real client credentials either.
-function readApiOrigin(): string {
-  return process.env.API_ORIGIN || 'http://localhost:3000';
-}
-
-// Where the OIDC callback sends the browser back to after it sets the
-// session cookie (or, mid-linking, the linking_token cookie) — the API and
-// the web app are different origins, so this can't be a relative path like
-// the rest of the app's "/perfil" references: a relative redirect from the
-// API would navigate to the API's own origin, not the SPA's. Same
-// "optional feature" reasoning as apiOrigin above: not required at boot.
-function readWebAppOrigin(): string {
-  return process.env.WEB_APP_ORIGIN || 'http://localhost:5173';
-}
-
-// GOOGLE_CLIENT_ID/MICROSOFT_CLIENT_ID aren't secret (they're sent to the
-// browser as part of the authorization URL) and are NOT required in
-// production: unlike JWT_SECRET, OIDC is an optional login method, and a
-// deployment that doesn't want to register Google/Microsoft OAuth apps yet
-// should still boot — an unset value here just means the button-click
-// request builds an authorization URL the provider immediately rejects
-// (empty client_id), the same userfacing failure as not having the feature.
-function readOidcClientId(name: 'GOOGLE_CLIENT_ID' | 'MICROSOFT_CLIENT_ID'): string {
-  return process.env[name] || '';
-}
-
-function readOidcClientSecret(name: 'GOOGLE_CLIENT_SECRET' | 'MICROSOFT_CLIENT_SECRET'): string {
-  return process.env[name] || '';
-}
-
 // Signs the short-lived linking_token (see plan/LoginSocial.md section 4).
+// The only OIDC-related var validated here — API_ORIGIN, WEB_APP_ORIGIN and
+// the Google/Microsoft client credentials have no boot-time requirement to
+// enforce (OIDC is an optional login method; an unset credential just means
+// that button fails at the provider), so auth/oidc/oidc.constants.ts reads
+// them directly off process.env instead, the same way auth.constants.ts and
+// cookie.constants.ts already do for their own settings. This one DOES have
+// a real requirement — required in production regardless of whether OIDC
+// credentials are even configured, since a wrong default becomes a real
+// account-linking forgery risk the moment they are — so it stays here,
+// aggregated with every other boot-time check.
 // Required in production, unlike the OIDC vars above — it's a single cheap
 // secret to generate regardless of whether Google/Microsoft credentials
 // are ever configured, and a wrong default here is a real security hole
@@ -199,12 +171,6 @@ const parsed = {
   csrfSecret: process.env.CSRF_SECRET || undefined,
   trustProxy: readTrustProxy(),
   swaggerEnabled: readSwaggerEnabled(),
-  apiOrigin: readApiOrigin(),
-  webAppOrigin: readWebAppOrigin(),
-  googleClientId: readOidcClientId('GOOGLE_CLIENT_ID'),
-  googleClientSecret: readOidcClientSecret('GOOGLE_CLIENT_SECRET'),
-  microsoftClientId: readOidcClientId('MICROSOFT_CLIENT_ID'),
-  microsoftClientSecret: readOidcClientSecret('MICROSOFT_CLIENT_SECRET'),
   oidcLinkingTokenSecret: readOidcLinkingTokenSecret(),
 };
 

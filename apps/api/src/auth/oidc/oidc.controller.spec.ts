@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { verifyCsrfToken, sessionKey } from '../csrf.js';
 import { setOidcFlowCookie } from './oidc-flow-cookie.js';
@@ -80,48 +80,65 @@ describe('OidcController', () => {
   describe('callback', () => {
     const flow = { provider: 'google' as const, state: 'state-abc', codeVerifier: 'verifier-xyz' };
 
-    it('rejects when there is no oidc_flow cookie at all', async () => {
-      const { res } = fakeResponse();
-      await expect(
-        controller.callback('google', 'code', 'state-abc', undefined, fakeRequest(undefined), res),
-      ).rejects.toBeInstanceOf(BadRequestException);
+    // Every one of these happens through a browser redirect a real person
+    // is driving (or an attacker tampering with one) — never a raw JSON
+    // error on the API's own origin, which would be jarring mid-navigation
+    // and, for the person-driven cases (?error=, an expired flow), is not
+    // a security exception to begin with.
+    it('redirects to /login when there is no oidc_flow cookie at all', async () => {
+      const { res, redirect } = fakeResponse();
+      await controller.callback('google', 'code', 'state-abc', undefined, fakeRequest(undefined), res);
+      expect(redirect).toHaveBeenCalledWith('http://localhost:5173/login');
       expect(oidcService.authenticate).not.toHaveBeenCalled();
     });
 
-    it('rejects when the query state does not match the cookie state', async () => {
-      const { res } = fakeResponse();
+    it('redirects to /login when the query state does not match the cookie state', async () => {
+      const { res, redirect } = fakeResponse();
       const req = fakeRequest(flowCookieHeader(flow));
-      await expect(
-        controller.callback('google', 'code', 'wrong-state', undefined, req, res),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      await controller.callback('google', 'code', 'wrong-state', undefined, req, res);
+      expect(redirect).toHaveBeenCalledWith('http://localhost:5173/login');
       expect(oidcService.authenticate).not.toHaveBeenCalled();
     });
 
-    it('rejects when the route provider does not match the one the flow was started for', async () => {
-      const { res } = fakeResponse();
+    it('redirects to /login when the route provider does not match the one the flow was started for', async () => {
+      const { res, redirect } = fakeResponse();
       const req = fakeRequest(flowCookieHeader(flow));
-      await expect(
-        controller.callback('microsoft', 'code', 'state-abc', undefined, req, res),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      await controller.callback('microsoft', 'code', 'state-abc', undefined, req, res);
+      expect(redirect).toHaveBeenCalledWith('http://localhost:5173/login');
     });
 
-    it('rejects a missing code', async () => {
-      const { res } = fakeResponse();
+    it('redirects to /login on a missing code', async () => {
+      const { res, redirect } = fakeResponse();
+      const req = fakeRequest(flowCookieHeader(flow));
+      await controller.callback('google', undefined, 'state-abc', undefined, req, res);
+      expect(redirect).toHaveBeenCalledWith('http://localhost:5173/login');
+    });
+
+    it('redirects to /login when OidcService.authenticate rejects (bad signature, wrong aud, unverified email, ...)', async () => {
+      oidcService.authenticate.mockRejectedValue(new UnauthorizedException('nope'));
+      const { res, redirect } = fakeResponse();
+      const req = fakeRequest(flowCookieHeader(flow));
+      await controller.callback('google', 'the-code', 'state-abc', undefined, req, res);
+      expect(redirect).toHaveBeenCalledWith('http://localhost:5173/login');
+    });
+
+    it('lets a non-HttpException (a genuine bug) propagate instead of masking it as a redirect', async () => {
+      oidcService.authenticate.mockRejectedValue(new Error('boom'));
+      const { res, redirect } = fakeResponse();
       const req = fakeRequest(flowCookieHeader(flow));
       await expect(
-        controller.callback('google', undefined, 'state-abc', undefined, req, res),
-      ).rejects.toBeInstanceOf(BadRequestException);
+        controller.callback('google', 'the-code', 'state-abc', undefined, req, res),
+      ).rejects.toThrow('boom');
+      expect(redirect).not.toHaveBeenCalled();
     });
 
     it('always clears the oidc_flow cookie, even on rejection', async () => {
       const { res, clearCookie } = fakeResponse();
-      await expect(
-        controller.callback('google', 'code', 'state', undefined, fakeRequest(undefined), res),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      await controller.callback('google', 'code', 'state', undefined, fakeRequest(undefined), res);
       expect(clearCookie).toHaveBeenCalledWith('oidc_flow', expect.any(Object));
     });
 
-    it('redirects to /login instead of throwing when the provider sends ?error= (e.g. the person cancelled)', async () => {
+    it('redirects to /login when the provider sends ?error= (e.g. the person cancelled)', async () => {
       const { res, redirect } = fakeResponse();
       await controller.callback('google', undefined, undefined, 'access_denied', fakeRequest(undefined), res);
 
@@ -174,24 +191,23 @@ describe('OidcController', () => {
   });
 
   describe('link', () => {
-    it('reads the linking_token from the cookie (never the body) and clears it before validating', async () => {
+    it('reads the linking_token from the cookie, never the body', async () => {
       oidcService.linkAccount.mockResolvedValue({ accessToken: 't', tokenType: 'Bearer', expiresIn: 3600 });
-      const { res, clearCookie } = fakeResponse();
+      const { res } = fakeResponse();
       const req = fakeRequest('linking_token=signed.token; other=1');
 
       await controller.link({ password: 'senha-segura-123' }, req, res);
 
       expect(oidcService.linkAccount).toHaveBeenCalledWith('signed.token', 'senha-segura-123');
-      expect(clearCookie).toHaveBeenCalledWith('linking_token', expect.any(Object));
     });
 
-    it('sets the session cookies and returns the login response body on success', async () => {
+    it('sets the session cookies, clears the linking_token cookie, and returns the login response body on success', async () => {
       oidcService.linkAccount.mockResolvedValue({
         accessToken: 'token-456',
         tokenType: 'Bearer',
         expiresIn: 3600,
       });
-      const { res, cookie } = fakeResponse();
+      const { res, cookie, clearCookie } = fakeResponse();
 
       const body = await controller.link(
         { password: 'senha-segura-123' },
@@ -201,14 +217,16 @@ describe('OidcController', () => {
 
       expect(body).toStrictEqual({ tokenType: 'Bearer', expiresIn: 3600 });
       expect(cookie.mock.calls.some((c: unknown[]) => c[0] === 'access_token' && c[1] === 'token-456')).toBe(true);
+      expect(clearCookie).toHaveBeenCalledWith('linking_token', expect.any(Object));
     });
 
-    it('propagates OidcService.linkAccount rejections (invalid token / wrong password)', async () => {
+    it('propagates OidcService.linkAccount rejections (invalid token / wrong password) without clearing the cookie — a retry can reuse it', async () => {
       oidcService.linkAccount.mockRejectedValue(new Error('nope'));
-      const { res } = fakeResponse();
+      const { res, clearCookie } = fakeResponse();
       await expect(
         controller.link({ password: 'x' }, fakeRequest(undefined), res),
       ).rejects.toThrow('nope');
+      expect(clearCookie).not.toHaveBeenCalled();
     });
   });
 });

@@ -154,7 +154,8 @@ export class OidcService {
 
   // Three-way split, per plan/LoginSocial.md section 4:
   //  1. This exact (provider, sub) is already linked -> sign in as that user.
-  //  2. No user has this email yet -> create one (no local password).
+  //  2. No user has this email yet -> create one (no local password), but
+  //     only if the provider verified it (see below).
   //  3. A user has this email: if they have no local password either (an
   //     OIDC-only account) AND the provider itself confirms this email is
   //     verified, link this identity too, no extra proof needed. If they
@@ -165,6 +166,25 @@ export class OidcService {
     if (byIdentity) return { kind: 'signedIn', user: byIdentity };
 
     const byEmail = await this.usersService.findByEmail(claims.email);
+
+    // Gates both branches below, not just the auto-link one: an unverified
+    // email is the "nOAuth" shape either way. A provider that lets a user
+    // set an arbitrary, unverified email on their own account could
+    // otherwise (a) auto-link straight into any OIDC-only account sharing
+    // it (no proof of anything), or, just as bad, (b) *pre-register* the
+    // victim's email under the attacker's control before the victim ever
+    // signs up — so that when the victim later logs in for real through a
+    // trustworthy provider, they get auto-linked into the attacker's
+    // planted account instead of a fresh one of their own. The
+    // password-confirmed linking path below (byEmail.passwordHash !== null)
+    // doesn't need this: completing it still requires the real account's
+    // password, which an unverified email claim alone never grants.
+    if (!claims.emailVerified && (!byEmail || byEmail.passwordHash === null)) {
+      throw new UnauthorizedException(
+        'Não foi possível concluir o login. O provedor não confirmou que este email é verificado.',
+      );
+    }
+
     if (!byEmail) {
       const created = await this.usersService.createFromOidc({
         name: claims.name,
@@ -176,20 +196,6 @@ export class OidcService {
     }
 
     if (byEmail.passwordHash === null) {
-      // An unverified email is exactly the "nOAuth" shape: some providers
-      // (certain Microsoft Entra ID tenant configurations, notably) let a
-      // user set an arbitrary, unverified email on their own account —
-      // auto-linking on that alone would hand them any OIDC-only account
-      // that happens to share it, no proof of anything required. There is
-      // also no password to fall back to confirming here (that is what
-      // passwordHash === null means), so this fails closed instead of
-      // either merging unsafely or offering a linking form that could
-      // never be completed.
-      if (!claims.emailVerified) {
-        throw new UnauthorizedException(
-          'Não foi possível concluir o login. Entre com o método usado para criar a conta.',
-        );
-      }
       await this.usersService.linkProviderIdentity(byEmail.id, provider, claims.sub);
       return { kind: 'signedIn', user: byEmail };
     }

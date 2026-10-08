@@ -109,6 +109,10 @@ export async function startFakeIdp(): Promise<FakeIdp> {
         aud: 'test-client-id',
         sub: 'sub-123',
         email: 'maria@exemplo.com',
+        // A trustworthy provider by default; tests exercising the
+        // email_verified gate (see OidcService.resolveIdentity) override
+        // this explicitly to false.
+        email_verified: true,
         name: 'Maria Silva',
         ...options.claims,
       };

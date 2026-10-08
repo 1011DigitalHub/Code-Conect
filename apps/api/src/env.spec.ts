@@ -123,45 +123,6 @@ describe('env', () => {
     await expect(importWithEnv({ JWT_EXPIRES_IN: 'abc' })).rejects.toThrow(/JWT_EXPIRES_IN/);
   });
 
-  it('defaults API_ORIGIN/WEB_APP_ORIGIN to the dev origins, even in production (OIDC is optional)', async () => {
-    const { env } = await importWithEnv({ API_ORIGIN: undefined, WEB_APP_ORIGIN: undefined });
-    expect(env.apiOrigin).toBe('http://localhost:3000');
-    expect(env.webAppOrigin).toBe('http://localhost:5173');
-
-    const prod = await importWithEnv({
-      NODE_ENV: 'production',
-      JWT_SECRET: 'a'.repeat(32),
-      CORS_ORIGINS: 'https://a.com',
-      ...PRODUCTION_OIDC_VARS,
-      API_ORIGIN: undefined,
-      WEB_APP_ORIGIN: undefined,
-    });
-    expect(prod.env.apiOrigin).toBe('http://localhost:3000');
-    expect(prod.env.webAppOrigin).toBe('http://localhost:5173');
-  });
-
-  it('allows empty OIDC client credentials, even in production — the buttons just fail at the provider', async () => {
-    const { env } = await importWithEnv({
-      GOOGLE_CLIENT_ID: undefined,
-      GOOGLE_CLIENT_SECRET: undefined,
-      MICROSOFT_CLIENT_ID: undefined,
-      MICROSOFT_CLIENT_SECRET: undefined,
-    });
-    expect(env.googleClientId).toBe('');
-    expect(env.microsoftClientSecret).toBe('');
-
-    const prod = await importWithEnv({
-      NODE_ENV: 'production',
-      JWT_SECRET: 'a'.repeat(32),
-      CORS_ORIGINS: 'https://a.com',
-      ...PRODUCTION_OIDC_VARS,
-      GOOGLE_CLIENT_ID: undefined,
-      MICROSOFT_CLIENT_SECRET: undefined,
-    });
-    expect(prod.env.googleClientId).toBe('');
-    expect(prod.env.microsoftClientSecret).toBe('');
-  });
-
   it('requires OIDC_LINKING_TOKEN_SECRET in production, never falling back to JWT_SECRET', async () => {
     await expect(
       importWithEnv({

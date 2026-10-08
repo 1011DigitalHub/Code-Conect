@@ -186,6 +186,22 @@ describe('OidcService', () => {
       expect(resolution).toEqual({ kind: 'signedIn', user: created });
     });
 
+    // A pre-registration attack: a provider that hands out an arbitrary,
+    // unverified email would otherwise let an attacker claim the victim's
+    // email *before* the victim ever signs up, planting an account that
+    // later auto-links the victim's own, legitimately-verified login from
+    // a trustworthy provider into the attacker's planted one.
+    it('refuses to create a brand-new account when the email is not verified', async () => {
+      mockValidToken({ sub: 'sub-attacker', email: 'vitima@exemplo.com', email_verified: false });
+      usersService.findByProviderIdentity.mockResolvedValue(null);
+      usersService.findByEmail.mockResolvedValue(null);
+
+      await expect(service.authenticate('google', 'code', 'verifier')).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+      expect(usersService.createFromOidc).not.toHaveBeenCalled();
+    });
+
     it('falls back to the email local-part as the name when the provider sends none', async () => {
       mockValidToken({ sub: 'sub-1', email: 'maria@exemplo.com' });
       usersService.findByProviderIdentity.mockResolvedValue(null);

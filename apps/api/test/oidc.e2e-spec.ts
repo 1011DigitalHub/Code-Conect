@@ -95,72 +95,94 @@ describe('OIDC login (e2e)', () => {
     });
   });
 
-  describe('GET /auth/oidc/:provider/callback — rejections', () => {
-    it('rejects with no oidc_flow cookie at all', () => {
-      return request(app.getHttpServer())
-        .get('/auth/oidc/google/callback?code=whatever&state=whatever')
-        .expect(400);
+  // None of these ever reach the browser as a raw JSON error: the whole
+  // endpoint is a redirect target a real person's browser is driving (or
+  // an attacker is tampering with), so every rejection bounces to /login
+  // instead — see OidcController.callback.
+  describe('GET /auth/oidc/:provider/callback — rejections redirect to /login, not a raw error', () => {
+    async function expectLoginRedirect(url: string) {
+      const res = await request(app.getHttpServer()).get(url);
+      expect(res.status).toBe(302);
+      expect(res.headers.location).toBe('http://localhost:5173/login');
+    }
+
+    it('with no oidc_flow cookie at all', () => {
+      return expectLoginRedirect('/auth/oidc/google/callback?code=whatever&state=whatever');
     });
 
-    it('rejects a state that does not match the one in the cookie', async () => {
+    it('with a state that does not match the one in the cookie', async () => {
       const { agent, flow } = await startFlow();
       const code = fakeIdp.encodeCode();
-      await agent.get(`/auth/oidc/google/callback?code=${code}&state=not-the-real-state`).expect(400);
+      const res = await agent.get(`/auth/oidc/google/callback?code=${code}&state=not-the-real-state`);
+      expect(res.status).toBe(302);
+      expect(res.headers.location).toBe('http://localhost:5173/login');
       expect(flow.state).not.toBe('not-the-real-state');
     });
 
-    it('rejects a missing code', async () => {
+    it('with a missing code', async () => {
       const { agent, flow } = await startFlow();
-      await agent.get(`/auth/oidc/google/callback?state=${flow.state}`).expect(400);
+      const res = await agent.get(`/auth/oidc/google/callback?state=${flow.state}`);
+      expect(res.status).toBe(302);
+      expect(res.headers.location).toBe('http://localhost:5173/login');
     });
 
-    it('rejects once the flow cookie has expired, even though the Max-Age has not literally elapsed in real time', async () => {
+    it('once the flow cookie has expired, even though the Max-Age has not literally elapsed in real time', async () => {
       const { agent, flow } = await startFlow();
       vi.useFakeTimers({ shouldAdvanceTime: true });
       vi.advanceTimersByTime(6 * 60 * 1000); // past the 5-minute ttl
       const code = fakeIdp.encodeCode();
-      await agent.get(`/auth/oidc/google/callback?code=${code}&state=${flow.state}`).expect(400);
+      const res = await agent.get(`/auth/oidc/google/callback?code=${code}&state=${flow.state}`);
+      expect(res.status).toBe(302);
+      expect(res.headers.location).toBe('http://localhost:5173/login');
       vi.useRealTimers();
     });
 
-    it('rejects when the code_verifier does not match the code_challenge the provider expects (PKCE)', async () => {
+    it('when the code_verifier does not match the code_challenge the provider expects (PKCE)', async () => {
       const { agent, flow } = await startFlow();
       const code = fakeIdp.encodeCode({ expectedCodeChallenge: 'a-completely-different-challenge' });
-      await agent.get(`/auth/oidc/google/callback?code=${code}&state=${flow.state}`).expect(400);
+      const res = await agent.get(`/auth/oidc/google/callback?code=${code}&state=${flow.state}`);
+      expect(res.status).toBe(302);
+      expect(res.headers.location).toBe('http://localhost:5173/login');
     });
 
-    it('rejects an id_token with an invalid signature', async () => {
+    it('with an id_token with an invalid signature', async () => {
       const { agent, flow } = await startFlow();
       const challenge = await expectedCodeChallenge(flow.codeVerifier);
       const code = fakeIdp.encodeCode({ expectedCodeChallenge: challenge, signWithWrongKey: true });
-      await agent.get(`/auth/oidc/google/callback?code=${code}&state=${flow.state}`).expect(401);
+      const res = await agent.get(`/auth/oidc/google/callback?code=${code}&state=${flow.state}`);
+      expect(res.status).toBe(302);
+      expect(res.headers.location).toBe('http://localhost:5173/login');
     });
 
-    it('rejects an id_token for a different aud (client_id)', async () => {
+    it('with an id_token for a different aud (client_id)', async () => {
       const { agent, flow } = await startFlow();
       const challenge = await expectedCodeChallenge(flow.codeVerifier);
       const code = fakeIdp.encodeCode({ expectedCodeChallenge: challenge, claims: { aud: 'someone-elses-client-id' } });
-      await agent.get(`/auth/oidc/google/callback?code=${code}&state=${flow.state}`).expect(401);
+      const res = await agent.get(`/auth/oidc/google/callback?code=${code}&state=${flow.state}`);
+      expect(res.status).toBe(302);
+      expect(res.headers.location).toBe('http://localhost:5173/login');
     });
 
-    it('rejects an id_token from an unrecognized issuer', async () => {
+    it('with an id_token from an unrecognized issuer', async () => {
       const { agent, flow } = await startFlow();
       const challenge = await expectedCodeChallenge(flow.codeVerifier);
       const code = fakeIdp.encodeCode({ expectedCodeChallenge: challenge, claims: { iss: 'https://attacker.example.com' } });
-      await agent.get(`/auth/oidc/google/callback?code=${code}&state=${flow.state}`).expect(401);
+      const res = await agent.get(`/auth/oidc/google/callback?code=${code}&state=${flow.state}`);
+      expect(res.status).toBe(302);
+      expect(res.headers.location).toBe('http://localhost:5173/login');
     });
 
-    it('maps a token-endpoint failure (e.g. an already-used or invalid code) to 400', async () => {
+    it('on a token-endpoint failure (e.g. an already-used or invalid code)', async () => {
       const { agent, flow } = await startFlow();
       const code = fakeIdp.encodeCode({ tokenEndpointFails: true });
-      await agent.get(`/auth/oidc/google/callback?code=${code}&state=${flow.state}`).expect(400);
+      const res = await agent.get(`/auth/oidc/google/callback?code=${code}&state=${flow.state}`);
+      expect(res.status).toBe(302);
+      expect(res.headers.location).toBe('http://localhost:5173/login');
     });
 
     // Not a security exception — the provider sends this instead of a code
-    // when the person clicks "cancel"/"deny" on its own consent screen, a
-    // normal outcome that deserves a friendly bounce, not a raw JSON 400 on
-    // the API's own origin.
-    it('redirects to the web app /login (not a raw error) when the provider reports ?error=', async () => {
+    // when the person clicks "cancel"/"deny" on its own consent screen.
+    it('when the provider reports ?error= (the person cancelled)', async () => {
       const { agent, flow } = await startFlow();
       const res = await agent.get(
         `/auth/oidc/google/callback?error=access_denied&state=${flow.state}`,
@@ -168,8 +190,10 @@ describe('OIDC login (e2e)', () => {
       expect(res.status).toBe(302);
       expect(res.headers.location).toBe('http://localhost:5173/login');
     });
+  });
 
-    it('answers 404 for a provider with no client_id configured, before touching any cookie', async () => {
+  describe('GET /auth/oidc/:provider/start — provider not configured', () => {
+    it('answers 404 before touching any cookie (this is a malformed/unreachable-by-the-flow request, unlike the callback above)', async () => {
       vi.stubEnv('GOOGLE_CLIENT_ID', '');
       await request(app.getHttpServer()).get('/auth/oidc/google/start').expect(404);
     });
@@ -260,14 +284,43 @@ describe('OIDC login (e2e)', () => {
         expectedCodeChallenge: challenge,
         claims: { sub: 'sub-attacker', email: 'vitima@exemplo.com', email_verified: false },
       });
-      await attacker.agent
-        .get(`/auth/oidc/google/callback?code=${code}&state=${attacker.flow.state}`)
-        .expect(401);
+      const attackerRes = await attacker.agent.get(
+        `/auth/oidc/google/callback?code=${code}&state=${attacker.flow.state}`,
+      );
+      expect(attackerRes.status).toBe(302);
+      expect(attackerRes.headers.location).toBe('http://localhost:5173/login');
 
       // The attacker never got a session, and the real owner's identity
       // still resolves only to themselves.
       const stillFirstMe = await first.agent.get('/auth/me').expect(200);
       expect(stillFirstMe.body.id).toBe(firstMe.body.id);
+    });
+
+    // A pre-registration attack: without this, an attacker could claim the
+    // victim's email (unverified) before the victim ever signs up, planting
+    // an account that the victim's later, legitimately-verified login would
+    // auto-link into instead of creating a fresh account of their own.
+    it('refuses to create a brand-new account when the email is not verified — no account is planted', async () => {
+      const { res } = await completeFlow({
+        sub: 'sub-attacker',
+        email: 'alguem-novo@exemplo.com',
+        email_verified: false,
+      });
+      expect(res.status).toBe(302);
+      expect(res.headers.location).toBe('http://localhost:5173/login');
+      expect(() => setCookie(res, 'access_token')).toThrow();
+
+      // The real owner, later logging in for real with a verified email,
+      // gets a brand-new account — not one the attacker already touched.
+      const real = await completeFlow({
+        sub: 'sub-real-owner',
+        email: 'alguem-novo@exemplo.com',
+        email_verified: true,
+      });
+      expect(real.res.status).toBe(302);
+      expect(real.res.headers.location).toBe('http://localhost:5173/perfil');
+      const me = await real.agent.get('/auth/me').expect(200);
+      expect(me.body.email).toBe('alguem-novo@exemplo.com');
     });
   });
 
@@ -344,7 +397,11 @@ describe('OIDC login (e2e)', () => {
       expect(secondRes.headers.location).toBe('http://localhost:5173/perfil');
     });
 
-    it('clears the linking_token cookie after a failed attempt — a retry needs the whole OIDC flow again', async () => {
+    // A typo deserves a normal retry, the same way a wrong password on
+    // /auth/login does (same LOGIN_THROTTLE bounds how many) — the
+    // linking_token's own 5-minute exp is what eventually forces a fresh
+    // OIDC flow, not the first wrong guess.
+    it('allows retrying with the correct password after a wrong one, reusing the same linking_token', async () => {
       const { agent } = await triggerLinking();
       const csrfToken = await fetchCsrfToken(agent);
 
@@ -359,8 +416,8 @@ describe('OIDC login (e2e)', () => {
         .post('/auth/oidc/link')
         .set('X-CSRF-Token', retryCsrf)
         .send({ password: localUser.password })
-        .expect(401);
-      expect(retry.body).toMatchObject({ statusCode: 401 });
+        .expect(200);
+      expect(retry.body).toStrictEqual({ tokenType: 'Bearer', expiresIn: expect.any(Number) });
     });
   });
 

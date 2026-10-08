@@ -85,14 +85,29 @@ export class UsersService {
     provider: string;
     providerSub: string;
   }): Promise<StoredUser> {
-    return this.prisma.user.create({
-      data: {
-        name: params.name,
-        email: params.email,
-        passwordHash: null,
-        identities: { create: { provider: params.provider, providerSub: params.providerSub } },
-      },
-    });
+    try {
+      return await this.prisma.user.create({
+        data: {
+          name: params.name,
+          email: params.email,
+          passwordHash: null,
+          identities: { create: { provider: params.provider, providerSub: params.providerSub } },
+        },
+      });
+    } catch (error) {
+      // Same race create() above already guards against, reached from
+      // OidcService.resolveIdentity's "no existing user for this email" branch:
+      // two concurrent callbacks for a brand-new email can both pass that
+      // check before either write lands, and the loser hits this unique
+      // violation on email instead of a clean 409.
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === UNIQUE_VIOLATION
+      ) {
+        throw new ConflictException('Email já cadastrado');
+      }
+      throw error;
+    }
   }
 
   // Attaches a provider identity to an existing user — either the

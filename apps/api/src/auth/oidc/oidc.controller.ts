@@ -1,9 +1,9 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Get,
   HttpCode,
+  HttpException,
   HttpStatus,
   NotFoundException,
   Param,
@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
+  ApiConflictResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -89,10 +90,10 @@ export class OidcController {
   })
   @ApiResponse({
     status: 302,
-    description: 'Login concluído (redireciona para /perfil) ou vinculação pendente (redireciona para /vincular-conta)',
+    description:
+      'Login concluído (/perfil), vinculação pendente (/vincular-conta) ou qualquer falha — state/code/id_token inválido, o usuário cancelou no provedor — (/login). Essas rejeições nunca viram um corpo JSON: tudo aqui acontece em redirects do navegador que um usuário real está seguindo, não em chamadas XHR.',
   })
-  @ApiBadRequestResponse({ type: ErrorResponseDto, description: 'state/code ausente, inválido ou expirado' })
-  @ApiUnauthorizedResponse({ type: ErrorResponseDto, description: 'id_token inválido (assinatura, iss ou aud)' })
+  @ApiBadRequestResponse({ type: ErrorResponseDto, description: ':provider desconhecido (rota malformada, não alcançável pelo fluxo normal)' })
   @ApiTooManyRequestsResponse({ type: ErrorResponseDto })
   async callback(
     @Param('provider') providerParam: string,
@@ -108,28 +109,41 @@ export class OidcController {
     // reloaded by the browser) must never succeed twice off the same cookie.
     clearOidcFlowCookie(res);
 
-    // The provider redirects here with ?error=access_denied (no code) when
-    // the person cancels/declines at its own consent screen — normal,
-    // expected traffic through this endpoint, not a security exception.
-    // Bouncing them back to /login with a raw JSON 400 on the API's own
-    // origin would be jarring mid-browser-navigation; the other checks
-    // below are genuinely anomalous (tampering, an expired flow) and stay
-    // JSON errors, since a real user driven entirely by these redirects
-    // essentially never hits them.
-    if (providerError) {
+    // Every one of these — the provider reporting ?error= (the person
+    // cancelled/declined at its own consent screen), a missing/mismatched/
+    // expired oidc_flow cookie — happens through a browser redirect a real
+    // person is driving, not an XHR call. A raw JSON error on the API's own
+    // origin mid-navigation would be jarring; bouncing back to /login lets
+    // them just try again. (An unrecognized :provider in the route itself
+    // is different — see parseOidcProvider above — that's a malformed
+    // request, not something reachable by following these redirects.)
+    const flowValid =
+      !providerError && !!flow && !!state && !!code && flow.provider === provider && statesMatch(flow.state, state);
+    if (!flowValid) {
       res.redirect(`${getWebAppOrigin()}/login`);
       return;
     }
 
-    const flowValid =
-      !!flow && !!state && flow.provider === provider && statesMatch(flow.state, state);
-    if (!flowValid || !code) {
-      throw new BadRequestException('Fluxo OIDC inválido ou expirado');
+    let resolution: Awaited<ReturnType<OidcService['authenticate']>>;
+    try {
+      // TypeScript can't see flowValid's implication that flow/code are
+      // defined; the check above already guarantees it.
+      resolution = await this.oidcService.authenticate(
+        provider,
+        code as string,
+        (flow as NonNullable<typeof flow>).codeVerifier,
+      );
+    } catch (error) {
+      // A rejection OidcService itself raises on purpose (bad signature,
+      // wrong aud, unverified email, ...) — same reasoning as above, bounce
+      // to /login rather than show it as JSON. Anything else is a genuine
+      // bug, not a rejection anyone designed; let it propagate so
+      // AllExceptionsFilter still logs and 500s it instead of silently
+      // masking a real failure as "please try again".
+      if (!(error instanceof HttpException)) throw error;
+      res.redirect(`${getWebAppOrigin()}/login`);
+      return;
     }
-
-    // TypeScript can't see flowValid's implication that flow is defined;
-    // the check above already guarantees it.
-    const resolution = await this.oidcService.authenticate(provider, code, (flow as NonNullable<typeof flow>).codeVerifier);
 
     if (resolution.kind === 'linkingRequired') {
       res.cookie(LINKING_TOKEN_COOKIE, resolution.linkingToken, getLinkingTokenCookieOptions());
@@ -158,6 +172,10 @@ export class OidcController {
     type: ErrorResponseDto,
     description: 'linking_token ausente/expirado/inválido, ou senha incorreta — mesma mensagem genérica para os dois',
   })
+  @ApiConflictResponse({
+    type: ErrorResponseDto,
+    description: 'essa identidade já foi vinculada a uma conta (reenvio do mesmo linking_token já usado, ou corrida)',
+  })
   @ApiTooManyRequestsResponse({ type: ErrorResponseDto })
   async link(
     @Body() dto: LinkAccountDto,
@@ -165,13 +183,14 @@ export class OidcController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<LoginResponseDto> {
     const linkingToken = readCookie(req, LINKING_TOKEN_COOKIE);
-    // Single-use regardless of outcome, same reasoning as the callback's
-    // oidc_flow cookie: cleared as soon as it's read, before the token is
-    // even validated, so a failed attempt can't be retried against the
-    // same cookie.
-    res.clearCookie(LINKING_TOKEN_COOKIE, getClearOidcCookieOptions());
-
+    // Unlike the callback's oidc_flow cookie, this one is NOT cleared
+    // up front: a wrong password is exactly as retriable as a wrong
+    // password on /auth/login (same LOGIN_THROTTLE bounds the attempts
+    // either way), and the linking_token's own 5-minute exp already bounds
+    // how long it can be retried against. It's only cleared below, once
+    // actually consumed by a successful link.
     const session = await this.oidcService.linkAccount(linkingToken, dto.password);
+    res.clearCookie(LINKING_TOKEN_COOKIE, getClearOidcCookieOptions());
 
     res.cookie(ACCESS_TOKEN_COOKIE, session.accessToken, getSessionCookieOptions(false, session.expiresIn));
     const csrfToken = mintCsrfToken(sessionKey(session.accessToken));

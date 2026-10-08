@@ -145,6 +145,28 @@ describe('UsersService', () => {
         },
       });
     });
+
+    // Two concurrent OIDC callbacks for the same brand-new email can both
+    // pass OidcService.resolveIdentity's "no existing user" check before
+    // either write lands; the loser hits the same unique violation on
+    // email that a concurrent password sign-up would (see create() above),
+    // and must come back as a clean 409, not a raw 500.
+    it('maps a unique violation on email to a ConflictException', async () => {
+      prisma.user.create.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: 'test',
+        }),
+      );
+      await expect(
+        service.createFromOidc({
+          name: 'Nova Pessoa',
+          email: 'nova@exemplo.com',
+          provider: 'google',
+          providerSub: 'sub-456',
+        }),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
   });
 
   describe('linkProviderIdentity', () => {

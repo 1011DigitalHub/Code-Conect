@@ -16,7 +16,7 @@ Implementado (`apps/api/src/auth/oidc/`, `apps/web/src/pages/LinkAccountPage/`),
 - **`oidc_flow` carrega seu próprio `exp`**, checado no servidor — não só o `Max-Age` do cookie, que só controla se o *navegador* ainda manda o cookie, não se o servidor aceitaria um state "velho" por algum outro motivo.
 - Gap do front (`socialProviders.ts` com `github`/`google`→`Gmail`) corrigido para `google`/`microsoft`.
 - Testes e2e usam um IdP falso local (`apps/api/test/oidc-fake-idp.ts`) para cobrir o checklist da seção 5 sem depender de credenciais reais do Google/Microsoft.
-- `linking_token` é limpo **mesmo numa senha errada** (não só na expiração) — uma tentativa falha exige refazer o fluxo OIDC inteiro, não só reenviar a senha. É a leitura literal do "sucesso ou falha" do item 4 abaixo; mais rígido do que o login por senha normal (que permite várias tentativas), mas é o que este desenho pede.
+- ~~`linking_token` é limpo mesmo numa senha errada~~ — revertido na rodada 2 de correção abaixo: uma senha errada agora permite tentar de novo, igual ao login normal.
 
 ## Nota de correção pós-revisão (2026-10-08)
 
@@ -31,10 +31,24 @@ O PR #19 abriu com a nota de implementação acima e passou em todos os checks d
 - **🟡 `VincularContaPage` fugia do Atomic Design** (formulário inline em vez de organism) **e do nome em inglês** que `LoginPage`/`SignUpPage`/`ProfilePage` usam. Corrigido: formulário extraído para `components/organisms/LinkAccountForm/`, página renomeada para `LinkAccountPage` (a rota `/vincular-conta` e o texto em tela continuam em pt-BR, só o nome do componente mudou).
 - Testes novos para cada um dos pontos acima (unitários + e2e), incluindo o cenário completo de account takeover que o bloqueante permitia (criado e then provado fechado).
 
-**Não corrigido, deliberadamente adiado** (apontado pela revisão, mas de menor severidade/maior escopo):
-- Duplicação de leitura de env entre `env.ts` e `oidc.constants.ts` — é o mesmo padrão que `auth.constants.ts`/`cookie.constants.ts` já usam neste projeto (ver `development-workflow.md`), não uma inconsistência nova.
-- Checagem cruzada `tid`/`iss` para Microsoft (defesa em profundidade adicional, não necessária com o fix de `email_verified`).
-- Conflito de `linkProviderIdentity` por corrida real entre duas requisições simultâneas (a constraint `@@unique` já devolve 409 em vez de criar dado inconsistente — testado em `users.service.spec.ts` — mas não há um teste e2e simulando a corrida em si).
+**Não corrigido nesta rodada** (apontado pela revisão, mas de menor severidade/maior escopo — ver a rodada 2 abaixo, que revisitou e corrigiu dois destes três):
+- ~~Duplicação de leitura de env entre `env.ts` e `oidc.constants.ts`~~ — corrigido na rodada 2.
+- Checagem cruzada `tid`/`iss` para Microsoft (defesa em profundidade adicional, não necessária com o fix de `email_verified` — ainda adiada).
+- ~~Conflito de `createFromOidc`/`linkProviderIdentity` por corrida real entre duas requisições simultâneas~~ — `createFromOidc` corrigido na rodada 2 (`linkProviderIdentity` já mapeava para 409 desde a rodada 1).
+
+## Nota de correção pós-revisão, rodada 2 (2026-10-08)
+
+A rodada 1 acima corrigiu o bloqueante na **vinculação automática**, mas a mesma revisão automática, numa segunda passada sobre o commit da correção, encontrou que a checagem de `email_verified` faltava num segundo lugar: a **criação de conta nova**. Mais um bloqueante real, mais alguns importantes:
+
+- **🔴 Bloqueante — conta nova também sem `email_verified` (ataque de pré-registro).** Sem essa checagem, um atacante com um provedor que aceita email arbitrário podia criar uma conta com o email da vítima **antes** dela se cadastrar. Quando a vítima depois entrasse de verdade via Google (email verificado), o auto-link da rodada 1 juntaria a identidade real dela à conta plantada pelo atacante — mesma classe de account takeover, só que pela porta da criação em vez da vinculação. Corrigido: a checagem de `emailVerified` em `resolveIdentity` agora cobre os dois ramos (criação de conta nova **e** auto-link), não só o segundo; o ramo "conta local com senha" continua sem precisar dela (a senha já protege).
+- **🟠 `/vincular-conta` não aceitava nova tentativa após senha errada.** A rodada 1 documentou isso como leitura literal do desenho ("sucesso ou falha"), mas a revisão (duas vezes, em rodadas diferentes) apontou que isso é mais rígido que o login por senha normal sem motivo de segurança real — `LOGIN_THROTTLE` já limita quantas tentativas, e o próprio `exp` do `linking_token` já limita por quanto tempo. Corrigido: `OidcController.link` só limpa o cookie **depois** de um sucesso; uma senha errada permite tentar de novo com o mesmo `linking_token`, dentro da validade dele.
+- **🟠 Callback ainda mostrava JSON bruto para falhas que um usuário legítimo pode encontrar** (ex: Microsoft sem `email_verified`, ou o fluxo expirado por demorar demais). A rodada 1 só tratou `?error=` do provedor. Corrigido: `OidcController.callback` agora captura toda `HttpException` que `OidcService.authenticate` lança e redireciona para `/login` em vez de deixar vazar como JSON — qualquer erro que **não** seja uma `HttpException` (um bug de verdade, não uma rejeição prevista) continua propagando para o `AllExceptionsFilter`, que loga e devolve 500 normalmente, em vez de mascarar silenciosamente uma falha real como "tente de novo".
+- **🟠 `POST /auth/oidc/link` podia devolver 409 sem isso estar documentado/testado.** Adicionado `@ApiConflictResponse` e um teste cobrindo o conflito (`UsersService.createFromOidc`/`linkProviderIdentity` mapeando `P2002` para `ConflictException`).
+- **🟡 Corrida em `createFromOidc`:** duas chamadas simultâneas para o mesmo email novo podiam ambas passar o `findByEmail` antes de qualquer `create` terminar; a perdedora batia num `P2002` não tratado (500 bruto). Corrigido com o mesmo padrão de `UsersService.create`/`linkProviderIdentity` — mapeia para `ConflictException`, que agora também vira redirect para `/login` (ver ponto acima).
+- **🟡 `env.ts` lia e validava variáveis OIDC que nada consumia** (`oidc.constants.ts` já lê `process.env` direto, com seus próprios defaults). Isso tinha deixado de ser só "duplicação estilística" quando a rodada 1 removeu a obrigatoriedade em produção desses vars — sem efeito de validação, eram só código morto. Removido de `env.ts`: `apiOrigin`, `webAppOrigin`, `googleClientId`, `googleClientSecret`, `microsoftClientId`, `microsoftClientSecret`. `oidcLinkingTokenSecret` continua lá — é o único que ainda tem um efeito real (a obrigatoriedade em produção).
+- Testes novos para cada ponto acima (incluindo o cenário completo de pré-registro: o atacante tenta primeiro, falha, e o dono real da conta consegue criar a própria conta normalmente depois).
+
+**Não corrigido, deliberadamente adiado** (ambas as rodadas): checagem cruzada `tid`/`iss` para Microsoft. Defesa em profundidade adicional — não necessária para fechar o account takeover, que já está coberto por `email_verified` nos dois ramos.
 
 ### Arquivos
 
@@ -123,7 +137,7 @@ Isso é a parte do fluxo com mais superfície de erro de segurança (account tak
 - [x] Cache de JWKS limita refetch forçado por `kid` desconhecido (não deixa um `id_token` malicioso forçar a API a bater repetidamente no `jwks_uri` do provedor).
 - [x] Nenhuma claim do provedor entra no JWT da nossa sessão além de `sub`/`email` (mesma regra que já vale hoje — ver `auth/auth.types.ts`).
 - [x] Login por senha em conta `passwordHash = null` (só-OIDC) retorna o mesmo 401 genérico do login por senha incorreta — não revela que a conta existe só via OIDC.
-- [x] Vinculação de conta exige prova de posse (senha atual) quando a conta tem senha local; quando não tem (conta só-OIDC), exige `email_verified: true` do novo provedor em vez de fundir por email sozinho (ver nota de correção pós-revisão — a vinculação automática incondicional foi o bloqueante encontrado). `linking_token` é assinado, de uso único, expira em minutos, e viaja só em cookie `httpOnly` — nunca em query string.
+- [x] Vinculação de conta exige prova de posse (senha atual) quando a conta tem senha local; quando não tem (conta só-OIDC) **ou quando cria uma conta nova**, exige `email_verified: true` do provedor em vez de confiar no email sozinho (ver as duas notas de correção pós-revisão — tanto a vinculação automática quanto a criação de conta nova, incondicionais, foram bloqueantes encontrados em rodadas separadas). `linking_token` é assinado, de uso único, expira em minutos, e viaja só em cookie `httpOnly` — nunca em query string.
 - [x] Segredos do cliente OIDC (`client_secret` de cada provedor, segredo de assinatura do `linking_token`) são env vars (`GOOGLE_CLIENT_SECRET`, `MICROSOFT_CLIENT_SECRET`), validados em `src/env.ts` como os outros segredos — nunca hardcoded, nunca logados.
 - [x] Rate limiting no `/auth/oidc/:provider/start`, `/callback` e `/auth/oidc/link`, mesma lógica de `LOGIN_THROTTLE`.
 - [x] Testes e2e cobrindo: `state` inválido/ausente/expirado → rejeita; `code_verifier` que não bate com o `code_challenge` → rejeita; `id_token` com assinatura inválida → rejeita; `id_token` de um `aud` diferente → rejeita; login por senha numa conta só-OIDC → 401 genérico; criação de usuário novo via OIDC de ponta a ponta; email já existente bloqueia fusão automática e só vincula após senha correta em `/auth/oidc/link` (`apps/api/test/oidc.e2e-spec.ts`, 20 casos, com um IdP falso local).
@@ -138,9 +152,9 @@ Isso é a parte do fluxo com mais superfície de erro de segurança (account tak
 
 ## Verificação
 
-- [x] `pnpm test:api` — 248 testes (inclui os novos do módulo `auth/oidc/` e os de `UsersService`/`email_verified`/limites de tamanho da rodada de correção), `pnpm typecheck`/`pnpm lint` na API sem erros.
-- [x] `pnpm test:api:e2e` — 125 testes (inclui os 24 de `test/oidc.e2e-spec.ts`, cobrindo o checklist da seção 5 e o cenário de account takeover da nota de correção, contra o IdP falso local).
+- [x] `pnpm test:api` — 250 testes, `pnpm typecheck`/`pnpm lint` na API sem erros.
+- [x] `pnpm test:api:e2e` — 126 testes (inclui os 25 de `test/oidc.e2e-spec.ts`, cobrindo o checklist da seção 5 e os dois cenários de account takeover das notas de correção — vinculação automática e pré-registro —, contra o IdP falso local).
 - [x] `pnpm test:web` — 331 testes (inclui `LinkAccountPage`/`LinkAccountForm` e os ajustes em `LoginPage`/`SignUpPage`), `pnpm web typecheck`/`pnpm web lint` sem erros.
-- [ ] `pnpm test:web:a11y` (Playwright) — **não executado nesta rodada**: a própria `frontend-ux-seo.md` documenta que o runner do Playwright trava nesta máquina Windows em certas condições; `/vincular-conta` foi adicionada a `e2e/routes.ts` e `llms.txt`, mas a verificação real (a11y AA completo, SEO, Lighthouse) ainda precisa rodar — via CI ou manualmente com o Chrome DevTools, como o guia recomenda.
+- [x] `pnpm test:web:a11y` (Playwright) — não rodou localmente (o runner trava nesta máquina Windows em certas condições, como `frontend-ux-seo.md` já documenta), mas o job `e2e-web` do CI do PR #19 rodou essa suite contra `/vincular-conta` (já na lista em `e2e/routes.ts`) e passou, assim como o job `lighthouse`.
 - [ ] Teste manual com uma conta Google e uma Microsoft reais, em ambiente de homologação (nunca contra credenciais reais de produção durante o desenvolvimento) — não feito; os testes automatizados usam um provedor falso.
 - [ ] Checagem manual (teclado, leitor de tela, zoom 200%) em `/vincular-conta`, mesmas regras de `CLAUDE.md`/`frontend-ux-seo.md`.
