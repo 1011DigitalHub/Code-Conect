@@ -56,6 +56,29 @@ describe('HealthService', () => {
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
   });
 
+  // The bug this guards against: starting the cache window when the probe
+  // *begins* (rather than when it settles) would let a caller arriving past
+  // 1.5s start a second real probe while the first is still stuck — and
+  // with GET / unthrottled, a continuously stuck database would accumulate
+  // one more pending query every 1.5s, the exact pool exhaustion the cache
+  // exists to prevent. Gating on the in-flight promise first, regardless of
+  // elapsed time, is what keeps this at exactly one probe no matter how
+  // long it's stuck.
+  it('does not start a second probe while the first is still stuck past the cache window', async () => {
+    vi.useFakeTimers();
+    prisma.$queryRaw.mockReturnValue(new Promise(() => {}));
+
+    const first = service.isDatabaseReachable();
+    await vi.advanceTimersByTimeAsync(1_600); // past PROBE_CACHE_MS, probe still stuck
+    const second = service.isDatabaseReachable();
+
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1_400); // total 3000ms: the probe's own timeout fires
+    await expect(first).resolves.toBe(false);
+    await expect(second).resolves.toBe(false);
+  });
+
   // The 503 AppController throws from this is an HttpException, so
   // AllExceptionsFilter never logs it — this is the only place the real
   // Postgres error ends up in a server-side log at all.

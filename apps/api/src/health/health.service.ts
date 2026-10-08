@@ -10,27 +10,48 @@ const PROBE_TIMEOUT_MS = 3_000;
 // polling it never gets misread as "unhealthy" from a 429 — but that also
 // means nothing stops a flood of anonymous requests from each opening a
 // connection in pg's pool, competing with the rest of the API for it. This
-// window is what actually bounds that: every call within it shares the one
-// in-flight probe below instead of starting a new one.
+// window is what actually bounds that: every call within it reuses the
+// settled result below instead of starting a new probe.
 const PROBE_CACHE_MS = 1_500;
 
 @Injectable()
 export class HealthService {
   private readonly logger = new Logger(HealthService.name);
-  private cached: { expiresAt: number; result: Promise<boolean> } | null = null;
+  private pending: Promise<boolean> | null = null;
+  private cached: { expiresAt: number; value: boolean } | null = null;
 
   constructor(private readonly prisma: PrismaService) {}
 
-  // Coalesces concurrent callers onto the same in-flight probe, and reuses
-  // its settled result for PROBE_CACHE_MS after — so a thousand requests
-  // arriving in that window cost at most one round trip to the database,
-  // not a thousand.
+  // Coalesces concurrent callers onto the one in-flight probe, and reuses
+  // its settled result for PROBE_CACHE_MS *after it settles* — so a
+  // thousand requests arriving while a probe is running, or shortly after
+  // one finished, cost at most one round trip to the database, not a
+  // thousand.
+  //
+  // The window starts at settlement, not at the call that triggered the
+  // probe, on purpose: starting it at the call would let a probe stuck past
+  // PROBE_CACHE_MS (pool exhausted, a half-open connection) accumulate a new
+  // one every window while the old one is still pending — the exact
+  // connection-pool exhaustion this cache exists to prevent, just spread
+  // across several stuck queries instead of one. Gating on `this.pending`
+  // first means at most one probe is ever in flight, full stop, regardless
+  // of how long it takes.
   isDatabaseReachable(): Promise<boolean> {
-    const now = Date.now();
-    if (!this.cached || this.cached.expiresAt <= now) {
-      this.cached = { expiresAt: now + PROBE_CACHE_MS, result: this.probe() };
+    if (this.pending) {
+      return this.pending;
     }
-    return this.cached.result;
+
+    const now = Date.now();
+    if (this.cached && this.cached.expiresAt > now) {
+      return Promise.resolve(this.cached.value);
+    }
+
+    this.pending = this.probe().then((value) => {
+      this.cached = { expiresAt: Date.now() + PROBE_CACHE_MS, value };
+      this.pending = null;
+      return value;
+    });
+    return this.pending;
   }
 
   // Tagged template, never string interpolation — see the raw SQL rule in
@@ -42,6 +63,9 @@ export class HealthService {
   // a stuck connection (pool exhausted, host dropping packets without
   // closing the socket) would otherwise hang this forever instead of
   // answering 503 — defeating the one job a health check has.
+  //
+  // Never rejects: isDatabaseReachable()'s .then() above assumes this always
+  // settles to a boolean, never throws.
   private async probe(): Promise<boolean> {
     let timer: NodeJS.Timeout | undefined;
     try {
