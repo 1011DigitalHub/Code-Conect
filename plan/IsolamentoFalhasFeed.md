@@ -93,6 +93,32 @@ card falha, o item some da lista por completo (sem `<li></li>` vazio inflando a
 contagem de `listitem` para leitores de tela). O `key` muda de dono: do `<li>`
 para o `<CardErrorBoundary>`, mesmo valor (`post.slug`).
 
+## Descoberta #2, durante a implementação: o vetor original do slug não existe mais
+
+Ao escrever o teste de isolamento do `PostList` com um slug malicioso (ex.:
+`'//evil.example'`), descobri — e confirmei empiricamente rodando `new URL()`
+em Node — que **nenhum conteúdo de slug consegue mais fazer o `TextLink` lançar
+através do `PostCard`**. O `href` ali é sempre `` `/posts/${post.slug}` ``, e
+esse prefixo literal fixo ancora o resultado na mesma origem não importa o que
+vier depois — os truques de protocolo-relativo (`//`) e de backslash só
+funcionam quando aparecem no **início** da referência, não no meio de um path
+já existente. Testei todo vetor que `TextLink.test.tsx` rejeita (`//evil`,
+`/\evil`, `/\t/evil`, etc.), com o prefixo `/posts/` na frente de cada um —
+nenhum lança, nenhum resolve pra origem diferente.
+
+Ou seja: o fix da PR #17 (checar por resultado via `new URL(...).origin`, em
+vez de lista de prefixo) fechou esse vetor de forma mais completa do que a
+própria revisão que abriu a issue #18 percebeu — pelo menos para este
+call site específico.
+
+Isso não invalida o `CardErrorBoundary`: ele continua sendo a rede de segurança
+genérica certa para qualquer outro throw dentro de um card (cenário 3 do
+plano original — um `post.author` nulo, um campo futuro mal tratado, etc.),
+só não é mais "o fix para o vetor do slug" porque esse vetor específico já não
+existe. O teste de isolamento no `PostList.test.tsx` foi escrito usando
+`post.author = null` como gatilho real, em vez de um slug malicioso, porque é
+o jeito atualmente possível de reproduzir a falha que a issue descreve.
+
 ## 3. Testes
 
 - `apps/api/src/posts/slug.spec.ts`: casos novos para `assertSlugFormat` —
@@ -105,8 +131,9 @@ para o `<CardErrorBoundary>`, mesmo valor (`post.slug`).
   mesmo padrão do `ErrorBoundary.test.tsx` (componente `Explodes`, `console.error`
   espiado, caso feliz e caso de falha).
 - `apps/web/src/components/organisms/PostList/PostList.test.tsx`: lista de 5
-  posts com um slug que faz o `TextLink` lançar de verdade, confirma 4
-  `listitem`s (não 5, não 0) e que os outros títulos continuam no documento.
+  posts onde um tem `author: null` (gatilho real de throw, não mais um slug —
+  ver descoberta acima), confirma 4 `listitem`s (não 5, não 0) e que os outros
+  títulos continuam no documento.
 
 Cada teste novo provado por reversão deliberada: reverter a mudança
 correspondente, confirmar que o teste falha do jeito esperado, restaurar,
