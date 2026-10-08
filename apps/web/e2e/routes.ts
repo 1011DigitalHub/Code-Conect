@@ -12,6 +12,10 @@ export const routes = [
   { name: 'Feed', path: '/' },
   { name: 'Login', path: '/login' },
   { name: 'Cadastro', path: '/cadastro' },
+  // Reachable by an anonymous visitor mid-OIDC-flow, same as /login — it
+  // renders the same password form regardless of whether a real
+  // linking_token cookie is present, so it's testable the same way.
+  { name: 'Vincular conta', path: '/vincular-conta' },
   { name: 'Componentes React na prática', path: '/posts/componentes-react-na-pratica' },
   // The catch-all route. Any unmatched path renders it, and the SPA serves it
   // with HTTP 200 (try_files falls back to index.html), so the Lighthouse

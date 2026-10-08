@@ -7,6 +7,7 @@ import { NotFoundPage } from './pages/NotFoundPage'
 import { PostPage } from './pages/PostPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { SignUpPage } from './pages/SignUpPage'
+import { VincularContaPage } from './pages/VincularContaPage'
 
 // Separate from App because useLocation only works inside the router, and the
 // boundary needs to know when the viewer has navigated.
@@ -30,6 +31,7 @@ export function RoutedApp() {
         <Route path="/" element={<FeedPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/cadastro" element={<SignUpPage />} />
+        <Route path="/vincular-conta" element={<VincularContaPage />} />
         <Route path="/perfil" element={<ProfilePage />} />
         {/* Before the :slug route for readability; react-router already
             ranks the static segment higher. */}

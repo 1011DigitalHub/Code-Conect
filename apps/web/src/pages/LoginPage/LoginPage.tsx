@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
-import { login } from '../../api/auth'
+import { login, startOidcLogin } from '../../api/auth'
 import { getErrorMessage } from '../../api/errors'
 import { AuthFooter } from '../../components/organisms/AuthFooter'
 import { LoginForm, type LoginFormValues } from '../../components/organisms/LoginForm'
@@ -59,8 +59,7 @@ export function LoginPage() {
         submitting={submitting}
         error={error}
       />
-      {/* Social login isn't implemented yet — see plan/LoginSocial.md for the OIDC design. */}
-      <SocialLogin providers={socialProviders} disabled />
+      <SocialLogin providers={socialProviders} onSelect={startOidcLogin} />
     </AuthTemplate>
   )
 }
