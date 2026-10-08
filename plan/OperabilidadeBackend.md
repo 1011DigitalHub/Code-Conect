@@ -27,17 +27,17 @@ O controller injeta um `HealthService`, que injeta o `PrismaService`. A regra do
 
 ### O probe
 
-No `HealthService`:
+No `HealthService` — versão atual, depois dos dois achados da 4ª rodada de revisão (ver seção própria abaixo):
 
 ```ts
-// Tagged template, nunca interpolação de string — ver a regra de SQL cru.
-// $connect() já aconteceu no boot (PrismaService.onModuleInit) e pode ter
-// ficado obsoleto desde então; só uma query prova ida e volta ao banco.
+const PROBE_TIMEOUT_MS = 3_000; // menor que o --timeout=5s do Docker
+
 async isDatabaseReachable(): Promise<boolean> {
   try {
-    await this.prisma.$queryRaw`SELECT 1`;
+    await Promise.race([this.prisma.$queryRaw`SELECT 1`, this.timeout()]);
     return true;
-  } catch {
+  } catch (error) {
+    this.logger.error('database health probe failed', error instanceof Error ? error.stack : String(error));
     return false;
   }
 }
@@ -96,6 +96,12 @@ Achado pela revisão da PR #16 (`isHttpError` só checava `typeof err.expose ===
 1. **Sem checagem de `headersSent`.** Regressão em relação ao `BaseExceptionFilter` original do Nest, que o substitui: se algo já começou a escrever a resposta antes da exceção (um handler que faz streaming, por exemplo), chamar `response.status()` lança `ERR_HTTP_HEADERS_SENT` — sem rede de proteção própria, esse throw escapa do próprio filtro. Corrigido separando "decidir status+corpo" (`resolve`, que já loga quando é um erro desconhecido) de "escrever a resposta": se `response.headersSent`, só `response.end()`, sem tentar re-setar status. O log do branch desconhecido continua acontecendo de qualquer forma, porque roda dentro do `resolve`, antes dessa checagem. Testado com um caso dedicado, verificado por reversão deliberada.
 2. **Os ramos embrulhados (string-`HttpException` e `http-errors`) não tinham `error`.** Batem com o que o próprio `BaseExceptionFilter` do Nest faz (confirmado lendo o source), mas a regra deste projeto (`backend-architecture.md`: *"Keep Nest's default error shape (statusCode, message, error) across the whole API"*) e o próprio `ErrorResponseDto` tratam `error` como sempre presente — "espelhar o Nest" não bastava para cumprir a própria regra. Corrigido computando `error` a partir do status via `node:http`'s `STATUS_CODES` nos dois ramos, em vez de só nos dois que já tinham (o `HttpException` com corpo-objeto e o `500` mascarado).
 
+### 4ª rodada: dois achados reais no `HealthService`, e uma decisão de produto sobre o throttle
+
+1. **Falha do banco não era logada.** O `503` que `AppController` lança é uma `HttpException` (`ServiceUnavailableException`), e `AllExceptionsFilter` deliberadamente nunca loga essas — um `401` por senha errada não é bug. Mas um banco fora do ar não é "operação normal" do mesmo jeito, e o `catch` original do `HealthService` descartava o erro real (`catch { return false }`) sem deixar rastro nenhum. Resultado: uma queda de banco virava `503` sem uma única linha de log explicando o motivo — exatamente a lacuna que esta fase inteira existe para fechar, só que escondida num 503 em vez de um 500. Corrigido logando dentro do próprio `HealthService` (onde o erro real do Postgres está disponível), não no filter: mudar a política global do filter para logar `HttpException`s selecionadas seria uma mudança maior e mais arriscada para um caso só.
+2. **Probe sem timeout.** O pool do `pg` não tem timeout de query por padrão. Com o pool esgotado ou o host descartando pacotes sem fechar o socket, `GET /` ficaria pendurado para sempre em vez de responder `503` — o `--timeout=5s` do `HEALTHCHECK` do Docker esconde isso por fora, mas qualquer outro consumidor direto da rota (um load balancer, por exemplo) não tem essa proteção. Corrigido com `Promise.race` contra um timeout de 3s (menor que os 5s do Docker, para que o probe sempre perca a corrida antes do Docker matar o processo). Verificado com um teste que nunca resolve a chamada ao banco (`new Promise(() => {})`) e `vi.useFakeTimers()`, confirmando que o `HealthService` responde `false` mesmo assim — sem esse teste, o `Promise.race` poderia estar presente só na aparência (ex.: o timeout nunca realmente disparando) e nada acusaria.
+3. **`GET /` estava sob o rate limit global (100/min por IP).** Um probe de infraestrutura mais agressivo, ou que compartilhe IP com tráfego real por trás do mesmo proxy, poderia receber `429` e ser lido por engano como "unhealthy" — a própria checagem de saúde se tornando o motivo da checagem falhar. Era uma decisão de produto, não um bug: levada ao usuário, que escolheu isentar a rota com `@SkipThrottle()` (de `@nestjs/throttler`) em vez de documentar o `429` como possível. `GET /` não lê nada sensível nem muda estado, então a isenção não abre superfície de abuso real. Testado em `test/throttle.e2e-spec.ts` (não em `app.e2e-spec.ts`/`security.e2e-spec.ts` — esse já é o arquivo dedicado às asserções de `DEFAULT_THROTTLE`/`LOGIN_THROTTLE`/`SIGN_UP_THROTTLE`): mais de 100 requisições seguidas contra `/`, todas `200`. Verificado por reversão deliberada: removendo o `@SkipThrottle()`, a 101ª requisição vira `429` e o teste falha como esperado.
+
 ### Duas sugestões da revisão, verificadas e **não aplicadas**
 
 - **Documentar `@ApiTooManyRequestsResponse` em `GET /`.** Verificado contra o próprio código: em todo o projeto, esse decorator só aparece em handlers com um `@Throttle()` explícito que sobrescreve o limite padrão (`CREATE_POST_THROTTLE`, `CREATE_COMMENT_THROTTLE`, `SIGN_UP_THROTTLE`, `LOGIN_THROTTLE`) — nunca numa rota sob o limite global padrão, como o próprio `GET /posts` (`posts.controller.ts`, handler `list`) já demonstra. `GET /` usa o limite padrão, sem override; aplicar a sugestão a essa única rota criaria a inconsistência que ela tentava evitar.
@@ -107,9 +113,11 @@ O `ErrorResponseDto` existe desde o início como *documentação* do formato pad
 
 ### Testes
 
-- `all-exceptions.filter.spec.ts` (6 casos): `HttpException` com corpo-objeto sai idêntica; `response.headersSent` termina a conexão com `end()` em vez de tentar re-setar status; erro `http-errors` com `expose: true` (tipo `PayloadTooLargeError`) sai com o próprio status e com `error` computado do status, sem máscara; erro `http-errors` com `expose: false` sai mascarado e logado, igual a um erro desconhecido; `HttpException` com corpo-string (tipo `ThrottlerException`) sai embrulhada em `{ statusCode, message, error }`; `Error` cru sai como `500` mascarado com o logger chamado só nesse caso.
+- `all-exceptions.filter.spec.ts` (7 casos): `HttpException` com corpo-objeto sai idêntica; `response.headersSent` termina a conexão com `end()` em vez de tentar re-setar status; erro `http-errors` com `expose: true` (tipo `PayloadTooLargeError`) sai com o próprio status e com `error` computado do status, sem máscara; erro `http-errors` com `expose: false` sai mascarado e logado, igual a um erro desconhecido; `HttpException` com corpo-string (tipo `ThrottlerException`) sai embrulhada em `{ statusCode, message, error }`; `Error` cru sai como `500` mascarado com o logger chamado só nesse caso; um valor lançado que não é `Error` (`throw { code: 'P2002' }`) cai no mesmo caminho mascarado/logado, sem crashar.
+- `health.service.spec.ts` (3 casos): reachable quando o banco responde (e confirma que `$queryRaw` foi chamado); not reachable e loga quando o banco lança; not reachable quando o probe nunca resolve (com `vi.useFakeTimers()` + `vi.advanceTimersByTimeAsync`, provando o timeout sem esperar 3s reais).
 - `test/security.e2e-spec.ts`: o caso de falha inesperada (banco fora do ar, via `HealthService` sobrescrito) não vaza stack trace nem detalhe interno no corpo; o caso de `413` verifica o corpo inteiro, incluindo `error: 'Payload Too Large'`.
 - `test/app.e2e-spec.ts` ganha o caso que todo outro módulo já tinha: `GET /` aparece em `GET /api/docs-json`.
+- `test/throttle.e2e-spec.ts` ganha o caso do `@SkipThrottle()`: mais de 100 requisições a `/`, todas `200`.
 - A suíte de e2e **inteira** é a rede de proteção: foi exatamente rodá-la por completo, não só os testes novos, que achou os dois primeiros casos (`throttle.e2e-spec.ts` e o `413` em `security.e2e-spec.ts` acusaram na hora); o terceiro (`expose: false`) só a revisão achou, porque nenhum middleware real do projeto produz esse formato hoje.
 
 → `feat(api): enforce the documented error shape with a global exception filter`
