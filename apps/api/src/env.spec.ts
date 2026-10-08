@@ -8,13 +8,12 @@ const REQUIRED = {
   DATABASE_URL: 'postgresql://user:pass@localhost:5432/db',
 };
 
-// OIDC_LINKING_TOKEN_SECRET is the one OIDC var this file's production
-// requirements add (see env.ts) — needed by any test here that sets
-// NODE_ENV: 'production' and expects successful validation, same reasoning
-// as JWT_SECRET/CORS_ORIGINS above. API_ORIGIN/WEB_APP_ORIGIN and the OIDC
-// client credentials are deliberately NOT required in production (OIDC is
-// an optional login method on top of the password one), so no var for
-// those needs to go here.
+// OIDC_LINKING_TOKEN_SECRET is unconditionally required in production (see
+// env.ts) — needed by any test here that sets NODE_ENV: 'production' and
+// expects successful validation, same reasoning as JWT_SECRET/CORS_ORIGINS
+// above. API_ORIGIN/WEB_APP_ORIGIN and the OIDC client credentials are only
+// required once a Google/Microsoft client id is actually configured (see
+// validateOidcOrigins), so no credential-less test needs them here.
 const PRODUCTION_OIDC_VARS = {
   OIDC_LINKING_TOKEN_SECRET: 'b'.repeat(32),
 };
@@ -139,6 +138,48 @@ describe('env', () => {
     await expect(importWithEnv({ OIDC_LINKING_TOKEN_SECRET: 'too-short' })).rejects.toThrow(
       /OIDC_LINKING_TOKEN_SECRET/,
     );
+  });
+
+  it('allows API_ORIGIN/WEB_APP_ORIGIN to default to localhost in production when no OIDC credential is configured', async () => {
+    const { env } = await importWithEnv({
+      NODE_ENV: 'production',
+      JWT_SECRET: 'a'.repeat(32),
+      CORS_ORIGINS: 'https://a.com',
+      ...PRODUCTION_OIDC_VARS,
+      API_ORIGIN: undefined,
+      WEB_APP_ORIGIN: undefined,
+      GOOGLE_CLIENT_ID: undefined,
+      MICROSOFT_CLIENT_ID: undefined,
+    });
+    expect(env.isProduction).toBe(true);
+  });
+
+  it('requires API_ORIGIN/WEB_APP_ORIGIN in production once a Google/Microsoft client id is configured', async () => {
+    await expect(
+      importWithEnv({
+        NODE_ENV: 'production',
+        JWT_SECRET: 'a'.repeat(32),
+        CORS_ORIGINS: 'https://a.com',
+        ...PRODUCTION_OIDC_VARS,
+        GOOGLE_CLIENT_ID: 'configured-client-id',
+        API_ORIGIN: undefined,
+        WEB_APP_ORIGIN: undefined,
+      }),
+    ).rejects.toThrow(/API_ORIGIN[\s\S]*WEB_APP_ORIGIN|WEB_APP_ORIGIN[\s\S]*API_ORIGIN/);
+  });
+
+  it('the same requirement is triggered by MICROSOFT_CLIENT_ID alone', async () => {
+    await expect(
+      importWithEnv({
+        NODE_ENV: 'production',
+        JWT_SECRET: 'a'.repeat(32),
+        CORS_ORIGINS: 'https://a.com',
+        ...PRODUCTION_OIDC_VARS,
+        MICROSOFT_CLIENT_ID: 'configured-client-id',
+        API_ORIGIN: undefined,
+        WEB_APP_ORIGIN: undefined,
+      }),
+    ).rejects.toThrow(/API_ORIGIN/);
   });
 
   it('aggregates every error into one message instead of stopping at the first', async () => {

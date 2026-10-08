@@ -16,9 +16,9 @@ function apiError(status: number) {
   return new AxiosError('failed', AxiosError.ERR_BAD_REQUEST, config, null, response)
 }
 
-function renderLoginRoutes() {
+function renderLoginRoutes(route = '/login') {
   return render(
-    <MemoryRouter initialEntries={['/login']}>
+    <MemoryRouter initialEntries={[route]}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/perfil" element={<p>Tela de perfil</p>} />
@@ -115,6 +115,14 @@ describe('LoginPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Email ou senha inválidos.')
     expect(screen.queryByText('Tela de perfil')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Login' })).toBeEnabled()
+  })
+
+  it('shows a generic error when the OIDC flow failed server-side (?oidcError=1)', async () => {
+    renderLoginRoutes('/login?oidcError=1')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Não foi possível entrar com o provedor.',
+    )
   })
 
   it('has no WCAG 2.2 AA violations', async () => {

@@ -103,7 +103,7 @@ describe('OIDC login (e2e)', () => {
     async function expectLoginRedirect(url: string) {
       const res = await request(app.getHttpServer()).get(url);
       expect(res.status).toBe(302);
-      expect(res.headers.location).toBe('http://localhost:5173/login');
+      expect(res.headers.location).toBe('http://localhost:5173/login?oidcError=1');
     }
 
     it('with no oidc_flow cookie at all', () => {
@@ -115,7 +115,7 @@ describe('OIDC login (e2e)', () => {
       const code = fakeIdp.encodeCode();
       const res = await agent.get(`/auth/oidc/google/callback?code=${code}&state=not-the-real-state`);
       expect(res.status).toBe(302);
-      expect(res.headers.location).toBe('http://localhost:5173/login');
+      expect(res.headers.location).toBe('http://localhost:5173/login?oidcError=1');
       expect(flow.state).not.toBe('not-the-real-state');
     });
 
@@ -123,7 +123,7 @@ describe('OIDC login (e2e)', () => {
       const { agent, flow } = await startFlow();
       const res = await agent.get(`/auth/oidc/google/callback?state=${flow.state}`);
       expect(res.status).toBe(302);
-      expect(res.headers.location).toBe('http://localhost:5173/login');
+      expect(res.headers.location).toBe('http://localhost:5173/login?oidcError=1');
     });
 
     it('once the flow cookie has expired, even though the Max-Age has not literally elapsed in real time', async () => {
@@ -133,7 +133,7 @@ describe('OIDC login (e2e)', () => {
       const code = fakeIdp.encodeCode();
       const res = await agent.get(`/auth/oidc/google/callback?code=${code}&state=${flow.state}`);
       expect(res.status).toBe(302);
-      expect(res.headers.location).toBe('http://localhost:5173/login');
+      expect(res.headers.location).toBe('http://localhost:5173/login?oidcError=1');
       vi.useRealTimers();
     });
 
@@ -142,7 +142,7 @@ describe('OIDC login (e2e)', () => {
       const code = fakeIdp.encodeCode({ expectedCodeChallenge: 'a-completely-different-challenge' });
       const res = await agent.get(`/auth/oidc/google/callback?code=${code}&state=${flow.state}`);
       expect(res.status).toBe(302);
-      expect(res.headers.location).toBe('http://localhost:5173/login');
+      expect(res.headers.location).toBe('http://localhost:5173/login?oidcError=1');
     });
 
     it('with an id_token with an invalid signature', async () => {
@@ -151,7 +151,7 @@ describe('OIDC login (e2e)', () => {
       const code = fakeIdp.encodeCode({ expectedCodeChallenge: challenge, signWithWrongKey: true });
       const res = await agent.get(`/auth/oidc/google/callback?code=${code}&state=${flow.state}`);
       expect(res.status).toBe(302);
-      expect(res.headers.location).toBe('http://localhost:5173/login');
+      expect(res.headers.location).toBe('http://localhost:5173/login?oidcError=1');
     });
 
     it('with an id_token for a different aud (client_id)', async () => {
@@ -160,7 +160,7 @@ describe('OIDC login (e2e)', () => {
       const code = fakeIdp.encodeCode({ expectedCodeChallenge: challenge, claims: { aud: 'someone-elses-client-id' } });
       const res = await agent.get(`/auth/oidc/google/callback?code=${code}&state=${flow.state}`);
       expect(res.status).toBe(302);
-      expect(res.headers.location).toBe('http://localhost:5173/login');
+      expect(res.headers.location).toBe('http://localhost:5173/login?oidcError=1');
     });
 
     it('with an id_token from an unrecognized issuer', async () => {
@@ -169,7 +169,7 @@ describe('OIDC login (e2e)', () => {
       const code = fakeIdp.encodeCode({ expectedCodeChallenge: challenge, claims: { iss: 'https://attacker.example.com' } });
       const res = await agent.get(`/auth/oidc/google/callback?code=${code}&state=${flow.state}`);
       expect(res.status).toBe(302);
-      expect(res.headers.location).toBe('http://localhost:5173/login');
+      expect(res.headers.location).toBe('http://localhost:5173/login?oidcError=1');
     });
 
     it('on a token-endpoint failure (e.g. an already-used or invalid code)', async () => {
@@ -177,7 +177,7 @@ describe('OIDC login (e2e)', () => {
       const code = fakeIdp.encodeCode({ tokenEndpointFails: true });
       const res = await agent.get(`/auth/oidc/google/callback?code=${code}&state=${flow.state}`);
       expect(res.status).toBe(302);
-      expect(res.headers.location).toBe('http://localhost:5173/login');
+      expect(res.headers.location).toBe('http://localhost:5173/login?oidcError=1');
     });
 
     // Not a security exception — the provider sends this instead of a code
@@ -188,7 +188,7 @@ describe('OIDC login (e2e)', () => {
         `/auth/oidc/google/callback?error=access_denied&state=${flow.state}`,
       );
       expect(res.status).toBe(302);
-      expect(res.headers.location).toBe('http://localhost:5173/login');
+      expect(res.headers.location).toBe('http://localhost:5173/login?oidcError=1');
     });
   });
 
@@ -288,7 +288,7 @@ describe('OIDC login (e2e)', () => {
         `/auth/oidc/google/callback?code=${code}&state=${attacker.flow.state}`,
       );
       expect(attackerRes.status).toBe(302);
-      expect(attackerRes.headers.location).toBe('http://localhost:5173/login');
+      expect(attackerRes.headers.location).toBe('http://localhost:5173/login?oidcError=1');
 
       // The attacker never got a session, and the real owner's identity
       // still resolves only to themselves.
@@ -307,7 +307,7 @@ describe('OIDC login (e2e)', () => {
         email_verified: false,
       });
       expect(res.status).toBe(302);
-      expect(res.headers.location).toBe('http://localhost:5173/login');
+      expect(res.headers.location).toBe('http://localhost:5173/login?oidcError=1');
       expect(() => setCookie(res, 'access_token')).toThrow();
 
       // The real owner, later logging in for real with a verified email,

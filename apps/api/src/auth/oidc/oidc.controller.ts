@@ -47,6 +47,15 @@ import { generatePkcePair, generateState, statesMatch } from './oidc-pkce.js';
 import { getOidcProviderConfig, getWebAppOrigin, parseOidcProvider } from './oidc.constants.js';
 import { OidcService } from './oidc.service.js';
 
+// `oidcError=1` is a generic, non-specific flag — it never says *which*
+// check failed (expired flow, bad signature, unverified email, the person
+// cancelling...), only that the OIDC attempt didn't complete. LoginPage
+// reads it to show a FormError instead of leaving the person on /login
+// with zero explanation for why they ended up back there (WCAG 3.3.1).
+function redirectToLoginWithError(res: Response): void {
+  res.redirect(`${getWebAppOrigin()}/login?oidcError=1`);
+}
+
 @ApiTags('auth')
 @Controller('auth/oidc')
 export class OidcController {
@@ -91,7 +100,7 @@ export class OidcController {
   @ApiResponse({
     status: 302,
     description:
-      'Login concluído (/perfil), vinculação pendente (/vincular-conta) ou qualquer falha — state/code/id_token inválido, o usuário cancelou no provedor — (/login). Essas rejeições nunca viram um corpo JSON: tudo aqui acontece em redirects do navegador que um usuário real está seguindo, não em chamadas XHR.',
+      'Login concluído (/perfil), vinculação pendente (/vincular-conta) ou qualquer falha — state/code/id_token inválido, o usuário cancelou no provedor — (/login?oidcError=1, lido pelo LoginPage para mostrar um erro genérico). Essas rejeições nunca viram um corpo JSON: tudo aqui acontece em redirects do navegador que um usuário real está seguindo, não em chamadas XHR.',
   })
   @ApiBadRequestResponse({ type: ErrorResponseDto, description: ':provider desconhecido (rota malformada, não alcançável pelo fluxo normal)' })
   @ApiTooManyRequestsResponse({ type: ErrorResponseDto })
@@ -120,7 +129,7 @@ export class OidcController {
     const flowValid =
       !providerError && !!flow && !!state && !!code && flow.provider === provider && statesMatch(flow.state, state);
     if (!flowValid) {
-      res.redirect(`${getWebAppOrigin()}/login`);
+      redirectToLoginWithError(res);
       return;
     }
 
@@ -141,7 +150,7 @@ export class OidcController {
       // AllExceptionsFilter still logs and 500s it instead of silently
       // masking a real failure as "please try again".
       if (!(error instanceof HttpException)) throw error;
-      res.redirect(`${getWebAppOrigin()}/login`);
+      redirectToLoginWithError(res);
       return;
     }
 

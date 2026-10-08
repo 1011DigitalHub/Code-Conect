@@ -23,14 +23,14 @@ const stored: StoredUser = {
 describe('UsersService', () => {
   let service: UsersService;
   let prisma: {
-    user: { create: Mock; findUnique: Mock; findFirst: Mock; update: Mock };
-    oidcIdentity: { create: Mock };
+    user: { create: Mock; findUnique: Mock; update: Mock };
+    oidcIdentity: { create: Mock; findUnique: Mock };
   };
 
   beforeEach(() => {
     prisma = {
-      user: { create: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
-      oidcIdentity: { create: vi.fn() },
+      user: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
+      oidcIdentity: { create: vi.fn(), findUnique: vi.fn() },
     };
     service = new UsersService(prisma as unknown as PrismaService);
   });
@@ -113,16 +113,17 @@ describe('UsersService', () => {
   });
 
   describe('findByProviderIdentity', () => {
-    it('looks up a user through the identities relation', async () => {
-      prisma.user.findFirst.mockResolvedValue(stored);
+    it('looks up the identity by its unique (provider, providerSub) key and returns the linked user', async () => {
+      prisma.oidcIdentity.findUnique.mockResolvedValue({ user: stored });
       await expect(service.findByProviderIdentity('google', 'sub-123')).resolves.toBe(stored);
-      expect(prisma.user.findFirst).toHaveBeenCalledWith({
-        where: { identities: { some: { provider: 'google', providerSub: 'sub-123' } } },
+      expect(prisma.oidcIdentity.findUnique).toHaveBeenCalledWith({
+        where: { provider_providerSub: { provider: 'google', providerSub: 'sub-123' } },
+        select: { user: true },
       });
     });
 
-    it('returns null when no user has that identity', async () => {
-      prisma.user.findFirst.mockResolvedValue(null);
+    it('returns null when no identity matches', async () => {
+      prisma.oidcIdentity.findUnique.mockResolvedValue(null);
       await expect(service.findByProviderIdentity('google', 'sub-123')).resolves.toBeNull();
     });
   });

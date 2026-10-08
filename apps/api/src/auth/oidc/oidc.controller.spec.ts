@@ -88,7 +88,7 @@ describe('OidcController', () => {
     it('redirects to /login when there is no oidc_flow cookie at all', async () => {
       const { res, redirect } = fakeResponse();
       await controller.callback('google', 'code', 'state-abc', undefined, fakeRequest(undefined), res);
-      expect(redirect).toHaveBeenCalledWith('http://localhost:5173/login');
+      expect(redirect).toHaveBeenCalledWith('http://localhost:5173/login?oidcError=1');
       expect(oidcService.authenticate).not.toHaveBeenCalled();
     });
 
@@ -96,7 +96,7 @@ describe('OidcController', () => {
       const { res, redirect } = fakeResponse();
       const req = fakeRequest(flowCookieHeader(flow));
       await controller.callback('google', 'code', 'wrong-state', undefined, req, res);
-      expect(redirect).toHaveBeenCalledWith('http://localhost:5173/login');
+      expect(redirect).toHaveBeenCalledWith('http://localhost:5173/login?oidcError=1');
       expect(oidcService.authenticate).not.toHaveBeenCalled();
     });
 
@@ -104,14 +104,14 @@ describe('OidcController', () => {
       const { res, redirect } = fakeResponse();
       const req = fakeRequest(flowCookieHeader(flow));
       await controller.callback('microsoft', 'code', 'state-abc', undefined, req, res);
-      expect(redirect).toHaveBeenCalledWith('http://localhost:5173/login');
+      expect(redirect).toHaveBeenCalledWith('http://localhost:5173/login?oidcError=1');
     });
 
     it('redirects to /login on a missing code', async () => {
       const { res, redirect } = fakeResponse();
       const req = fakeRequest(flowCookieHeader(flow));
       await controller.callback('google', undefined, 'state-abc', undefined, req, res);
-      expect(redirect).toHaveBeenCalledWith('http://localhost:5173/login');
+      expect(redirect).toHaveBeenCalledWith('http://localhost:5173/login?oidcError=1');
     });
 
     it('redirects to /login when OidcService.authenticate rejects (bad signature, wrong aud, unverified email, ...)', async () => {
@@ -119,7 +119,7 @@ describe('OidcController', () => {
       const { res, redirect } = fakeResponse();
       const req = fakeRequest(flowCookieHeader(flow));
       await controller.callback('google', 'the-code', 'state-abc', undefined, req, res);
-      expect(redirect).toHaveBeenCalledWith('http://localhost:5173/login');
+      expect(redirect).toHaveBeenCalledWith('http://localhost:5173/login?oidcError=1');
     });
 
     it('lets a non-HttpException (a genuine bug) propagate instead of masking it as a redirect', async () => {
@@ -142,7 +142,7 @@ describe('OidcController', () => {
       const { res, redirect } = fakeResponse();
       await controller.callback('google', undefined, undefined, 'access_denied', fakeRequest(undefined), res);
 
-      expect(redirect).toHaveBeenCalledWith('http://localhost:5173/login');
+      expect(redirect).toHaveBeenCalledWith('http://localhost:5173/login?oidcError=1');
       expect(oidcService.authenticate).not.toHaveBeenCalled();
     });
 

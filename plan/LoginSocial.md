@@ -50,6 +50,21 @@ A rodada 1 acima corrigiu o bloqueante na **vinculação automática**, mas a me
 
 **Não corrigido, deliberadamente adiado** (ambas as rodadas): checagem cruzada `tid`/`iss` para Microsoft. Defesa em profundidade adicional — não necessária para fechar o account takeover, que já está coberto por `email_verified` nos dois ramos.
 
+## Nota de correção pós-revisão, rodada 3 (2026-10-08)
+
+Uma terceira passada da revisão automática sobre o commit da rodada 2 não encontrou mais bloqueantes de segurança — a vulnerabilidade de account takeover (rodadas 1 e 2) está fechada. Os três pontos que a própria revisão marcou como "merecem ajuste antes do merge" eram de correção/UX/robustez, não bypass de segurança:
+
+- **🟠 Microsoft não emite `email_verified` de forma confiável** (o endpoint v2.0 da Entra ID simplesmente não garante essa claim) — na prática, isso faria o cadastro novo e o auto-link via Microsoft falharem sempre, sobrando só a vinculação por senha como caminho funcional. Corrigido: `OidcService.verifyIdToken` agora aceita `xms_edov` (a claim que a própria Microsoft recomenda para esse cenário — "externally-set domain ownership verified") como alternativa a `email_verified`. Documentado aqui: para o Microsoft funcionar além da vinculação por senha, o **App Registration no Entra ID precisa pedir `xms_edov` como optional claim** — isso é configuração de infraestrutura, não algo que o código force.
+- **🟠 Falha no callback redirecionava para `/login` sem nenhuma mensagem (WCAG 3.3.1).** Corrigido: o redirect agora é `/login?oidcError=1` — um código genérico, nunca dizendo qual checagem falhou — e `LoginPage` lê esse parâmetro e mostra um `FormError` genérico ("Não foi possível entrar com o provedor. Tente novamente."), removendo o parâmetro da URL depois (`useEffect` + `setSearchParams` com `replace: true`, para não deixar o erro reaparecer num refresh).
+- **🟠 `API_ORIGIN`/`WEB_APP_ORIGIN` sem validação em produção** podiam cair silenciosamente em `localhost` mesmo com credenciais OIDC configuradas. Corrigido: `env.ts` agora exige os dois, mas só **quando** `GOOGLE_CLIENT_ID` ou `MICROSOFT_CLIENT_ID` está configurado em produção — continuam totalmente opcionais numa implantação que não usa OIDC.
+- **🟡 Query do Prisma em `findByProviderIdentity` usava `user.findFirst` com filtro de relação** em vez de buscar direto pela chave única composta. Corrigido: `oidcIdentity.findUnique({ where: { provider_providerSub: {...} } })`.
+- **🟡 Tipagem: `findByProviderIdentity`/`createFromOidc` diziam devolver `StoredUser`** (com `passwordHash: string | null`), mas o `omit` global do Prisma faz `passwordHash` vir `undefined` em tempo de execução nesses dois casos — nenhum código lê esse campo hoje, mas o tipo mentia. Corrigido: tipados como `Omit<StoredUser, 'passwordHash'>`.
+- **🟡 Comentário em `schema.prisma` impreciso sobre o que a constraint garante** (dizia "um por provedor por usuário", mas o `@@unique([provider, providerSub])` garante só que uma identidade externa não é reclamada por dois usuários — nada impede um usuário ter duas identidades do mesmo provedor). Corrigido o texto.
+- Teste novo faltante: email não verificado + conta local **com** senha → ainda oferece `/vincular-conta` normalmente (prova que esse ramo é seguro independente da claim, como os comentários já afirmavam).
+- `apps/web/public/robots.txt` ganhou `Disallow: /vincular-conta` e a entrada correspondente saiu do `llms.txt` — é uma página transitória do fluxo, não conteúdo que vale indexar ou divulgar a crawlers de LLM. Continua em `e2e/routes.ts` (cobertura de a11y/SEO da nossa própria suíte é uma preocupação diferente de indexação por terceiros).
+
+**Não corrigido, deliberadamente não feito** (duplicação entre `env.ts`/`oidc.constants.ts` para `OIDC_LINKING_TOKEN_SECRET`): é o mesmo padrão que `JWT_SECRET` já usa neste projeto (`auth.constants.ts` tem seu próprio `getJwtSecret()` com o mesmo `DEV_SECRET` duplicado) — `env.ts` só agrega a validação de boot, cada módulo de domínio lê o valor que de fato usa. Não é uma inconsistência nova introduzida por este PR.
+
 ### Arquivos
 
 **`apps/api`** — novos: `src/auth/oidc/` (`oidc.module.ts`, `oidc.controller(.spec).ts`, `oidc.service(.spec).ts`, `oidc.constants(.spec).ts`, `oidc.types.ts`, `oidc-pkce(.spec).ts`, `oidc-flow-cookie(.spec).ts`, `oidc-linking-token(.spec).ts`, `dto/link-account.dto.ts`), `prisma/migrations/20261008165123_add_oidc_identities/`, `test/oidc-fake-idp.ts`, `test/oidc.e2e-spec.ts`. Alterados: `prisma/schema.prisma`, `src/env(.spec).ts`, `src/auth/auth.module.ts`, `src/auth/auth.service(.spec).ts`, `src/auth/cookie.constants.ts`, `src/users/password(.spec).ts` (novo `verifyUserPassword` compartilhado), `src/users/users.service(.spec).ts` (`findByProviderIdentity`/`createFromOidc`/`linkProviderIdentity`, agora com testes próprios), `test/db.ts` (trunca `oidc_identities`), `.env.example`, `package.json`/`pnpm-lock.yaml` (dependência `jose`).
@@ -152,9 +167,9 @@ Isso é a parte do fluxo com mais superfície de erro de segurança (account tak
 
 ## Verificação
 
-- [x] `pnpm test:api` — 250 testes, `pnpm typecheck`/`pnpm lint` na API sem erros.
+- [x] `pnpm test:api` — 255 testes, `pnpm typecheck`/`pnpm lint` na API sem erros.
 - [x] `pnpm test:api:e2e` — 126 testes (inclui os 25 de `test/oidc.e2e-spec.ts`, cobrindo o checklist da seção 5 e os dois cenários de account takeover das notas de correção — vinculação automática e pré-registro —, contra o IdP falso local).
-- [x] `pnpm test:web` — 331 testes (inclui `LinkAccountPage`/`LinkAccountForm` e os ajustes em `LoginPage`/`SignUpPage`), `pnpm web typecheck`/`pnpm web lint` sem erros.
+- [x] `pnpm test:web` — 332 testes (inclui `LinkAccountPage`/`LinkAccountForm`, o `oidcError` em `LoginPage`, e os ajustes em `SignUpPage`), `pnpm web typecheck`/`pnpm web lint` sem erros.
 - [x] `pnpm test:web:a11y` (Playwright) — não rodou localmente (o runner trava nesta máquina Windows em certas condições, como `frontend-ux-seo.md` já documenta), mas o job `e2e-web` do CI do PR #19 rodou essa suite contra `/vincular-conta` (já na lista em `e2e/routes.ts`) e passou, assim como o job `lighthouse`.
 - [ ] Teste manual com uma conta Google e uma Microsoft reais, em ambiente de homologação (nunca contra credenciais reais de produção durante o desenvolvimento) — não feito; os testes automatizados usam um provedor falso.
 - [ ] Checagem manual (teclado, leitor de tela, zoom 200%) em `/vincular-conta`, mesmas regras de `CLAUDE.md`/`frontend-ux-seo.md`.

@@ -112,26 +112,22 @@ function readTrustProxy(): number {
 }
 
 // Signs the short-lived linking_token (see plan/LoginSocial.md section 4).
-// The only OIDC-related var validated here — API_ORIGIN, WEB_APP_ORIGIN and
-// the Google/Microsoft client credentials have no boot-time requirement to
-// enforce (OIDC is an optional login method; an unset credential just means
-// that button fails at the provider), so auth/oidc/oidc.constants.ts reads
-// them directly off process.env instead, the same way auth.constants.ts and
-// cookie.constants.ts already do for their own settings. This one DOES have
-// a real requirement — required in production regardless of whether OIDC
-// credentials are even configured, since a wrong default becomes a real
-// account-linking forgery risk the moment they are — so it stays here,
-// aggregated with every other boot-time check.
-// Required in production, unlike the OIDC vars above — it's a single cheap
-// secret to generate regardless of whether Google/Microsoft credentials
-// are ever configured, and a wrong default here is a real security hole
-// (forging account-linking proof) the moment OIDC credentials DO get set,
-// not just a broken button.
-// Deliberately never falls back to JWT_SECRET or CSRF_SECRET the way those
-// two fall back to each other — this token is the one step that grants
-// linking an OIDC identity to an existing local account, so it gets its own
-// key, not a shared one that would widen the blast radius of either secret
-// leaking.
+// Required in production regardless of whether Google/Microsoft credentials
+// are ever configured — it's a single cheap secret to generate, and a wrong
+// default becomes a real account-linking forgery risk the moment those
+// credentials DO get set, not just a broken button. Deliberately never
+// falls back to JWT_SECRET or CSRF_SECRET the way those two fall back to
+// each other — this token is the one step that grants linking an OIDC
+// identity to an existing local account, so it gets its own key, not a
+// shared one that would widen the blast radius of either secret leaking.
+//
+// Only the boot-time requirement lives here; the actual secret used to
+// sign/verify tokens at runtime is read independently by
+// auth/oidc/oidc.constants.ts's own getOidcLinkingTokenSecret(), the same
+// split auth.constants.ts's getJwtSecret() already has with this file's
+// readJwtSecret() above — aggregating every failure into one boot-time
+// message is this file's only job; each domain's own constants module
+// still owns reading the value it actually uses.
 function readOidcLinkingTokenSecret(): string {
   const DEV_SECRET = 'dev-only-linking-secret-change-me';
   const raw = process.env.OIDC_LINKING_TOKEN_SECRET;
@@ -146,6 +142,30 @@ function readOidcLinkingTokenSecret(): string {
     return '';
   }
   return DEV_SECRET;
+}
+
+// API_ORIGIN/WEB_APP_ORIGIN themselves have no unconditional boot-time
+// requirement (see readOidcLinkingTokenSecret's comment on why OIDC stays
+// optional) — but leaving both at their localhost dev defaults in a
+// production deployment that HAS configured Google/Microsoft credentials
+// is a real, silent misconfiguration: the redirect_uri a real provider
+// would reject outright, or worse, a post-login redirect that sends a
+// real user's browser to localhost. Once credentials are set, this fails
+// the boot loudly instead of surfacing as "the social buttons are broken"
+// discovered later.
+function validateOidcOrigins(): void {
+  const hasOidcCredentials = !!(process.env.GOOGLE_CLIENT_ID || process.env.MICROSOFT_CLIENT_ID);
+  if (!isProduction || !hasOidcCredentials) return;
+  if (!process.env.API_ORIGIN) {
+    errors.push(
+      'API_ORIGIN must be set in production once GOOGLE_CLIENT_ID/MICROSOFT_CLIENT_ID is configured (otherwise the OIDC redirect_uri silently defaults to localhost)',
+    );
+  }
+  if (!process.env.WEB_APP_ORIGIN) {
+    errors.push(
+      'WEB_APP_ORIGIN must be set in production once GOOGLE_CLIENT_ID/MICROSOFT_CLIENT_ID is configured (otherwise the post-login redirect silently defaults to localhost)',
+    );
+  }
 }
 
 function readSwaggerEnabled(): boolean {
@@ -173,6 +193,9 @@ const parsed = {
   swaggerEnabled: readSwaggerEnabled(),
   oidcLinkingTokenSecret: readOidcLinkingTokenSecret(),
 };
+
+// Validation-only (nothing to store): see its own comment above.
+validateOidcOrigins();
 
 if (errors.length > 0) {
   throw new Error(

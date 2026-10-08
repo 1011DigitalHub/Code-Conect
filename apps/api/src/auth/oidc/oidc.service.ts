@@ -136,9 +136,21 @@ export class OidcService {
 
     // Required for every identity decision below, not just account
     // creation: see OidcIdentityClaims.emailVerified's doc comment. Some
-    // providers send it as the string "true" rather than a boolean; both
-    // are accepted, anything else (including absent) is not verified.
-    const emailVerified = payload.email_verified === true || payload.email_verified === 'true';
+    // providers send email_verified as the string "true" rather than a
+    // boolean; both are accepted. Microsoft Entra ID's v2.0 endpoint does
+    // NOT reliably send email_verified at all — its own mitigation for this
+    // exact nOAuth shape is the `xms_edov` optional claim ("externally-set
+    // domain ownership verified"), which has to be requested explicitly in
+    // the app registration's optional claims (see plan/LoginSocial.md) to
+    // ever show up here. Without either claim, new-account creation and
+    // auto-link both fail closed — not a bug, the provider simply never
+    // told us the email is trustworthy; the password-confirmed linking path
+    // still works regardless, since it never depended on this claim.
+    const emailVerified =
+      payload.email_verified === true ||
+      payload.email_verified === 'true' ||
+      payload.xms_edov === true ||
+      payload.xms_edov === 'true';
 
     const rawName =
       typeof payload.name === 'string' && payload.name.trim() ? payload.name.trim() : email.split('@')[0] || email;

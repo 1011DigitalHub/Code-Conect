@@ -7,4 +7,3 @@
 - [Feed](/): posts da comunidade, com busca por texto, curtidas e comentários. Cada post tem sua própria página em /posts/<slug>.
 - [Login](/login): entrar na conta com email e senha, ou com Google/Microsoft.
 - [Cadastro](/cadastro): criar uma conta com nome, email e senha.
-- [Vincular conta](/vincular-conta): confirmar a senha para vincular um login social a uma conta local existente com o mesmo email.

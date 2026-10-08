@@ -65,13 +65,25 @@ export class UsersService {
   }
 
   // The first lookup OidcService.resolveIdentity does on every OIDC
-  // callback: does this exact (provider, sub) already map to a user? No
-  // passwordHash override needed — OIDC sign-in never checks a local
-  // password.
-  findByProviderIdentity(provider: string, providerSub: string): Promise<StoredUser | null> {
-    return this.prisma.user.findFirst({
-      where: { identities: { some: { provider, providerSub } } },
+  // callback: does this exact (provider, sub) already map to a user?
+  // Goes through the OidcIdentity side via its own @@unique([provider,
+  // providerSub]) — a findUnique on the actual unique index this is
+  // keyed by, rather than a user.findFirst with a relation filter that
+  // can only ever be a non-unique scan from the User side.
+  //
+  // No passwordHash override needed — OIDC sign-in never checks a local
+  // password — but the field is still typed as omitted (not `null`,
+  // `undefined`): PrismaService's global omit hides it from every User
+  // this returns, including nested through a relation like this one.
+  async findByProviderIdentity(
+    provider: string,
+    providerSub: string,
+  ): Promise<Omit<StoredUser, 'passwordHash'> | null> {
+    const identity = await this.prisma.oidcIdentity.findUnique({
+      where: { provider_providerSub: { provider, providerSub } },
+      select: { user: true },
     });
+    return identity?.user ?? null;
   }
 
   // A brand-new account from a first-time OIDC sign-in: no passwordHash at
@@ -84,7 +96,7 @@ export class UsersService {
     email: string;
     provider: string;
     providerSub: string;
-  }): Promise<StoredUser> {
+  }): Promise<Omit<StoredUser, 'passwordHash'>> {
     try {
       return await this.prisma.user.create({
         data: {

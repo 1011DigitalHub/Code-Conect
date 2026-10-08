@@ -27,11 +27,15 @@ model User {
   @@map("users")
 }
 
-// One row per (provider, external account) a user has linked. A user can
-// have at most one per provider (not enforced here — a second login from the
-// same provider resolves to the existing row via @@unique([provider,
-// providerSub]) below, never a second one), and can mix a local password
-// with one or more OIDC identities.
+// One row per (provider, external account) a user has linked. The
+// @@unique([provider, providerSub]) below guarantees a given external
+// account — not "a given provider" — can only ever be claimed by one user:
+// a second login from that same external account resolves to its existing
+// row, never a second one. It does NOT limit a user to one identity per
+// provider — linking two different Google accounts to the same user, for
+// instance, is a schema-level non-issue (nothing in this app's flows
+// creates that today, but nothing here forbids it either). A user can also
+// mix a local password with one or more OIDC identities.
 model OidcIdentity {
   id          Int      @id @default(autoincrement())
   provider    String   @db.VarChar(20) // "google" | "microsoft"

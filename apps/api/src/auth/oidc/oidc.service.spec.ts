@@ -249,6 +249,29 @@ describe('OidcService', () => {
       expect(usersService.linkProviderIdentity).not.toHaveBeenCalled();
     });
 
+    // Microsoft Entra ID's v2.0 endpoint doesn't reliably send
+    // email_verified at all — its own nOAuth mitigation is the `xms_edov`
+    // optional claim instead (see OidcService.verifyIdToken and
+    // plan/LoginSocial.md). Without accepting this too, Microsoft
+    // signup/auto-link would always fail closed even when the tenant is
+    // correctly configured to assert domain ownership.
+    it('accepts xms_edov as an alternative to email_verified (Microsoft)', async () => {
+      mockValidToken({
+        sub: 'sub-2',
+        email: 'maria@exemplo.com',
+        email_verified: false,
+        xms_edov: true,
+        iss: 'https://login.microsoftonline.com/9188040d-6c67-4c5b-b112-36a304b66dad/v2.0',
+      } as never);
+      usersService.findByProviderIdentity.mockResolvedValue(null);
+      const existing = { id: 5, email: 'maria@exemplo.com', passwordHash: null };
+      usersService.findByEmail.mockResolvedValue(existing);
+
+      const resolution = await service.authenticate('microsoft', 'code', 'verifier');
+
+      expect(resolution).toEqual({ kind: 'signedIn', user: existing });
+    });
+
     it('accepts email_verified sent as the string "true" (some providers do this)', async () => {
       mockValidToken({ sub: 'sub-2', email: 'maria@exemplo.com', email_verified: 'true' as never });
       usersService.findByProviderIdentity.mockResolvedValue(null);
@@ -276,6 +299,22 @@ describe('OidcService', () => {
         provider: 'google',
         providerSub: 'sub-2',
       });
+    });
+
+    // The password-confirmed linking path is safe regardless of
+    // email_verified — completing it still requires the real account's
+    // actual password (see linkAccount below), which an unverified email
+    // claim alone never grants. This is the one resolveIdentity branch the
+    // emailVerified gate deliberately does NOT cover.
+    it('still offers the linking form for an unverified email, when the existing account has a local password', async () => {
+      mockValidToken({ sub: 'sub-2', email: 'maria@exemplo.com', email_verified: false });
+      usersService.findByProviderIdentity.mockResolvedValue(null);
+      usersService.findByEmail.mockResolvedValue({ id: 5, email: 'maria@exemplo.com', passwordHash: 'scrypt$...' });
+
+      const resolution = await service.authenticate('google', 'code', 'verifier');
+
+      expect(resolution.kind).toBe('linkingRequired');
+      expect(usersService.linkProviderIdentity).not.toHaveBeenCalled();
     });
   });
 
