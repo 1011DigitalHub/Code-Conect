@@ -44,6 +44,18 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-codeconnect}:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-codeconnect}
       JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env (min. 32 caracteres)}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+      # Login social via OIDC (plan/LoginSocial.md) — optional: everything
+      # below can stay unset and the api service still boots fine, the
+      # social buttons just fail at the provider. Only
+      # OIDC_LINKING_TOKEN_SECRET is required if set at all (min. 32 chars);
+      # it has no compose-level default on purpose, same as JWT_SECRET.
+      API_ORIGIN: ${VITE_API_URL:-http://localhost:3000}
+      WEB_APP_ORIGIN: ${CORS_ORIGINS:-http://localhost:8080}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID:-}
+      MICROSOFT_CLIENT_SECRET: ${MICROSOFT_CLIENT_SECRET:-}
+      OIDC_LINKING_TOKEN_SECRET: ${OIDC_LINKING_TOKEN_SECRET:-}
     ports:
       # Only reachable from this machine, like postgres above.
       - '127.0.0.1:3000:3000'
