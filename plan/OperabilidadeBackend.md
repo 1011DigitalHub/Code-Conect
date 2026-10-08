@@ -128,6 +128,8 @@ De novo uma decisão de produto, não um bug — levada ao usuário com duas op�
 `HealthService.isDatabaseReachable()` guarda a `Promise` em andamento (não só o resultado) numa janela de **1500ms** (`PROBE_CACHE_MS`):
 
 ```ts
+// Versão desta rodada — a 7ª achou um bug nela (ver seção própria abaixo).
+// O código final não é este; fica aqui só para registrar o que mudou e por quê.
 isDatabaseReachable(): Promise<boolean> {
   const now = Date.now();
   if (!this.cached || this.cached.expiresAt <= now) {
@@ -156,6 +158,16 @@ A exceção ao rate limit global ficou documentada em `.github/ai-guidelines/sec
 4. **(Fora do diff) `development-workflow.md:63` ainda usava `./app.service.js` como exemplo da regra de extensão `.js`.** `AppService` foi removido na 1ª parte desta fase (commit `bcf81b9`); o exemplo ficou apontando para um arquivo que não existe mais. Troquei por `./health/health.service.js`.
 5. **Mover a rota de `AppController` para `src/health/health.controller.ts`, de novo.** Mesma sugestão da 3ª rodada, mesma decisão: já tomada e aprovada antes desta fase começar (ver Contexto) — `GET /` mantém o endereço raiz que os e2e já tratavam como "a health route", e o controller raiz do Nest é exatamente onde esse endereço já vivia.
 
+### 7ª rodada: o cache da 5ª rodada tinha um bug real, e um vazamento de query string no log
+
+1. **O cache acumulava sondagens travadas em vez de limitá-las a uma.** `expiresAt` era calculado a partir do *início* do probe, não do seu término. Com o banco travado (pool esgotado, conexão semi-aberta) e tráfego contínuo em `GET /` — sem rate limit, pela decisão da 4ª rodada — cada chamador que chegasse depois de 1500ms via o cache como "expirado" e disparava **outra** sondagem real, mesmo com a anterior ainda pendente. Era exatamente o esgotamento do pool que o cache existe para evitar, só que espalhado em várias consultas presas em vez de uma — a garantia descrita em `security-standards.md` não se sustentava nesse cenário específico (o mesmo que o timeout da 4ª rodada existe para cobrir).
+
+   Corrigido trocando o desenho: em vez de guardar `{ expiresAt, result }` a partir da chamada, agora há um campo `pending` (a sondagem em andamento, verificado **primeiro**, sem depender de tempo decorrido) e um `cached` separado (o resultado já resolvido, com sua janela de 1500ms contada a partir do **término** da sondagem, não do início). Enquanto `pending` existir, toda chamada nova recebe a mesma `Promise`, não importa quanto tempo já tenha passado — o que torna a garantia mais forte do que a original: nunca mais de uma sondagem em andamento, período, não só "no máximo uma por janela de 1500ms".
+
+   Novo caso em `health.service.spec.ts`, verificado por reversão deliberada (voltando à versão com `expiresAt` contado da chamada, confirmando que o teste acusa `$queryRaw` chamado 2 vezes em vez de 1, depois restaurando): sondagem nunca resolve (travada), avança 1600ms (passou a janela de 1500ms), uma segunda chamada não dispara uma segunda consulta real.
+
+2. **O log do filtro usava `request.url`, que inclui a query string.** Nenhuma rota atual passa segredo na query string, mas nada impede uma futura de receber um token ou e-mail ali — e esse log roda em **todo** `500` mascarado. Trocado para `request.path` (sem a query string). Novo caso em `all-exceptions.filter.spec.ts` com `url` e `path` deliberadamente diferentes no mock, provando que o log usa o segundo. Verificado por reversão deliberada.
+
 ### Outra sugestão da revisão, verificada e **não aplicada**
 
 - **Documentar `@ApiTooManyRequestsResponse` em `GET /`.** Verificado contra o próprio código: em todo o projeto, esse decorator só aparece em handlers com um `@Throttle()` explícito que sobrescreve o limite padrão (`CREATE_POST_THROTTLE`, `CREATE_COMMENT_THROTTLE`, `SIGN_UP_THROTTLE`, `LOGIN_THROTTLE`) — nunca numa rota sob o limite global padrão, como o próprio `GET /posts` (`posts.controller.ts`, handler `list`) já demonstra. `GET /` agora nem está sob o limite padrão (`@SkipThrottle()`, 4ª rodada), o que torna a sugestão ainda menos aplicável do que antes.
@@ -166,8 +178,8 @@ O `ErrorResponseDto` existe desde o início como *documentação* do formato pad
 
 ### Testes
 
-- `all-exceptions.filter.spec.ts` (7 casos): `HttpException` com corpo-objeto sai idêntica; `response.headersSent` termina a conexão com `end()` em vez de tentar re-setar status; erro `http-errors` com `expose: true` (tipo `PayloadTooLargeError`) sai com o próprio status e com `error` computado do status, sem máscara; erro `http-errors` com `expose: false` sai mascarado e logado, igual a um erro desconhecido; `HttpException` com corpo-string (tipo `ThrottlerException`) sai embrulhada em `{ statusCode, message, error }`; `Error` cru sai como `500` mascarado com o logger chamado só nesse caso; um valor lançado que não é `Error` (`throw { code: 'P2002' }`) cai no mesmo caminho mascarado/logado, sem crashar.
-- `health.service.spec.ts` (6 casos): reachable quando o banco responde (e confirma que `$queryRaw` foi chamado); chamadas concorrentes coalescem numa única chamada a `$queryRaw`; uma nova chamada após a janela de 1500ms dispara um novo probe; not reachable e loga quando o banco lança; not reachable quando o probe nunca resolve (com `vi.useFakeTimers()` + `vi.advanceTimersByTimeAsync`, provando o timeout sem esperar 3s reais); o timer do timeout é limpo quando a query resolve primeiro (`vi.getTimerCount()`).
+- `all-exceptions.filter.spec.ts` (8 casos): `HttpException` com corpo-objeto sai idêntica; `response.headersSent` termina a conexão com `end()` em vez de tentar re-setar status; erro `http-errors` com `expose: true` (tipo `PayloadTooLargeError`) sai com o próprio status e com `error` computado do status, sem máscara; erro `http-errors` com `expose: false` sai mascarado e logado, igual a um erro desconhecido; `HttpException` com corpo-string (tipo `ThrottlerException`) sai embrulhada em `{ statusCode, message, error }`; `Error` cru sai como `500` mascarado com o logger chamado só nesse caso; o log usa `request.path`, não `request.url` (mock com os dois valores deliberadamente diferentes); um valor lançado que não é `Error` (`throw { code: 'P2002' }`) cai no mesmo caminho mascarado/logado, sem crashar.
+- `health.service.spec.ts` (7 casos): reachable quando o banco responde (e confirma que `$queryRaw` foi chamado); chamadas concorrentes coalescem numa única chamada a `$queryRaw`; uma nova chamada após a janela de 1500ms dispara um novo probe; **uma sondagem travada além da janela de 1500ms não dispara uma segunda consulta real** (o bug da 7ª rodada); not reachable e loga quando o banco lança; not reachable quando o probe nunca resolve (com `vi.useFakeTimers()` + `vi.advanceTimersByTimeAsync`, provando o timeout sem esperar 3s reais); o timer do timeout é limpo quando a query resolve primeiro (`vi.getTimerCount()`).
 - `test/security.e2e-spec.ts`: o caso de falha inesperada (banco fora do ar, via `HealthService` sobrescrito) não vaza stack trace nem detalhe interno no corpo; o caso de `413` verifica o corpo inteiro, incluindo `error: 'Payload Too Large'`.
 - `test/app.e2e-spec.ts` ganha o caso que todo outro módulo já tinha: `GET /` aparece em `GET /api/docs-json`.
 - `test/throttle.e2e-spec.ts` ganha o caso do `@SkipThrottle()`: mais de 100 requisições a `/`, todas `200`.
