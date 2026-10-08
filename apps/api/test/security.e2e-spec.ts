@@ -294,3 +294,39 @@ describe('Global exception filter: an unexpected failure (e2e)', () => {
     expect(JSON.stringify(res.body)).not.toMatch(/relation|does not exist|line 42/i);
   });
 });
+
+// Separate from the describe above: this is HealthService correctly
+// reporting the database as unreachable (returns false), not a bug the
+// filter has to mask. ServiceUnavailableException is an HttpException, so
+// it passes through AllExceptionsFilter unchanged — the backend-architecture
+// convention of asserting both status and body per endpoint had no e2e
+// coverage for this specific branch before.
+describe('GET /: the clean 503 when the database probe reports unreachable (e2e)', () => {
+  let app: NestExpressApplication;
+
+  beforeEach(async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    })
+      .overrideProvider(HealthService)
+      .useValue({ isDatabaseReachable: () => Promise.resolve(false) })
+      .compile();
+    app = moduleFixture.createNestApplication<NestExpressApplication>();
+    configureApp(app);
+    await app.init();
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('responds 503 with the documented ErrorResponseDto shape', async () => {
+    const res = await request(app.getHttpServer()).get('/').expect(503);
+
+    expect(res.body).toEqual({
+      statusCode: 503,
+      message: 'Database unreachable',
+      error: 'Service Unavailable',
+    });
+  });
+});
