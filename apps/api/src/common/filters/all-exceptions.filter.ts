@@ -101,7 +101,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
     // operation and would just turn the log into noise no one reads.
     const request = host.switchToHttp().getRequest<Request>();
     const error = exception instanceof Error ? exception : new Error(String(exception));
-    this.logger.error(`${request.method} ${request.url}`, error.stack);
+    // request.path, not request.url: url keeps the query string, and
+    // nothing stops a future route from receiving a token or email there —
+    // this log line would otherwise capture it on every single 500.
+    this.logger.error(`${request.method} ${request.path}`, error.stack);
 
     return {
       status: HttpStatus.INTERNAL_SERVER_ERROR,

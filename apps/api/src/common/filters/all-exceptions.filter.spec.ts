@@ -14,7 +14,10 @@ function mockHost(options: { headersSent?: boolean } = {}): {
   const host = {
     switchToHttp: () => ({
       getResponse: () => ({ status, end, headersSent: options.headersSent ?? false }),
-      getRequest: () => ({ method: 'GET', url: '/posts' }),
+      // url and path deliberately differ, like a real request with a query
+      // string: url keeps it, path doesn't — see the "does not log the
+      // query string" case below.
+      getRequest: () => ({ method: 'GET', url: '/posts?token=secret123', path: '/posts' }),
     }),
   } as unknown as ArgumentsHost;
   return { host, status, json, end };
@@ -152,6 +155,18 @@ describe('AllExceptionsFilter', () => {
     expect(JSON.stringify(json.mock.calls[0])).not.toMatch(/connection terminated/);
     expect(errorSpy).toHaveBeenCalledTimes(1);
     expect(errorSpy.mock.calls[0]?.[1]).toBe(exception.stack);
+  });
+
+  // request.url keeps the query string; nothing stops a future route from
+  // receiving a token or an email there, and this is the only line that
+  // would have captured it on every single masked 500.
+  it('logs the path, not the query string', () => {
+    const { host } = mockHost();
+    const exception = new Error('connection terminated unexpectedly');
+
+    handle(exception, host);
+
+    expect(errorSpy).toHaveBeenCalledWith('GET /posts', exception.stack);
   });
 
   // JavaScript lets a `throw` be any value, not just an Error — a library
