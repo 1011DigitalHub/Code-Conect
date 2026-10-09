@@ -400,6 +400,39 @@ describe('OIDC login (e2e)', () => {
       expect(secondRes.headers.location).toBe('http://localhost:5173/perfil');
     });
 
+    // The @@unique([provider, providerSub]) constraint is the actual
+    // single-use guarantee oidc-linking-token.ts's own comments describe —
+    // this is what proves it: replaying the exact same linking_token after
+    // it already succeeded once must not silently re-link (or no-op), it
+    // has to surface as a conflict.
+    it('rejects a replay of the same linking_token after it already succeeded, with 409', async () => {
+      const { agent, res } = await triggerLinking();
+      const capturedToken = cookieValue(setCookie(res, 'linking_token'));
+
+      const csrfToken = await fetchCsrfToken(agent);
+      await agent
+        .post('/auth/oidc/link')
+        .set('X-CSRF-Token', csrfToken)
+        .send({ password: localUser.password })
+        .expect(200);
+
+      // The agent's own jar already dropped linking_token (cleared on
+      // success) — replaying means resending the captured value by hand,
+      // exactly as if the callback redirect had been followed twice. Both
+      // cookies are set explicitly in one header (not via an agent's jar
+      // plus an overriding .set('Cookie', ...), which would just replace
+      // the jar's own header instead of combining with it).
+      const replayAgent = request.agent(app.getHttpServer());
+      const replayCsrf = await fetchCsrfToken(replayAgent);
+      const replay = await replayAgent
+        .post('/auth/oidc/link')
+        .set('X-CSRF-Token', replayCsrf)
+        .set('Cookie', `csrf_token=${encodeURIComponent(replayCsrf)}; linking_token=${encodeURIComponent(capturedToken)}`)
+        .send({ password: localUser.password })
+        .expect(409);
+      expect(replay.body).toMatchObject({ statusCode: 409 });
+    });
+
     // A typo deserves a normal retry, the same way a wrong password on
     // /auth/login does (same LOGIN_THROTTLE bounds how many) — the
     // linking_token's own 5-minute exp is what eventually forces a fresh

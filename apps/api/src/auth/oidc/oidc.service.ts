@@ -35,11 +35,19 @@ function buildRedirectUri(provider: OidcProvider): string {
 }
 
 // Match the columns' widths in schema.prisma exactly: User.name is
-// VARCHAR(100), User.email is VARCHAR(254). A provider sending either one
-// over that width would otherwise reach UsersService.createFromOidc and
-// fail as a raw, unhandled Postgres error (a 500, not a clean rejection).
+// VARCHAR(100), User.email is VARCHAR(254), OidcIdentity.providerSub is
+// VARCHAR(255). A provider sending any of these over that width would
+// otherwise reach a Prisma write and fail as a raw, unhandled Postgres
+// error (a 500, not a clean redirect to /login?oidcError=1).
 const MAX_NAME_LENGTH = 100;
 const MAX_EMAIL_LENGTH = 254;
+const MAX_SUB_LENGTH = 255;
+
+// A provider whose token endpoint hangs (or is itself unreachable in a way
+// `fetch` doesn't fail fast on) would otherwise hold this callback — and
+// the oidc_flow cookie it's validating against — open indefinitely. Any
+// genuine provider answers in well under this.
+const TOKEN_ENDPOINT_TIMEOUT_MS = 10_000;
 
 @Injectable()
 export class OidcService {
@@ -86,8 +94,12 @@ export class OidcService {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body,
+        signal: AbortSignal.timeout(TOKEN_ENDPOINT_TIMEOUT_MS),
       });
     } catch {
+      // Covers a network failure and the timeout above alike — both are
+      // "the provider didn't answer", not worth distinguishing to the
+      // caller.
       throw new BadRequestException('Não foi possível concluir o login com o provedor');
     }
     if (!response.ok) {
@@ -126,6 +138,9 @@ export class OidcService {
       throw new UnauthorizedException('Não foi possível validar o login do provedor');
     }
     if (typeof payload.sub !== 'string' || typeof payload.email !== 'string' || !payload.email) {
+      throw new UnauthorizedException('O provedor não retornou os dados necessários');
+    }
+    if (payload.sub.length > MAX_SUB_LENGTH) {
       throw new UnauthorizedException('O provedor não retornou os dados necessários');
     }
 

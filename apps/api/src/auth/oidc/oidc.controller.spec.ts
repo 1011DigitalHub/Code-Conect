@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { verifyCsrfToken, sessionKey } from '../csrf.js';
 import { setOidcFlowCookie } from './oidc-flow-cookie.js';
@@ -227,6 +227,18 @@ describe('OidcController', () => {
         controller.link({ password: 'x' }, fakeRequest(undefined), res),
       ).rejects.toThrow('nope');
       expect(clearCookie).not.toHaveBeenCalled();
+    });
+
+    // Unlike a wrong password, a 409 (the identity is already linked — a
+    // replay or a race with another request) can never succeed on a retry
+    // with that same token, so there is nothing to preserve it for.
+    it('clears the linking_token cookie on a 409 (already linked), unlike other rejections', async () => {
+      oidcService.linkAccount.mockRejectedValue(new ConflictException('já vinculada'));
+      const { res, clearCookie } = fakeResponse();
+      await expect(
+        controller.link({ password: 'x' }, fakeRequest('linking_token=signed.token'), res),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(clearCookie).toHaveBeenCalledWith('linking_token', expect.any(Object));
     });
   });
 });

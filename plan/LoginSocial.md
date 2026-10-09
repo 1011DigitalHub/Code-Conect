@@ -75,7 +75,17 @@ Uma quarta passada da revisão automática, já sem achar nenhum outro bypass de
 - **Nada impedia `OIDC_LINKING_TOKEN_SECRET` de repetir `JWT_SECRET`/`CSRF_SECRET`.** O comentário já dizia que isso nunca deveria acontecer (motivo: isolar o alcance de um vazamento), mas `env.ts` não checava. Corrigido: comparação direta contra os dois no boot, com erro agregado como os demais.
 - Testes novos para os dois pontos (incluindo a asserção e2e do `linking_token`, que dizia `SameSite=Lax` e passou a dizer `SameSite=Strict`, o default de `COOKIE_SAMESITE` em teste).
 
-**Detalhes menores apontados e deliberadamente não corrigidos** (a própria revisão os marcou como não-bloqueantes): `LINKING_TOKEN_TTL_MS` coincide em valor com `OIDC_COOKIE_MAX_AGE_MS` sem compartilhar a constante; `parseOidcProvider` ecoa o valor de `:provider` da URL na mensagem de erro; falta um teste e2e de replay do `linking_token` **depois** de uma vinculação bem-sucedida (esperando 409 — o `@@unique` já garante isso, só não há um teste explícito); abrir o fluxo em duas abas sobrescreve o único `oidc_flow` e a primeira aba cai em `?oidcError=1` (comportamento aceitável, só documentado aqui).
+**Detalhes menores apontados e deliberadamente não corrigidos nessa rodada** (a própria revisão os marcou como não-bloqueantes): `LINKING_TOKEN_TTL_MS` coincide em valor com `OIDC_COOKIE_MAX_AGE_MS` sem compartilhar a constante; `parseOidcProvider` ecoa o valor de `:provider` da URL na mensagem de erro; abrir o fluxo em duas abas sobrescreve o único `oidc_flow` e a primeira aba cai em `?oidcError=1` (comportamento aceitável, só documentado aqui). O teste de replay do `linking_token` foi adicionado na rodada 5 abaixo.
+
+## Nota de correção pós-revisão, rodada 5 (2026-10-08)
+
+Uma quinta passada da revisão automática — já sobre um commit sem nenhum bypass de segurança nas rodadas anteriores — confirmou isso explicitamente ("nenhum problema bloqueante encontrado") e recomendou três ajustes antes do merge, todos de robustez/correção, não de segurança:
+
+- **`fetch` ao `token_endpoint` sem timeout.** Um provedor lento (ou que nunca responde) prenderia o callback — e o cookie `oidc_flow` que ele está validando — indefinidamente. Corrigido: `AbortSignal.timeout(10_000)` na chamada; o `catch` que já tratava falha de rede cobre o abort da mesma forma (mesmo erro genérico, sem distinguir).
+- **`sub` sem limite de tamanho**, ao contrário de `email`/`name` — um valor acima de 255 chars (a largura de `OidcIdentity.providerSub` no schema) chegaria a um `create` do Prisma como erro bruto (500) em vez do redirect genérico para `/login?oidcError=1`. Corrigido com a mesma checagem que `email`/`name` já tinham.
+- **Cookie `linking_token` não era limpo num 409** (identidade já vinculada — replay do token ou corrida). Como esse token específico nunca vai ter sucesso numa segunda tentativa (a identidade já está vinculada), mantê-lo não oferece nenhuma retentativa útil, só um beco sem saída até expirar sozinho. Corrigido: `OidcController.link` agora limpa o cookie tanto no sucesso quanto no 409 — continua preservando o cookie só na falha de senha (que é genuinamente retentável, ver rodada 2). Adicionado também o teste e2e que faltava: replay do `linking_token` depois de uma vinculação bem-sucedida → 409.
+
+**Observações menores, sem bloqueio** (a própria revisão as marcou assim — deliberadamente não corrigidas): checagem cruzada `tid`/`iss` para Microsoft multi-tenant (mesma defesa em profundidade adiada desde a rodada 2); o segredo de dev `'dev-only-linking-secret-change-me'` duplicado entre `env.ts` e `oidc.constants.ts` (mesmo padrão de `JWT_SECRET`, ver rodada 3); a interpolação `${OIDC_LINKING_TOKEN_SECRET:?...}` no `docker-compose.yml` é avaliada para o arquivo todo, então até `pnpm db:up` (que só sobe o Postgres) passa a exigir essa variável no `.env` raiz depois de atualizar a branch — mesmo padrão que `JWT_SECRET` já tinha, não uma regressão nova; o redirect para `/vincular-conta` (inclusive para um email não verificado de um tenant Entra qualquer) já revela que aquele email tem conta local, mas `POST /users` devolvendo 409 "Email já cadastrado" já fazia exatamente essa mesma revelação antes deste PR — enumeração de email é um problema pré-existente, não uma regressão.
 
 ### Arquivos
 
@@ -179,8 +189,8 @@ Isso é a parte do fluxo com mais superfície de erro de segurança (account tak
 
 ## Verificação
 
-- [x] `pnpm test:api` — 263 testes, `pnpm typecheck`/`pnpm lint` na API sem erros.
-- [x] `pnpm test:api:e2e` — 126 testes (inclui os 25 de `test/oidc.e2e-spec.ts`, cobrindo o checklist da seção 5 e os dois cenários de account takeover das notas de correção — vinculação automática e pré-registro —, contra o IdP falso local).
+- [x] `pnpm test:api` — 267 testes, `pnpm typecheck`/`pnpm lint` na API sem erros.
+- [x] `pnpm test:api:e2e` — 127 testes (inclui os 26 de `test/oidc.e2e-spec.ts`, cobrindo o checklist da seção 5, os dois cenários de account takeover das rodadas 1-2 — vinculação automática e pré-registro — e o replay de `linking_token` da rodada 5, contra o IdP falso local).
 - [x] `pnpm test:web` — 328 testes (inclui `LinkAccountPage`/`LinkAccountForm`, o `oidcError` em `LoginPage`, e os ajustes em `SignUpPage`), `pnpm web typecheck`/`pnpm web lint` sem erros.
 - [x] `pnpm test:web:a11y` (Playwright) — não rodou localmente (o runner trava nesta máquina Windows em certas condições, como `frontend-ux-seo.md` já documenta); o CI do PR #19 rodou essa suite e o `lighthouse` e os dois passaram — mas só depois da rodada 4 remover `/vincular-conta` de `e2e/routes.ts` (ver a nota dessa rodada: a rota ficou coberta por a11y de componente, não pela suíte Playwright de página inteira).
 - [ ] Teste manual com uma conta Google e uma Microsoft reais, em ambiente de homologação (nunca contra credenciais reais de produção durante o desenvolvimento) — não feito; os testes automatizados usam um provedor falso.

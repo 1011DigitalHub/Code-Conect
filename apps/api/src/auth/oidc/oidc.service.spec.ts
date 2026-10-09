@@ -76,6 +76,30 @@ describe('OidcService', () => {
       );
     });
 
+    it('rejects when the token endpoint times out, instead of hanging the callback indefinitely', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockRejectedValue(new DOMException('The operation was aborted.', 'AbortError')),
+      );
+      await expect(service.authenticate('google', 'code', 'verifier')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    });
+
+    it('bounds the token exchange with an AbortSignal (so a slow provider cannot hang it)', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ id_token: 'x' }) });
+      vi.stubGlobal('fetch', fetchMock);
+      vi.mocked(jwtVerify).mockResolvedValue({
+        payload: { iss: 'https://accounts.google.com', sub: 's1', email: 'maria@exemplo.com', email_verified: true },
+      } as never);
+      usersService.findByProviderIdentity.mockResolvedValue({ id: 1, email: 'maria@exemplo.com' });
+
+      await service.authenticate('google', 'code', 'verifier');
+
+      const [, options] = fetchMock.mock.calls[0] as [string, { signal?: AbortSignal }];
+      expect(options.signal).toBeInstanceOf(AbortSignal);
+    });
+
     it('rejects when jose cannot verify the id_token (bad signature, wrong alg, ...)', async () => {
       fetchJsonOnce({ id_token: 'bad-token' });
       vi.mocked(jwtVerify).mockRejectedValue(new Error('signature verification failed'));
@@ -89,6 +113,23 @@ describe('OidcService', () => {
       fetchJsonOnce({ id_token: 'token' });
       vi.mocked(jwtVerify).mockResolvedValue({
         payload: { iss: 'https://attacker.example.com', sub: 's1', email: 'maria@exemplo.com' },
+      } as never);
+
+      await expect(service.authenticate('google', 'code', 'verifier')).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+
+    it('rejects an id_token whose sub is over the 255-character column width', async () => {
+      fetchJsonOnce({ id_token: 'token' });
+      const overLongSub = 'a'.repeat(256); // > 255 chars
+      vi.mocked(jwtVerify).mockResolvedValue({
+        payload: {
+          iss: 'https://accounts.google.com',
+          sub: overLongSub,
+          email: 'maria@exemplo.com',
+          email_verified: true,
+        },
       } as never);
 
       await expect(service.authenticate('google', 'code', 'verifier')).rejects.toBeInstanceOf(

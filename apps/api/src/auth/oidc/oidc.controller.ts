@@ -1,5 +1,6 @@
 import {
   Body,
+  ConflictException,
   Controller,
   Get,
   HttpCode,
@@ -192,13 +193,25 @@ export class OidcController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<LoginResponseDto> {
     const linkingToken = readCookie(req, LINKING_TOKEN_COOKIE);
-    // Unlike the callback's oidc_flow cookie, this one is NOT cleared
-    // up front: a wrong password is exactly as retriable as a wrong
-    // password on /auth/login (same LOGIN_THROTTLE bounds the attempts
-    // either way), and the linking_token's own 5-minute exp already bounds
-    // how long it can be retried against. It's only cleared below, once
-    // actually consumed by a successful link.
-    const session = await this.oidcService.linkAccount(linkingToken, dto.password);
+    // Unlike the callback's oidc_flow cookie, this one is NOT cleared up
+    // front: a wrong password is exactly as retriable as a wrong password
+    // on /auth/login (same LOGIN_THROTTLE bounds the attempts either way),
+    // and the linking_token's own 5-minute exp already bounds how long it
+    // can be retried against. It IS cleared on a 409 below, same as on
+    // success — that specific token can never succeed on a later retry
+    // (the identity it names is already linked, by this same request
+    // racing another one or by a straight replay), so there is nothing to
+    // retry towards; leaving the cookie in place would just offer a dead
+    // end until it expires on its own.
+    let session;
+    try {
+      session = await this.oidcService.linkAccount(linkingToken, dto.password);
+    } catch (error) {
+      if (error instanceof ConflictException) {
+        res.clearCookie(LINKING_TOKEN_COOKIE, getClearCookieOptions());
+      }
+      throw error;
+    }
     res.clearCookie(LINKING_TOKEN_COOKIE, getClearCookieOptions());
 
     res.cookie(ACCESS_TOKEN_COOKIE, session.accessToken, getSessionCookieOptions(false, session.expiresIn));
