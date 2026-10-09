@@ -84,7 +84,7 @@ jobs:
           JWT_SECRET: ci-only-jwt-secret-not-a-real-secret-32-chars-minimum
         run: |
           nohup node dist/main.js > api.log 2>&1 &
-          for i in $(seq 1 30); do
+          for _attempt in $(seq 1 30); do
             curl -sf http://localhost:3000 > /dev/null && exit 0
             sleep 2
           done
