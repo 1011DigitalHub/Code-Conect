@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, UnauthorizedException } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { verifyCsrfToken, sessionKey } from '../csrf.js';
 import { setOidcFlowCookie } from './oidc-flow-cookie.js';
@@ -50,12 +50,12 @@ describe('OidcController', () => {
       expect(redirect).not.toHaveBeenCalled();
     });
 
-    it('answers 404 instead of redirecting with an empty client_id when the provider has no credentials set', () => {
+    it('redirects to /login?oidcError=1 instead of starting a flow when the provider has no credentials set', () => {
       vi.stubEnv('GOOGLE_CLIENT_ID', '');
       const { res, cookie, redirect } = fakeResponse();
-      expect(() => controller.start('google', res)).toThrow(NotFoundException);
+      controller.start('google', res);
       expect(cookie).not.toHaveBeenCalled();
-      expect(redirect).not.toHaveBeenCalled();
+      expect(redirect).toHaveBeenCalledWith('http://localhost:5173/login?oidcError=1');
     });
 
     it('sets the oidc_flow cookie and redirects to the URL OidcService built', () => {

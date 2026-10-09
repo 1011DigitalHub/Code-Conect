@@ -77,6 +77,27 @@ describe('LinkAccountPage', () => {
     expect(screen.getByRole('button', { name: 'Vincular conta' })).toBeEnabled()
   })
 
+  // A 409 here means the linking_token was already consumed (success or a
+  // race) — getErrorMessage's own 409 copy is written for sign-up
+  // ("Este email já está cadastrado.") and would be actively misleading on
+  // this page, since the person didn't try to create a second account.
+  it('shows a link-specific message for a 409, not the sign-up "email already registered" copy', async () => {
+    vi.mocked(linkOidcAccount).mockRejectedValue(apiError(409))
+    renderLinkAccountRoutes()
+
+    await fillAndSubmit()
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Esse link de vinculação já foi usado ou expirou.')
+    expect(alert.textContent).not.toMatch(/já está cadastrado/i)
+  })
+
+  it('always offers a way back to /login, so a dead link is never a dead end', () => {
+    renderWithRouter(<LinkAccountPage />)
+
+    expect(screen.getByRole('link', { name: 'Voltar ao login' })).toHaveAttribute('href', '/login')
+  })
+
   it('has no WCAG 2.2 AA violations', async () => {
     const { container } = renderWithRouter(<LinkAccountPage />)
 

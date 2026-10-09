@@ -6,7 +6,6 @@ import {
   HttpCode,
   HttpException,
   HttpStatus,
-  NotFoundException,
   Param,
   Post,
   Query,
@@ -16,7 +15,6 @@ import {
 import {
   ApiBadRequestResponse,
   ApiConflictResponse,
-  ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiResponse,
@@ -67,22 +65,28 @@ export class OidcController {
   @Throttle({ default: LOGIN_THROTTLE })
   @Get(':provider/start')
   @ApiOperation({ summary: 'Inicia o login via OIDC (Google/Microsoft): redireciona para o provedor' })
-  @ApiResponse({ status: 302, description: 'Redireciona para o authorization_endpoint do provedor' })
-  @ApiBadRequestResponse({ type: ErrorResponseDto, description: 'provider desconhecido' })
-  @ApiNotFoundResponse({ type: ErrorResponseDto, description: 'provider sem client_id configurado' })
+  @ApiResponse({
+    status: 302,
+    description:
+      'Redireciona para o authorization_endpoint do provedor, ou para /login?oidcError=1 se o provider não estiver configurado — isto é um link clicado numa navegação de página, nunca uma chamada XHR, então nunca deveria devolver um corpo JSON (ver OidcController.callback para o mesmo raciocínio).',
+  })
+  @ApiBadRequestResponse({ type: ErrorResponseDto, description: ':provider desconhecido (rota malformada, não alcançável pelo botão)' })
   @ApiTooManyRequestsResponse({ type: ErrorResponseDto })
   start(
     @Param('provider') providerParam: string,
     @Res() res: Response,
   ): void {
     const provider = parseOidcProvider(providerParam);
-    // Fails clearly instead of redirecting to the provider with an empty
-    // client_id, which would otherwise show the provider's own generic
-    // "invalid_client" error page — unhelpful either way, but this at
-    // least makes "this login method isn't set up" distinguishable from
-    // "the provider itself is down" in our own logs/metrics.
+    // Redirects instead of answering with a raw JSON 404: this route is
+    // only ever reached by a browser navigation (a social button's
+    // window.location.href, see apps/web/src/api/auth.ts), never an XHR
+    // call, and the buttons stay enabled regardless of whether a provider
+    // is actually configured — unconfigured is exactly the default
+    // docker-compose/dev setup. A JSON error on the API's own origin here
+    // would be as jarring as it would be on the callback.
     if (!getOidcProviderConfig(provider).clientId) {
-      throw new NotFoundException(`Login via ${provider} não está configurado`);
+      redirectToLoginWithError(res);
+      return;
     }
     const state = generateState();
     const { codeVerifier, codeChallenge } = generatePkcePair();

@@ -193,9 +193,12 @@ describe('OIDC login (e2e)', () => {
   });
 
   describe('GET /auth/oidc/:provider/start — provider not configured', () => {
-    it('answers 404 before touching any cookie (this is a malformed/unreachable-by-the-flow request, unlike the callback above)', async () => {
+    it('redirects to /login?oidcError=1 instead of a raw JSON error, before touching any cookie', async () => {
       vi.stubEnv('GOOGLE_CLIENT_ID', '');
-      await request(app.getHttpServer()).get('/auth/oidc/google/start').expect(404);
+      const res = await request(app.getHttpServer()).get('/auth/oidc/google/start');
+      expect(res.status).toBe(302);
+      expect(res.headers.location).toBe('http://localhost:5173/login?oidcError=1');
+      expect(() => setCookie(res, 'oidc_flow')).toThrow();
     });
   });
 

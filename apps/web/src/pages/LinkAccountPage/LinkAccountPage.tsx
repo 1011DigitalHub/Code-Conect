@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { linkOidcAccount } from '../../api/auth'
-import { getErrorMessage, isUnauthorized } from '../../api/errors'
+import { getErrorMessage, isConflict, isUnauthorized } from '../../api/errors'
+import { TextLink } from '../../components/atoms/TextLink'
 import { LinkAccountForm, type LinkAccountFormValues } from '../../components/organisms/LinkAccountForm'
 import { CenteredTemplate } from '../../components/templates/CenteredTemplate'
 import { usePageMeta } from '../usePageMeta'
@@ -18,6 +19,14 @@ const PROVIDER_LABELS: Record<string, string> = { google: 'Google', microsoft: '
 function linkErrorMessage(error: unknown): string {
   if (isUnauthorized(error)) {
     return 'Não foi possível concluir a vinculação. Verifique a senha ou refaça o login social.'
+  }
+  // 409 here means the link that brought the person to this page was
+  // already used (or raced by another request) — the API clears it on
+  // both outcomes, so there's no password to retry with. getErrorMessage's
+  // own 409 copy ("Este email já está cadastrado.") is written for sign-up
+  // and would be actively misleading here.
+  if (isConflict(error)) {
+    return 'Esse link de vinculação já foi usado ou expirou. Clique em "Entrar com Google/Microsoft" novamente para repetir o processo.'
   }
   return getErrorMessage(error)
 }
@@ -57,6 +66,7 @@ export function LinkAccountPage() {
         com {providerLabel} a ela.
       </p>
       <LinkAccountForm onSubmit={handleSubmit} submitting={submitting} error={error} />
+      <TextLink href="/login">Voltar ao login</TextLink>
     </CenteredTemplate>
   )
 }
