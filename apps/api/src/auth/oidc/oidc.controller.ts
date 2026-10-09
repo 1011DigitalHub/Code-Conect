@@ -29,11 +29,11 @@ import { LOGIN_THROTTLE } from '../../common/throttle.constants.js';
 import {
   ACCESS_TOKEN_COOKIE,
   CSRF_COOKIE,
-  getClearCookieOptions,
+  getClearLinkingTokenCookieOptions,
   getCsrfCookieOptions,
+  getLinkingTokenCookieName,
   getLinkingTokenCookieOptions,
   getSessionCookieOptions,
-  LINKING_TOKEN_COOKIE,
 } from '../cookie.constants.js';
 import { readCookie } from '../cookies.js';
 import { mintCsrfToken, sessionKey } from '../csrf.js';
@@ -160,7 +160,7 @@ export class OidcController {
     }
 
     if (resolution.kind === 'linkingRequired') {
-      res.cookie(LINKING_TOKEN_COOKIE, resolution.linkingToken, getLinkingTokenCookieOptions());
+      res.cookie(getLinkingTokenCookieName(), resolution.linkingToken, getLinkingTokenCookieOptions());
       res.redirect(`${getWebAppOrigin()}/vincular-conta?provider=${provider}`);
       return;
     }
@@ -196,7 +196,7 @@ export class OidcController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<LoginResponseDto> {
-    const linkingToken = readCookie(req, LINKING_TOKEN_COOKIE);
+    const linkingToken = readCookie(req, getLinkingTokenCookieName());
     // Unlike the callback's oidc_flow cookie, this one is NOT cleared up
     // front: a wrong password is exactly as retriable as a wrong password
     // on /auth/login (same LOGIN_THROTTLE bounds the attempts either way),
@@ -212,11 +212,11 @@ export class OidcController {
       session = await this.oidcService.linkAccount(linkingToken, dto.password);
     } catch (error) {
       if (error instanceof ConflictException) {
-        res.clearCookie(LINKING_TOKEN_COOKIE, getClearCookieOptions());
+        res.clearCookie(getLinkingTokenCookieName(), getClearLinkingTokenCookieOptions());
       }
       throw error;
     }
-    res.clearCookie(LINKING_TOKEN_COOKIE, getClearCookieOptions());
+    res.clearCookie(getLinkingTokenCookieName(), getClearLinkingTokenCookieOptions());
 
     res.cookie(ACCESS_TOKEN_COOKIE, session.accessToken, getSessionCookieOptions(false, session.expiresIn));
     const csrfToken = mintCsrfToken(sessionKey(session.accessToken));

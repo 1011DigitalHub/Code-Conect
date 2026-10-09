@@ -2,9 +2,9 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Request, Response } from 'express';
 import {
   getClearOidcFlowCookieOptions,
+  getOidcFlowCookieName,
   getOidcFlowCookieOptions,
   OIDC_COOKIE_MAX_AGE_MS,
-  OIDC_FLOW_COOKIE,
 } from '../cookie.constants.js';
 import { readCookie } from '../cookies.js';
 import { getOidcLinkingTokenSecret } from './oidc.constants.js';
@@ -28,15 +28,16 @@ function sign(encodedPayload: string): string {
     .digest('base64url');
 }
 
-// See cookie.constants.ts's doc comment on OIDC_FLOW_COOKIE for why this is
-// signed: without it, a sibling subdomain able to set this cookie (under a
-// shared parent COOKIE_DOMAIN) could inject a self-consistent
-// {state, codeVerifier} of its own and turn that into a login CSRF. Base64url
-// here is just encoding — the signature below is the actual boundary.
+// Signed so a forged payload can't pass; see cookie.constants.ts's doc
+// comment above useHostPrefix() for the login-CSRF this alone does NOT
+// stop (a legitimately-signed cookie injected from a sibling subdomain) and
+// why getOidcFlowCookieName()'s __Host- prefix is the actual fix for that
+// one. Base64url here is just encoding — the signature is what the
+// malformed/tampered checks below actually rely on.
 export function setOidcFlowCookie(res: Response, flow: OidcFlowState): void {
   const payload: OidcFlowPayload = { ...flow, exp: Date.now() + OIDC_COOKIE_MAX_AGE_MS };
   const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url');
-  res.cookie(OIDC_FLOW_COOKIE, `${encoded}.${sign(encoded)}`, getOidcFlowCookieOptions());
+  res.cookie(getOidcFlowCookieName(), `${encoded}.${sign(encoded)}`, getOidcFlowCookieOptions());
 }
 
 // The cookie's own Max-Age only controls whether the *browser* still sends
@@ -44,7 +45,7 @@ export function setOidcFlowCookie(res: Response, flow: OidcFlowState): void {
 // one on its own, per plan/LoginSocial.md ("valida que o state... não
 // expirou"), independent of whatever the client did or didn't enforce.
 export function readOidcFlowCookie(req: Request): OidcFlowState | undefined {
-  const raw = readCookie(req, OIDC_FLOW_COOKIE);
+  const raw = readCookie(req, getOidcFlowCookieName());
   if (!raw) return undefined;
 
   const [encoded, mac] = raw.split('.');
@@ -77,5 +78,5 @@ export function readOidcFlowCookie(req: Request): OidcFlowState | undefined {
 }
 
 export function clearOidcFlowCookie(res: Response): void {
-  res.clearCookie(OIDC_FLOW_COOKIE, getClearOidcFlowCookieOptions());
+  res.clearCookie(getOidcFlowCookieName(), getClearOidcFlowCookieOptions());
 }

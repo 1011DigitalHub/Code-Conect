@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   getClearCookieOptions,
+  getClearLinkingTokenCookieOptions,
   getClearOidcFlowCookieOptions,
   getCookieSameSite,
   getCsrfCookieOptions,
+  getLinkingTokenCookieName,
   getLinkingTokenCookieOptions,
+  getOidcFlowCookieName,
   getOidcFlowCookieOptions,
   getSessionCookieOptions,
   isCookieSecure,
@@ -113,6 +116,52 @@ describe('getOidcFlowCookieOptions', () => {
   });
 });
 
+// Round 9 of plan/LoginSocial.md's review: signing (round 8) stops a forged
+// oidc_flow/linking_token, but not a legitimately-signed one injected from a
+// sibling subdomain under a shared parent COOKIE_DOMAIN. __Host- is a
+// browser-enforced prefix: it refuses to let ANY origin (including that
+// sibling) set the cookie without Secure and without a Domain attribute, so
+// the injection attempt is host-only to the sibling's own origin and never
+// reaches this API. It only works when Secure is actually on, hence gated
+// on isCookieSecure() (same as getOidcFlowCookieName/getLinkingTokenCookieName).
+describe('__Host- prefix (oidc_flow/linking_token)', () => {
+  it('uses the plain name and respects COOKIE_DOMAIN when Secure is off (dev/test)', () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    vi.stubEnv('COOKIE_SECURE', 'false');
+    vi.stubEnv('COOKIE_DOMAIN', '.exemplo.com');
+
+    expect(getOidcFlowCookieName()).toBe('oidc_flow');
+    expect(getLinkingTokenCookieName()).toBe('linking_token');
+    expect(getOidcFlowCookieOptions().domain).toBe('.exemplo.com');
+    expect(getLinkingTokenCookieOptions().domain).toBe('.exemplo.com');
+  });
+
+  it('switches to __Host- and drops domain entirely once Secure is on, even with COOKIE_DOMAIN set', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('COOKIE_SECURE', 'true');
+    vi.stubEnv('COOKIE_DOMAIN', '.exemplo.com');
+
+    expect(getOidcFlowCookieName()).toBe('__Host-oidc_flow');
+    expect(getLinkingTokenCookieName()).toBe('__Host-linking_token');
+    expect(getOidcFlowCookieOptions()).not.toHaveProperty('domain');
+    expect(getLinkingTokenCookieOptions()).not.toHaveProperty('domain');
+    expect(getOidcFlowCookieOptions().secure).toBe(true);
+    expect(getLinkingTokenCookieOptions().secure).toBe(true);
+  });
+
+  it('the clear options match the name/domain the cookie was actually set with, in both modes', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('COOKIE_SECURE', 'true');
+    vi.stubEnv('COOKIE_DOMAIN', '.exemplo.com');
+    expect(getClearOidcFlowCookieOptions()).not.toHaveProperty('domain');
+    expect(getClearLinkingTokenCookieOptions()).not.toHaveProperty('domain');
+
+    vi.stubEnv('COOKIE_SECURE', 'false');
+    expect(getClearOidcFlowCookieOptions().domain).toBe('.exemplo.com');
+    expect(getClearLinkingTokenCookieOptions().domain).toBe('.exemplo.com');
+  });
+});
+
 describe('getLinkingTokenCookieOptions', () => {
   // The real bug this guards against: linking_token is read back on a
   // same-origin-to-the-API XHR POST (/auth/oidc/link), not a top-level
@@ -132,8 +181,8 @@ describe('getLinkingTokenCookieOptions', () => {
     expect(options.maxAge).toBe(5 * 60 * 1000);
   });
 
-  it('clears with getClearCookieOptions (the shared, configurable one) rather than a Lax-specific clear', () => {
+  it('clears with the configured COOKIE_SAMESITE (not a Lax-specific clear), matching what it was set with', () => {
     vi.stubEnv('COOKIE_SAMESITE', 'none');
-    expect(getClearCookieOptions().sameSite).toBe(getLinkingTokenCookieOptions().sameSite);
+    expect(getClearLinkingTokenCookieOptions().sameSite).toBe(getLinkingTokenCookieOptions().sameSite);
   });
 });

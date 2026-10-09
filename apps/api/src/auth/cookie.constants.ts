@@ -3,25 +3,6 @@ import type { CookieOptions } from 'express';
 export const ACCESS_TOKEN_COOKIE = 'access_token';
 export const CSRF_COOKIE = 'csrf_token';
 export const CSRF_HEADER = 'x-csrf-token';
-// Carries { state, codeVerifier, provider } (JSON) between GET
-// /auth/oidc/:provider/start and its callback. httpOnly like access_token —
-// but unlike linking_token below, it was NOT signed until round 8 of
-// plan/LoginSocial.md's review: httpOnly only stops page JS and a cross-site
-// XHR from touching it, not a sibling subdomain's own Set-Cookie response
-// when COOKIE_DOMAIN is a shared parent domain. That sibling can still set
-// this exact cookie name/domain/path to a self-consistent
-// {provider, state, codeVerifier} it chose itself, then lure the victim into
-// a provider authorization URL whose state/code_challenge match it — a
-// login-CSRF the old "tampering grants nothing" reasoning didn't account
-// for, since the attacker isn't tampering with a legitimate payload, they're
-// supplying a whole valid-looking one of their own. See
-// auth/oidc/oidc-flow-cookie.ts, now signed the same way linking_token is.
-export const OIDC_FLOW_COOKIE = 'oidc_flow';
-// Carries the signed linking_token (see auth/oidc/oidc-linking-token.ts)
-// between the callback and POST /auth/oidc/link. Unlike oidc_flow, this one
-// IS signed — it's the one artifact that, if forged, would let someone link
-// an OIDC identity to an email they don't control.
-export const LINKING_TOKEN_COOKIE = 'linking_token';
 
 type SameSite = 'strict' | 'lax' | 'none';
 
@@ -106,20 +87,61 @@ export function getClearCookieOptions(): CookieOptions {
 // the server itself refusing a stale one.
 export const OIDC_COOKIE_MAX_AGE_MS = 5 * 60 * 1000;
 
-// oidc_flow is forced to SameSite=Lax regardless of COOKIE_SAMESITE: it
-// must survive the top-level, cross-site redirect back from the provider's
-// own domain (a Strict cookie would not be sent on that navigation). Lax
-// still only sends the cookie on a top-level GET navigation, which is
-// exactly what this is.
+// Round 9 of plan/LoginSocial.md's review: round 8 signed oidc_flow (HMAC)
+// to stop a forged cookie, but that doesn't stop THIS cookie, legitimately
+// signed by us. An attacker can run /start themselves, get back a real,
+// validly-signed cookie bound to a flow they control, and inject that exact
+// cookie into the victim via a sibling subdomain's own Set-Cookie response —
+// viable whenever COOKIE_DOMAIN is a shared parent domain, since nothing
+// stops a sibling's response from naming this same cookie + Domain. A
+// browser-enforced `__Host-` prefix is the actual fix: it requires Secure
+// and forbids a Domain attribute outright, on ANY origin's Set-Cookie for
+// that exact name — so the sibling's injection attempt is host-only to
+// *its own* origin and never reaches ours, no matter what Domain it tries to
+// claim. Same reasoning applies to linking_token below (worse impact there —
+// see its own comment). Only viable when Secure is actually on (browsers
+// refuse `__Host-` without it) — gated on isCookieSecure(), the same check
+// that already decides Secure, so dev/test (Secure off, see that function's
+// comment on why) keeps the old plain name and respects COOKIE_DOMAIN, where
+// there is no real sibling-subdomain threat to begin with.
+function useHostPrefix(): boolean {
+  return isCookieSecure();
+}
+
+export function getOidcFlowCookieName(): string {
+  return useHostPrefix() ? '__Host-oidc_flow' : 'oidc_flow';
+}
+
+// Neither this nor oidc_flow ever needs COOKIE_DOMAIN: both are httpOnly,
+// set by the API for the API, on requests that always land on the API's own
+// origin — unlike csrf_token, which is deliberately readable cross-subdomain
+// by the web app's own JS. Omitting `domain` here isn't just required by
+// `__Host-`, it was never doing anything useful for these two to begin with.
 export function getOidcFlowCookieOptions(): CookieOptions {
   return {
     secure: isCookieSecure(),
+    // oidc_flow is forced to SameSite=Lax regardless of COOKIE_SAMESITE: it
+    // must survive the top-level, cross-site redirect back from the
+    // provider's own domain (a Strict cookie would not be sent on that
+    // navigation). Lax still only sends the cookie on a top-level GET
+    // navigation, which is exactly what this is.
     sameSite: 'lax',
     path: '/',
-    domain: getCookieDomain(),
+    ...(useHostPrefix() ? {} : { domain: getCookieDomain() }),
     httpOnly: true,
     maxAge: OIDC_COOKIE_MAX_AGE_MS,
   };
+}
+
+// Carries the signed linking_token (see auth/oidc/oidc-linking-token.ts)
+// between the callback and POST /auth/oidc/link. This one is worse than
+// oidc_flow if a sibling subdomain injects it: the victim would be typing
+// their OWN password into /vincular-conta while unknowingly linking the
+// ATTACKER's (provider, providerSub) to their own account — handing the
+// attacker a way to log into the victim's existing account afterwards via
+// that OIDC identity. Same __Host- fix as oidc_flow, same reasoning.
+export function getLinkingTokenCookieName(): string {
+  return useHostPrefix() ? '__Host-linking_token' : 'linking_token';
 }
 
 // Deliberately NOT forced to Lax like oidc_flow above: linking_token is set
@@ -129,28 +151,40 @@ export function getOidcFlowCookieOptions(): CookieOptions {
 // registrable domains (COOKIE_SAMESITE=none, see security-standards.md),
 // that XHR is itself cross-site — a cookie hardcoded to Lax would never be
 // sent on it, and linking would always 401 with "missing token" in exactly
-// that deployment shape. Respecting the configured COOKIE_SAMESITE (via
-// baseCookieOptions, the same as the session/CSRF cookies) is what makes
-// this work in both the same-site and cross-site cases.
+// that deployment shape. Respecting the configured COOKIE_SAMESITE is what
+// makes this work in both the same-site and cross-site cases.
 export function getLinkingTokenCookieOptions(): CookieOptions {
   return {
-    ...baseCookieOptions(),
+    secure: isCookieSecure(),
+    sameSite: getCookieSameSite(),
+    path: '/',
+    ...(useHostPrefix() ? {} : { domain: getCookieDomain() }),
     httpOnly: true,
     maxAge: OIDC_COOKIE_MAX_AGE_MS,
   };
 }
 
-// Mirrors the SameSite=Lax override above: clearing oidc_flow with the
-// default (COOKIE_SAMESITE-derived) attributes wouldn't reliably match the
-// cookie that was set with Lax. linking_token doesn't need this — it was
-// never forced to Lax, so the existing getClearCookieOptions() (same
-// configurable attributes baseCookieOptions already gives every other
-// cookie) already matches it.
+// res.clearCookie must be called with the same name/path/domain used to set
+// the cookie, or the browser keeps the original one alive under the old
+// attrs — these two mirror getOidcFlowCookieOptions/
+// getLinkingTokenCookieOptions exactly (including the conditional `domain`)
+// rather than reusing the generic getClearCookieOptions() above, which
+// always includes COOKIE_DOMAIN and would silently fail to clear the
+// `__Host-` cookie once Secure is on.
 export function getClearOidcFlowCookieOptions(): CookieOptions {
   return {
     secure: isCookieSecure(),
     sameSite: 'lax',
     path: '/',
-    domain: getCookieDomain(),
+    ...(useHostPrefix() ? {} : { domain: getCookieDomain() }),
+  };
+}
+
+export function getClearLinkingTokenCookieOptions(): CookieOptions {
+  return {
+    secure: isCookieSecure(),
+    sameSite: getCookieSameSite(),
+    path: '/',
+    ...(useHostPrefix() ? {} : { domain: getCookieDomain() }),
   };
 }
