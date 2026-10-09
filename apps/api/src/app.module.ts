@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller.js';
 import { AuthGuard } from './auth/auth.guard.js';
 import { AuthModule } from './auth/auth.module.js';
 import { CsrfGuard } from './auth/csrf.guard.js';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
+import { LoginThrottlerGuard } from './common/login-throttler.guard.js';
 import { DEFAULT_THROTTLE } from './common/throttle.constants.js';
 import { HealthModule } from './health/health.module.js';
 import { PostsModule } from './posts/posts.module.js';
@@ -36,7 +37,7 @@ import { UsersModule } from './users/users.module.js';
     // derives its key from the raw access_token cookie (not request.user),
     // so it is functionally order-independent with AuthGuard — that order
     // only decides which status code wins when both would reject.
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: LoginThrottlerGuard },
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_GUARD, useClass: CsrfGuard },
     // Runs after the guards: a guard's own rejection (401/403/429) is

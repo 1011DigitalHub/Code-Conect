@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
-import { login } from '../../api/auth'
+import { login, startOidcLogin } from '../../api/auth'
 import { getErrorMessage } from '../../api/errors'
 import { createUser } from '../../api/users'
 import { AuthFooter } from '../../components/organisms/AuthFooter'
@@ -66,8 +66,7 @@ export function SignUpPage() {
       }
     >
       <SignUpForm onSubmit={handleSignUp} submitting={submitting} error={error} />
-      {/* Social login isn't implemented yet — see plan/LoginSocial.md for the OIDC design. */}
-      <SocialLogin providers={socialProviders} disabled />
+      <SocialLogin providers={socialProviders} onSelect={startOidcLogin} />
     </AuthTemplate>
   )
 }

@@ -3,6 +3,12 @@ import { ensureCsrfToken, resetCsrfToken } from './csrf'
 
 export const DEFAULT_API_URL = 'http://localhost:3000'
 
+// The OIDC login buttons navigate the whole page to the API's own
+// /auth/oidc/:provider/start (see auth.ts's startOidcLogin) instead of going
+// through this Axios instance — the rest of the flow is browser redirects,
+// not XHR/fetch — so they need this same base URL outside of `api` too.
+export const API_BASE_URL = import.meta.env.VITE_API_URL ?? DEFAULT_API_URL
+
 const UNSAFE_METHODS = new Set(['post', 'put', 'patch', 'delete'])
 
 // A flag stamped directly on the request config, not tracked by reference
@@ -13,7 +19,7 @@ const UNSAFE_METHODS = new Set(['post', 'put', 'patch', 'delete'])
 type RetriableConfig = InternalAxiosRequestConfig & { _csrfRetried?: boolean }
 
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL ?? DEFAULT_API_URL,
+  baseURL: API_BASE_URL,
   timeout: 10_000,
   headers: { 'Content-Type': 'application/json' },
   // The session travels in an httpOnly cookie, invisible to JS: the browser

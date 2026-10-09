@@ -34,3 +34,7 @@ export function isUnauthorized(error: unknown): boolean {
 export function isNotFound(error: unknown): boolean {
   return axios.isAxiosError(error) && error.response?.status === 404
 }
+
+export function isConflict(error: unknown): boolean {
+  return axios.isAxiosError(error) && error.response?.status === 409
+}

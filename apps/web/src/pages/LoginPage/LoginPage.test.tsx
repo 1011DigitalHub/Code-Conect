@@ -3,12 +3,12 @@ import userEvent from '@testing-library/user-event'
 import { AxiosError, AxiosHeaders, type AxiosResponse } from 'axios'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { vi } from 'vitest'
-import { login } from '../../api/auth'
+import { login, startOidcLogin } from '../../api/auth'
 import { renderWithRouter } from '../../test/renderWithRouter'
 import { LoginPage } from './LoginPage'
 import { expectNoA11yViolations } from '../../test/axe'
 
-vi.mock('../../api/auth', () => ({ login: vi.fn() }))
+vi.mock('../../api/auth', () => ({ login: vi.fn(), startOidcLogin: vi.fn() }))
 
 function apiError(status: number) {
   const config = { headers: new AxiosHeaders() }
@@ -16,9 +16,9 @@ function apiError(status: number) {
   return new AxiosError('failed', AxiosError.ERR_BAD_REQUEST, config, null, response)
 }
 
-function renderLoginRoutes() {
+function renderLoginRoutes(route = '/login') {
   return render(
-    <MemoryRouter initialEntries={['/login']}>
+    <MemoryRouter initialEntries={[route]}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/perfil" element={<p>Tela de perfil</p>} />
@@ -53,21 +53,28 @@ describe('LoginPage', () => {
     expect(screen.getByLabelText('Email')).toBeInTheDocument()
     expect(screen.getByLabelText('Senha')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Login' })).toBeInTheDocument()
-    // Not implemented yet (see plan/LoginSocial.md) — rendered, but disabled.
-    expect(screen.getByRole('button', { name: 'Github' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Gmail' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Github' }).querySelector('img')).toHaveAttribute(
-      'src',
-      '/icons/github.svg',
-    )
-    expect(screen.getByRole('button', { name: 'Gmail' }).querySelector('img')).toHaveAttribute(
+    expect(screen.getByRole('button', { name: 'Google' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Microsoft' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Google' }).querySelector('img')).toHaveAttribute(
       'src',
       '/icons/google.svg',
+    )
+    expect(screen.getByRole('button', { name: 'Microsoft' }).querySelector('img')).toHaveAttribute(
+      'src',
+      '/icons/microsoft.svg',
     )
     expect(screen.getByRole('link', { name: 'Crie seu cadastro!' })).toHaveAttribute(
       'href',
       '/cadastro',
     )
+  })
+
+  it('starts the OIDC flow (a real page navigation, not an API call) when a social button is clicked', async () => {
+    renderWithRouter(<LoginPage />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Microsoft' }))
+
+    expect(startOidcLogin).toHaveBeenCalledWith('microsoft')
   })
 
   it('signs in and goes to the profile; the session is the server-set cookie, not local storage', async () => {
@@ -108,6 +115,14 @@ describe('LoginPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Email ou senha inválidos.')
     expect(screen.queryByText('Tela de perfil')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Login' })).toBeEnabled()
+  })
+
+  it('shows a generic error when the OIDC flow failed server-side (?oidcError=1)', async () => {
+    renderLoginRoutes('/login?oidcError=1')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Não foi possível entrar com o provedor.',
+    )
   })
 
   it('has no WCAG 2.2 AA violations', async () => {

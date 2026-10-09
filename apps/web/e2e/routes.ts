@@ -8,6 +8,12 @@
 //
 // /posts/novo and /perfil are absent on purpose: both redirect an anonymous
 // visitor to /login, so they are private and get their own suites.
+// /vincular-conta is absent for a different reason: it's Disallow'd in
+// robots.txt (a transient flow step, not indexable content — see
+// plan/LoginSocial.md), and Lighthouse's SEO audit scores a route listed
+// here *and* blocked by robots.txt as a failure — that's what excluding it
+// here avoids, not a lack of a11y coverage (LinkAccountPage.test.tsx
+// already runs expectNoA11yViolations at the component level).
 export const routes = [
   { name: 'Feed', path: '/' },
   { name: 'Login', path: '/login' },

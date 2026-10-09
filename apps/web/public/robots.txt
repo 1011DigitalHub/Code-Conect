@@ -2,3 +2,4 @@ User-agent: *
 Allow: /
 Disallow: /perfil
 Disallow: /posts/novo
+Disallow: /vincular-conta

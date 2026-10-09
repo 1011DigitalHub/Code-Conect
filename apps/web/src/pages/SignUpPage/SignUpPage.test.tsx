@@ -3,13 +3,13 @@ import userEvent from '@testing-library/user-event'
 import { AxiosError, AxiosHeaders, type AxiosResponse } from 'axios'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { vi } from 'vitest'
-import { login } from '../../api/auth'
+import { login, startOidcLogin } from '../../api/auth'
 import { createUser } from '../../api/users'
 import { renderWithRouter } from '../../test/renderWithRouter'
 import { SignUpPage } from './SignUpPage'
 import { expectNoA11yViolations } from '../../test/axe'
 
-vi.mock('../../api/auth', () => ({ login: vi.fn() }))
+vi.mock('../../api/auth', () => ({ login: vi.fn(), startOidcLogin: vi.fn() }))
 vi.mock('../../api/users', () => ({ createUser: vi.fn() }))
 
 const createdUser = {
@@ -67,13 +67,20 @@ describe('SignUpPage', () => {
     expect(screen.getByLabelText('Email')).toBeInTheDocument()
     expect(screen.getByLabelText('Senha')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Cadastrar' })).toBeInTheDocument()
-    // Not implemented yet (see plan/LoginSocial.md) — rendered, but disabled.
-    expect(screen.getByRole('button', { name: 'Github' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Gmail' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Google' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Microsoft' })).toBeEnabled()
     expect(screen.getByRole('link', { name: 'Faça seu login!' })).toHaveAttribute(
       'href',
       '/login',
     )
+  })
+
+  it('starts the OIDC flow (a real page navigation, not an API call) when a social button is clicked', async () => {
+    renderWithRouter(<SignUpPage />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Google' }))
+
+    expect(startOidcLogin).toHaveBeenCalledWith('google')
   })
 
   it('creates the account, signs in and goes to the profile; no token is stored locally', async () => {

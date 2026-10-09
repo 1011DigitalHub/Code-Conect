@@ -1,6 +1,7 @@
 import { BrowserRouter, Route, Routes, useLocation } from 'react-router'
 import { ErrorBoundary } from './components/organisms/ErrorBoundary'
 import { FeedPage } from './pages/FeedPage'
+import { LinkAccountPage } from './pages/LinkAccountPage'
 import { LoginPage } from './pages/LoginPage'
 import { NewPostPage } from './pages/NewPostPage'
 import { NotFoundPage } from './pages/NotFoundPage'
@@ -30,6 +31,7 @@ export function RoutedApp() {
         <Route path="/" element={<FeedPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/cadastro" element={<SignUpPage />} />
+        <Route path="/vincular-conta" element={<LinkAccountPage />} />
         <Route path="/perfil" element={<ProfilePage />} />
         {/* Before the :slug route for readability; react-router already
             ranks the static segment higher. */}

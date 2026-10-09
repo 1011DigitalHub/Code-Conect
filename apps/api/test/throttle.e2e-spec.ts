@@ -59,6 +59,42 @@ describe('Rate limiting (e2e)', () => {
     expect(Number(res.headers['retry-after'])).toBeGreaterThan(0);
   });
 
+  // Round 13 of plan/LoginSocial.md's review: POST /auth/login and
+  // POST /auth/oidc/link both check a password against the same account, so
+  // LoginThrottlerGuard (common/login-throttler.guard.ts) makes them share
+  // one bucket — splitting the attempts across both routes below still
+  // hits the limit at the same total count as hitting either route alone
+  // would. Without the shared bucket, neither loop alone reaches
+  // LOGIN_THROTTLE.limit and the last request wouldn't 429.
+  it('shares one LOGIN_THROTTLE budget between POST /auth/login and POST /auth/oidc/link', async () => {
+    const agent = request.agent(app.getHttpServer());
+    const csrfToken = await fetchCsrfToken(agent);
+    const half = Math.floor(LOGIN_THROTTLE.limit / 2);
+
+    for (let i = 0; i < half; i++) {
+      await agent
+        .post('/auth/login')
+        .set('X-CSRF-Token', csrfToken)
+        .send({ email: newUser.email, password: 'senha-errada-123' })
+        .expect(401);
+    }
+    for (let i = half; i < LOGIN_THROTTLE.limit; i++) {
+      await agent
+        .post('/auth/oidc/link')
+        .set('X-CSRF-Token', csrfToken)
+        .send({ password: 'senha-errada-123' })
+        .expect(401);
+    }
+
+    const res = await agent
+      .post('/auth/oidc/link')
+      .set('X-CSRF-Token', csrfToken)
+      .send({ password: 'senha-errada-123' })
+      .expect(429);
+    expect(res.body).toMatchObject({ statusCode: 429 });
+    expect(Number(res.headers['retry-after'])).toBeGreaterThan(0);
+  });
+
   it('limits POST /users: 201 and 409 until the limit, then 429', async () => {
     const agent = request.agent(app.getHttpServer());
     const csrfToken = await fetchCsrfToken(agent);

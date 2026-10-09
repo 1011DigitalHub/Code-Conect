@@ -63,4 +63,82 @@ export class UsersService {
   async updatePasswordHash(id: number, passwordHash: string): Promise<void> {
     await this.prisma.user.update({ where: { id }, data: { passwordHash } });
   }
+
+  // The first lookup OidcService.resolveIdentity does on every OIDC
+  // callback: does this exact (provider, sub) already map to a user?
+  // Goes through the OidcIdentity side via its own @@unique([provider,
+  // providerSub]) — a findUnique on the actual unique index this is
+  // keyed by, rather than a user.findFirst with a relation filter that
+  // can only ever be a non-unique scan from the User side.
+  //
+  // No passwordHash override needed — OIDC sign-in never checks a local
+  // password — but the field is still typed as omitted (not `null`,
+  // `undefined`): PrismaService's global omit hides it from every User
+  // this returns, including nested through a relation like this one.
+  async findByProviderIdentity(
+    provider: string,
+    providerSub: string,
+  ): Promise<Omit<StoredUser, 'passwordHash'> | null> {
+    const identity = await this.prisma.oidcIdentity.findUnique({
+      where: { provider_providerSub: { provider, providerSub } },
+      select: { user: true },
+    });
+    return identity?.user ?? null;
+  }
+
+  // A brand-new account from a first-time OIDC sign-in: no passwordHash at
+  // all (not even a random one — AuthService.signIn's DUMMY_HASH fallback
+  // already makes a null hash behave exactly like a wrong password), and
+  // the identity row created in the same write so the two can never exist
+  // one without the other.
+  async createFromOidc(params: {
+    name: string;
+    email: string;
+    provider: string;
+    providerSub: string;
+  }): Promise<Omit<StoredUser, 'passwordHash'>> {
+    try {
+      return await this.prisma.user.create({
+        data: {
+          name: params.name,
+          email: params.email,
+          passwordHash: null,
+          identities: { create: { provider: params.provider, providerSub: params.providerSub } },
+        },
+      });
+    } catch (error) {
+      // Same race create() above already guards against, reached from
+      // OidcService.resolveIdentity's "no existing user for this email" branch:
+      // two concurrent callbacks for a brand-new email can both pass that
+      // check before either write lands, and the loser hits this unique
+      // violation on email instead of a clean 409.
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === UNIQUE_VIOLATION
+      ) {
+        throw new ConflictException('Email já cadastrado');
+      }
+      throw error;
+    }
+  }
+
+  // Attaches a provider identity to an existing user — either the
+  // no-password-confirmation-needed auto-link (an OIDC-only account adding a
+  // second provider) or the password-confirmed manual link from POST
+  // /auth/oidc/link. The @@unique([provider, providerSub]) constraint is
+  // the actual single-use guarantee for a replayed linking_token (see
+  // oidc-linking-token.ts) — a second attempt lands here and conflicts.
+  async linkProviderIdentity(userId: number, provider: string, providerSub: string): Promise<void> {
+    try {
+      await this.prisma.oidcIdentity.create({ data: { userId, provider, providerSub } });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === UNIQUE_VIOLATION
+      ) {
+        throw new ConflictException('Identidade já vinculada a uma conta');
+      }
+      throw error;
+    }
+  }
 }

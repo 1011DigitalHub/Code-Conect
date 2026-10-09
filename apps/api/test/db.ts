@@ -7,5 +7,5 @@ export async function resetDatabase(app: INestApplication): Promise<void> {
   // Every table is named explicitly rather than relying on CASCADE: CASCADE
   // deletes the dependent rows but does not restart *their* identity
   // sequences, so post and comment ids would drift between test files.
-  await prisma.$executeRaw`TRUNCATE TABLE likes, comments, posts, users RESTART IDENTITY CASCADE`;
+  await prisma.$executeRaw`TRUNCATE TABLE likes, comments, posts, oidc_identities, users RESTART IDENTITY CASCADE`;
 }

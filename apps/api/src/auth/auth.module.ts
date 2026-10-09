@@ -8,6 +8,7 @@ import {
   JWT_EXPIRES_IN_SECONDS,
 } from './auth.constants.js';
 import { AuthService } from './auth.service.js';
+import { OidcModule } from './oidc/oidc.module.js';
 
 // AuthGuard and CsrfGuard are registered as global APP_GUARDs in AppModule,
 // not here, alongside ThrottlerGuard — so their relative order is explicit
@@ -23,6 +24,7 @@ import { AuthService } from './auth.service.js';
       signOptions: { expiresIn: JWT_EXPIRES_IN_SECONDS, algorithm: JWT_ALGORITHM },
       verifyOptions: { algorithms: [JWT_ALGORITHM] },
     }),
+    OidcModule,
   ],
   controllers: [AuthController],
   providers: [AuthService],

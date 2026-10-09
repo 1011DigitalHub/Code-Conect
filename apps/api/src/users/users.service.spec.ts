@@ -22,10 +22,16 @@ const stored: StoredUser = {
 
 describe('UsersService', () => {
   let service: UsersService;
-  let prisma: { user: { create: Mock; findUnique: Mock; update: Mock } };
+  let prisma: {
+    user: { create: Mock; findUnique: Mock; update: Mock };
+    oidcIdentity: { create: Mock; findUnique: Mock };
+  };
 
   beforeEach(() => {
-    prisma = { user: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn() } };
+    prisma = {
+      user: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
+      oidcIdentity: { create: vi.fn(), findUnique: vi.fn() },
+    };
     service = new UsersService(prisma as unknown as PrismaService);
   });
 
@@ -103,6 +109,91 @@ describe('UsersService', () => {
     expect(prisma.user.update).toHaveBeenCalledWith({
       where: { id: 1 },
       data: { passwordHash: 'new-hash' },
+    });
+  });
+
+  describe('findByProviderIdentity', () => {
+    it('looks up the identity by its unique (provider, providerSub) key and returns the linked user', async () => {
+      prisma.oidcIdentity.findUnique.mockResolvedValue({ user: stored });
+      await expect(service.findByProviderIdentity('google', 'sub-123')).resolves.toBe(stored);
+      expect(prisma.oidcIdentity.findUnique).toHaveBeenCalledWith({
+        where: { provider_providerSub: { provider: 'google', providerSub: 'sub-123' } },
+        select: { user: true },
+      });
+    });
+
+    it('returns null when no identity matches', async () => {
+      prisma.oidcIdentity.findUnique.mockResolvedValue(null);
+      await expect(service.findByProviderIdentity('google', 'sub-123')).resolves.toBeNull();
+    });
+  });
+
+  describe('createFromOidc', () => {
+    it('creates a user with no password hash and the identity in one write', async () => {
+      prisma.user.create.mockResolvedValue({ ...stored, passwordHash: null });
+      await service.createFromOidc({
+        name: 'Nova Pessoa',
+        email: 'nova@exemplo.com',
+        provider: 'google',
+        providerSub: 'sub-456',
+      });
+      expect(prisma.user.create).toHaveBeenCalledWith({
+        data: {
+          name: 'Nova Pessoa',
+          email: 'nova@exemplo.com',
+          passwordHash: null,
+          identities: { create: { provider: 'google', providerSub: 'sub-456' } },
+        },
+      });
+    });
+
+    // Two concurrent OIDC callbacks for the same brand-new email can both
+    // pass OidcService.resolveIdentity's "no existing user" check before
+    // either write lands; the loser hits the same unique violation on
+    // email that a concurrent password sign-up would (see create() above),
+    // and must come back as a clean 409, not a raw 500.
+    it('maps a unique violation on email to a ConflictException', async () => {
+      prisma.user.create.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: 'test',
+        }),
+      );
+      await expect(
+        service.createFromOidc({
+          name: 'Nova Pessoa',
+          email: 'nova@exemplo.com',
+          provider: 'google',
+          providerSub: 'sub-456',
+        }),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+  });
+
+  describe('linkProviderIdentity', () => {
+    it('creates the OidcIdentity row for the given user', async () => {
+      prisma.oidcIdentity.create.mockResolvedValue({});
+      await service.linkProviderIdentity(1, 'google', 'sub-789');
+      expect(prisma.oidcIdentity.create).toHaveBeenCalledWith({
+        data: { userId: 1, provider: 'google', providerSub: 'sub-789' },
+      });
+    });
+
+    // The @@unique([provider, providerSub]) constraint is what actually
+    // stops the same identity from ever being linked to two different
+    // users (a replayed linking_token, or a genuine race between two
+    // requests for the same auto-link) — this proves the Prisma error it
+    // raises comes back as a clean 409, not a raw 500.
+    it('maps a unique violation (identity already linked to a user) to a ConflictException', async () => {
+      prisma.oidcIdentity.create.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: 'test',
+        }),
+      );
+      await expect(service.linkProviderIdentity(1, 'google', 'sub-789')).rejects.toBeInstanceOf(
+        ConflictException,
+      );
     });
   });
 });

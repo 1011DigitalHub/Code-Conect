@@ -1,6 +1,6 @@
 import { randomBytes, scrypt as scryptCb } from 'node:crypto';
 import { promisify } from 'node:util';
-import { hashPassword, shouldRehash, verifyPassword } from './password.js';
+import { DUMMY_HASH, hashPassword, shouldRehash, verifyPassword, verifyUserPassword } from './password.js';
 
 const scrypt = promisify(scryptCb) as (
   password: string,
@@ -51,6 +51,26 @@ describe('password', () => {
     const hash = await legacyHash('senha-segura-123');
     await expect(verifyPassword('senha-segura-123', hash)).resolves.toBe(true);
     await expect(verifyPassword('outra-senha', hash)).resolves.toBe(false);
+  });
+
+  describe('verifyUserPassword', () => {
+    it('accepts the right password for a user with a hash', async () => {
+      const passwordHash = await hashPassword('senha-segura-123');
+      await expect(
+        verifyUserPassword({ passwordHash }, 'senha-segura-123'),
+      ).resolves.toBe(true);
+    });
+
+    // A null passwordHash is exactly what a user created via OIDC has (see
+    // plan/LoginSocial.md) — no local password to compare against, so this
+    // falls back to DUMMY_HASH and always rejects, the same way an unknown
+    // email does, rather than throwing or short-circuiting to true.
+    it('rejects a user with a null passwordHash, same as an unknown email, against the same DUMMY_HASH a missing user falls back to', async () => {
+      await expect(verifyUserPassword({ passwordHash: null }, 'whatever')).resolves.toBe(
+        await verifyPassword('whatever', DUMMY_HASH),
+      );
+      await expect(verifyUserPassword(null, 'whatever')).resolves.toBe(false);
+    });
   });
 
   describe('shouldRehash', () => {

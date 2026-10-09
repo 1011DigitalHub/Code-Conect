@@ -113,6 +113,19 @@ export async function verifyPassword(
 export const DUMMY_HASH =
   'scrypt$N=131072,r=8,p=1$9fc2a80d057f7a9e3c9eae1f444070b7$d0dbf607256887c7beaa63154eb99b379bd3b7daa2f3d6e3227c261c3ceb759202faef05c17a33896d2c51de555cd33c084183a58142cd83d474daf1a3798831';
 
+// Shared by AuthService.signIn and OidcService.linkAccount: both need the
+// exact same timing-safe shape — a null/missing passwordHash (an unknown
+// email, or a real account that was created via OIDC and has no local
+// password at all) falls through to DUMMY_HASH, the same way a wrong
+// password does, so neither case answers measurably faster nor differently
+// than a correct email with a wrong password.
+export async function verifyUserPassword(
+  user: { passwordHash: string | null } | null,
+  password: string,
+): Promise<boolean> {
+  return verifyPassword(password, user?.passwordHash ?? DUMMY_HASH);
+}
+
 // True when `stored` isn't using the current cost parameters — either the
 // legacy unversioned format or an older, weaker versioned one. The caller
 // (AuthService, after a successful login) re-hashes and persists the
