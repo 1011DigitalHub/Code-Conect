@@ -427,11 +427,19 @@ jobs:
             [e2e-web]="$E2E_WEB"
             [lighthouse]="$LIGHTHOUSE"
           )
+          # Only "failure" is a hard stop. "cancelled" is intentionally
+          # excluded: when concurrency cancel-in-progress supersedes this
+          # run with a newer one, every queued job lands as "cancelled"
+          # with no "failure" ancestor — treating that as a gate failure
+          # would permanently red-light the PR until a manual re-run. A
+          # job cancelled because its *dependency* failed always has a
+          # "failure" result on that dependency, which this loop catches
+          # independently; the downstream "cancelled" adds no information.
           failed=false
           for name in "${!jobs[@]}"; do
             result="${jobs[$name]}"
             printf '%-20s %s\n' "$name:" "$result"
-            if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
+            if [[ "$result" == "failure" ]]; then
               echo "::error::$name $result"
               failed=true
             fi
