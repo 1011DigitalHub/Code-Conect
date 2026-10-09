@@ -72,7 +72,11 @@ export class AuthController {
   // ThrottlerGuard itself is global now (see AppModule); @Throttle just
   // overrides the 'default' named throttler's limit for this route — adding
   // @UseGuards(ThrottlerGuard) here too would run the guard twice per
-  // request and double-count against that same limit.
+  // request and double-count against that same limit. The global guard is
+  // actually LoginThrottlerGuard (common/login-throttler.guard.ts), a thin
+  // ThrottlerGuard subclass that shares THIS route's bucket with
+  // OidcController.link — both check a password against the same account,
+  // so they share one 5/min budget instead of two.
   @Public()
   @Throttle({ default: LOGIN_THROTTLE })
   @Post('login')

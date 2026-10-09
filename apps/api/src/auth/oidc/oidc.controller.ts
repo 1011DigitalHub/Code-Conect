@@ -15,6 +15,7 @@ import {
 import {
   ApiBadRequestResponse,
   ApiConflictResponse,
+  ApiForbiddenResponse,
   ApiOkResponse,
   ApiOperation,
   ApiResponse,
@@ -174,6 +175,14 @@ export class OidcController {
       return;
     }
 
+    // A leftover linking_token from an earlier, abandoned /vincular-conta
+    // attempt (same browser, different login) would otherwise just sit
+    // there until its own 5-minute exp — harmless (it's single-use and
+    // bound to that attempt's own email/provider/providerSub), but there is
+    // no reason to leave it once this request is signing the person in
+    // through a completely different path.
+    res.clearCookie(getLinkingTokenCookieName(), getClearLinkingTokenCookieOptions());
+
     const session = await this.oidcService.mintSession(resolution.user);
     res.cookie(ACCESS_TOKEN_COOKIE, session.accessToken, getSessionCookieOptions(false, session.expiresIn));
     const csrfToken = mintCsrfToken(sessionKey(session.accessToken));
@@ -183,7 +192,14 @@ export class OidcController {
 
   // Unlike /start and /callback, this is a same-site XHR from
   // /vincular-conta (not a browser navigation), so it goes through the
-  // normal CsrfGuard like /auth/login — no @NoCsrf() here.
+  // normal CsrfGuard like /auth/login — no @NoCsrf() here. LOGIN_THROTTLE
+  // here shares its bucket with AuthController.login (round 13 of
+  // plan/LoginSocial.md's review — see common/login-throttler.guard.ts):
+  // both check a password against the same account, and minting a
+  // linking_token to attempt here costs an attacker nothing (any email,
+  // regardless of email_verified, on the password-collision branch — see
+  // OidcService.resolveIdentity), so leaving these as two independent
+  // buckets would double an attacker's guesses/min against one account.
   @Public()
   @Throttle({ default: LOGIN_THROTTLE })
   @Post('link')
@@ -198,6 +214,10 @@ export class OidcController {
   @ApiConflictResponse({
     type: ErrorResponseDto,
     description: 'essa identidade já foi vinculada a uma conta (reenvio do mesmo linking_token já usado, ou corrida)',
+  })
+  @ApiForbiddenResponse({
+    type: ErrorResponseDto,
+    description: 'Token CSRF ausente ou inválido — esta rota passa pelo CsrfGuard normal, sem @NoCsrf()',
   })
   @ApiTooManyRequestsResponse({ type: ErrorResponseDto })
   async link(
