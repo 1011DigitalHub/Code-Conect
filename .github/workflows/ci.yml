@@ -52,9 +52,13 @@ jobs:
           # on push events; PR events use the base ref supplied by the GH API.
           fetch-depth: 2
 
-      # Classify changed files. `unclassified` is true if any file falls
-      # outside all known scopes; `list-files: shell` emits a shell-safe
+      # Classify changed files. `list-files: shell` emits a shell-safe
       # list of changed docs paths for the docs-lint job.
+      # Note: dorny/paths-filter v3 does not apply negative (!) patterns to
+      # the boolean result when list-files is set — using a catch-all
+      # `unclassified: ['**', '!...']` filter always returns true because `**`
+      # matches every file before negations are considered. Unclassified
+      # detection is therefore handled in the shell script below instead.
       - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3
         id: filter
         with:
@@ -73,31 +77,25 @@ jobs:
               - '.github/actions/**'
             docs:
               - '**/*.md'
-            unclassified:
-              - '**'
-              - '!apps/api/**'
-              - '!prisma/**'
-              - '!apps/web/**'
-              - '!**/*.md'
-              - '!package.json'
-              - '!pnpm-lock.yaml'
-              - '!pnpm-workspace.yaml'
-              - '!.github/workflows/**'
-              - '!.github/actions/**'
 
       - name: Compute scope and write step summary
         id: scope
         env:
-          F_API:          ${{ steps.filter.outputs.api }}
-          F_WEB:          ${{ steps.filter.outputs.web }}
-          F_CORE:         ${{ steps.filter.outputs.core }}
-          F_DOCS:         ${{ steps.filter.outputs.docs }}
-          F_UNCLASSIFIED: ${{ steps.filter.outputs.unclassified }}
-          EVENT:          ${{ github.event_name }}
+          F_API:  ${{ steps.filter.outputs.api }}
+          F_WEB:  ${{ steps.filter.outputs.web }}
+          F_CORE: ${{ steps.filter.outputs.core }}
+          F_DOCS: ${{ steps.filter.outputs.docs }}
+          EVENT:  ${{ github.event_name }}
         run: |
           # D2 + D3: full suite for non-PR events, core file changes, or
-          # anything that fell outside every known scope.
-          if [[ "$EVENT" != "pull_request" || "$F_CORE" == "true" || "$F_UNCLASSIFIED" == "true" ]]; then
+          # anything that fell outside every known scope (unclassified files).
+          # Unclassified = no known scope matched on a PR event (fail-closed).
+          UNCLASSIFIED=false
+          if [[ "$F_API" == "false" && "$F_WEB" == "false" && "$F_DOCS" == "false" && "$F_CORE" == "false" && "$EVENT" == "pull_request" ]]; then
+            UNCLASSIFIED=true
+          fi
+
+          if [[ "$EVENT" != "pull_request" || "$F_CORE" == "true" || "$UNCLASSIFIED" == "true" ]]; then
             FULL=true
           else
             FULL=false
@@ -119,7 +117,7 @@ jobs:
           elif [[ "$FULL" == "true" && "$F_CORE" == "true" ]]; then
             REASON="core files changed — full suite"
           elif [[ "$FULL" == "true" ]]; then
-            REASON="unclassified files detected — full suite (fail-closed)"
+            REASON="unclassified files (no known scope matched) — full suite (fail-closed)"
           else
             REASON="path filter"
           fi
