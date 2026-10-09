@@ -133,6 +133,49 @@ O passo também escreve no `$GITHUB_STEP_SUMMARY` uma tabela com o escopo detect
 - **Sem regressão:** na suíte completa, os mesmos testes passam, as asserções do Lighthouse continuam iguais e o `security.yml` continua rodando.
 - Remover os commits de teste antes do merge e entregar o relatório de execução com tempos antes/depois.
 
+## Checklist de integração em staging (pós-merge do login social)
+
+Após o deploy da `main` em homologação com as variáveis de ambiente OIDC configuradas (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `OIDC_LINKING_TOKEN_SECRET`, `API_ORIGIN`, `WEB_APP_ORIGIN`), executar os seguintes testes com credenciais reais antes do go-live em produção.
+
+### 1. Fluxo Google — conta nova
+- [ ] Clique em "Entrar com Google" na página de login redireciona para `accounts.google.com` com `response_type=code&scope=openid+email+profile&code_challenge_method=S256`.
+- [ ] Após autenticar, o provedor redireciona de volta para `${API_ORIGIN}/auth/oidc/google/callback`.
+- [ ] O callback valida o `id_token` via JWKS real de `https://www.googleapis.com/oauth2/v3/certs` — verificar no log da API: sem erro de assinatura, `iss` aceito, `aud` bate com `GOOGLE_CLIENT_ID`.
+- [ ] Uma nova linha é criada em `users` (sem `password_hash`) e em `oidc_identities` (`provider = 'google'`).
+- [ ] O browser é redirecionado para `${WEB_APP_ORIGIN}/perfil` com os cookies `__Host-access_token` e `csrf_token` setados (verificar DevTools → Application → Cookies).
+
+### 2. Fluxo Microsoft — conta nova
+- [ ] Clique em "Entrar com Microsoft" redireciona para `login.microsoftonline.com/common/oauth2/v2.0/authorize`.
+- [ ] Após autenticar, `id_token` validado via JWKS de `login.microsoftonline.com/common/discovery/v2.0/keys`.
+- [ ] `email_verified` (ou `xms_edov`, se o App Registration tiver a optional claim configurada) presente no token — sem ela, o callback redireciona para `/login?oidcError=1`. Verificar no log da API qual claim chegou.
+- [ ] Se `xms_edov` for necessário: confirmar que o App Registration no Entra ID tem `xms_edov` declarado em "Token configuration → Optional claims → ID".
+
+### 3. Login recorrente (identidade já vinculada)
+- [ ] Segundo login com a mesma conta Google/Microsoft usa a `OidcIdentity` existente (sem criar novo usuário) — confirmar via banco de dados que `users.count` não aumentou.
+
+### 4. Vinculação de conta (email já existe com senha local)
+- [ ] Criar uma conta local com o mesmo email da conta Google.
+- [ ] Iniciar o fluxo Google: o callback detecta a colisão e redireciona para `${WEB_APP_ORIGIN}/vincular-conta?provider=google`.
+- [ ] Cookie `__Host-linking_token` presente (verificar DevTools). Expiração em 5 minutos.
+- [ ] Digitar a senha da conta local → `POST /auth/oidc/link` retorna 200, cookie `__Host-linking_token` limpo, sessão iniciada (`__Host-access_token` + `csrf_token` setados).
+- [ ] Linha criada em `oidc_identities` vinculando o `userId` correto ao `providerSub` Google.
+- [ ] Segundo login via Google na mesma conta usa a identidade vinculada (sem pedir senha de novo).
+
+### 5. Casos de erro — comportamento de UX
+- [ ] Cancelar no consentimento do provedor (clicar em "Cancelar" na tela do Google/Microsoft) → redireciona para `/login?oidcError=1`, `LoginPage` exibe o `FormError` genérico.
+- [ ] `/start` sem credenciais configuradas (`GOOGLE_CLIENT_ID` vazio) → redireciona para `/login?oidcError=1`, não retorna JSON 404.
+- [ ] `linking_token` expirado (aguardar > 5 min em `/vincular-conta`) → `POST /auth/oidc/link` retorna 401, formulário exibe a mensagem genérica de vinculação, link "Voltar ao login" visível.
+
+### 6. Segurança — smoke test de cookies em produção
+- [ ] `__Host-oidc_flow` e `__Host-linking_token` aparecem com o prefixo `__Host-` nos DevTools (confirma que `COOKIE_SECURE=true` está ativo e que os cookies chegam sem atributo `Domain`).
+- [ ] `__Host-access_token` e `csrf_token` têm `HttpOnly`, `SameSite` e `Secure` conforme `security-standards.md`.
+
+### 7. Regressão — login por senha não quebrado
+- [ ] Login por email + senha em conta sem `OidcIdentity` continua funcionando normalmente.
+- [ ] Login por email + senha em conta com `passwordHash = null` (só OIDC) retorna 401 genérico (não revela que a conta só existe via OIDC).
+
+---
+
 ## Pontos em aberto (levantados na revisão do plano)
 1. **Required checks atuais.** Se a proteção de branch da `main` exige jobs pelo nome (ex.: `lint`, `e2e-web`), renomear ou dividir esses jobs trava o merge do próprio PR, porque esses checks nunca vão reportar. Falta um passo: trocar a proteção de branch para o `ci-gate` no momento certo. É uma ação manual nas configurações do GitHub.
 2. **O docs-lint bloqueia código.** Do jeito que está, os estágios 2 e 3 dependem de todo o estágio 1, então um erro de estilo num `.md` alterado aborta os testes da API e da web. Proposta: tirar o `docs-lint` dos `needs` dos estágios 2 e 3 e deixar só o `ci-gate` depender dele. O PR continua vermelho, mas os testes rodam.
