@@ -139,3 +139,4 @@ O passo também escreve no `$GITHUB_STEP_SUMMARY` uma tabela com o escopo detect
 3. **Concurrency.** Chamado pelo `ci.yml`, o `claude.yml` herda o `cancel-in-progress` dele. Um push novo no PR cancela uma revisão já em andamento, e os tokens gastos nela se perdem. É uma mudança de comportamento em relação a hoje.
 4. **`ready_for_review` no `ci.yml`.** Tirar um PR de draft passa a rodar a suíte inteira de novo, não só a revisão do Claude. O custo é pequeno.
 5. **Ganho do cache do Playwright.** Como o apt continua rodando, o realista é economizar só o download do Chromium. O tempo de setup não deve cair muito abaixo dos ~10 min.
+
