@@ -97,6 +97,20 @@ Uma sexta passada, de novo sem nenhum bypass de segurança, encontrou um bug fun
 
 **Não corrigido nessa rodada** (a própria revisão listou como opcional, não como "corrigiria antes do merge"): checagem `tid`/`iss` da Microsoft (adiada desde a rodada 2); aceitar `accounts.google.com` sem o esquema `https://` como issuer; consolidar a constante de TTL/segredo de dev duplicada (mesmo padrão já documentado nas rodadas 3 e 5); `pnpm test:web:a11y` não foi executado localmente nesta sessão (documentado desde a nota de implementação original — o CI do PR roda essa suíte a cada push e ela está passando); limite de tentativas dedicado para `/start`/`/callback` diferente de `LOGIN_THROTTLE`.
 
+## Nota de correção pós-revisão, rodada 7 (2026-10-08) — última rodada desta sessão
+
+Uma sétima passada, de novo sem nenhum bug bloqueante nem falha de segurança ("não encontrei bugs bloqueantes nem falhas de segurança... deixei 4 comentários inline, todos não bloqueantes"), confirmou a cobertura de testes e as decisões de segurança das rodadas anteriores e apontou um resquício direto da rodada 6:
+
+- **🟡 Corrigido:** `docker-compose.yml`, `.env.example` (raiz) e `apps/api/.env.example` ainda diziam que `/start` "answers 404" sem credenciais — texto que ficou desatualizado quando a rodada 6 trocou isso por um redirect para `/login?oidcError=1`. Corrigido nos três arquivos.
+
+**Não corrigido — deliberadamente fora do escopo desta sessão** (nenhum dos quatro pontos da revisão veio com a recomendação explícita de resolver antes do merge, ao contrário das rodadas 1, 2 e 6):
+- **Emissão de sessão duplicada em três lugares** (`AuthController.login`, `OidcController.callback`, `OidcController.link`, mais `OidcService.mintSession` duplicando a lógica de `AuthService.signIn`). É uma sugestão de refatoração legítima, mas tocaria `AuthController`/`AuthService` — código fora do módulo OIDC, já testado e em produção antes deste PR. Fica registrado aqui para uma limpeza futura dedicada, não para ser feito de passagem numa correção de revisão.
+- Segredo de dev duplicado em `env.ts`/`oidc.constants.ts` — mesma decisão das rodadas 3 e 5 (seguir o padrão já existente com `JWT_SECRET`).
+- Mensagem de `?oidcError=1` convidar a "tentar novamente" mesmo quando o provedor não está configurado — o formulário de email/senha já aparece na mesma tela, lado a lado com os botões sociais, então a alternativa sugerida pela revisão já está visível sem nenhuma navegação extra.
+- `pnpm test:web:a11y` continua não executado **localmente** nesta sessão (o motivo documentado desde a nota de implementação original não mudou), mas o CI do PR #19 roda essa suíte a cada push, incluindo este, e ela passou.
+
+**Encerramento desta sessão de revisão:** sete rodadas consecutivas da revisão automática, as duas primeiras corrigindo um bypass de account takeover real (`email_verified`/`xms_edov` ausente nos ramos de auto-link e criação de conta), e as cinco seguintes sem encontrar mais nenhuma falha de segurança — convergindo para ajustes de robustez, UX e consistência. Os pontos restantes documentados como "não corrigidos" acima são, pelas palavras da própria revisão, melhorias opcionais, não bloqueios.
+
 ### Arquivos
 
 **`apps/api`** — novos: `src/auth/oidc/` (`oidc.module.ts`, `oidc.controller(.spec).ts`, `oidc.service(.spec).ts`, `oidc.constants(.spec).ts`, `oidc.types.ts`, `oidc-pkce(.spec).ts`, `oidc-flow-cookie(.spec).ts`, `oidc-linking-token(.spec).ts`, `dto/link-account.dto.ts`), `prisma/migrations/20261008165123_add_oidc_identities/`, `test/oidc-fake-idp.ts`, `test/oidc.e2e-spec.ts`. Alterados: `prisma/schema.prisma`, `src/env(.spec).ts`, `src/auth/auth.module.ts`, `src/auth/auth.service(.spec).ts`, `src/auth/cookie.constants.ts`, `src/users/password(.spec).ts` (novo `verifyUserPassword` compartilhado), `src/users/users.service(.spec).ts` (`findByProviderIdentity`/`createFromOidc`/`linkProviderIdentity`, agora com testes próprios), `test/db.ts` (trunca `oidc_identities`), `.env.example`, `package.json`/`pnpm-lock.yaml` (dependência `jose`).

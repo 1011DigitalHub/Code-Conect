@@ -46,8 +46,9 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
       # Login social via OIDC (plan/LoginSocial.md) — the Google/Microsoft
       # credentials below are optional: leave them unset and the api service
-      # still boots fine, the social buttons just answer 404 (see
-      # OidcController.start). OIDC_LINKING_TOKEN_SECRET is NOT optional —
+      # still boots fine, the social buttons just redirect back to /login
+      # with a generic error (see OidcController.start) — the password form
+      # on the same page still works. OIDC_LINKING_TOKEN_SECRET is NOT optional —
       # apps/api's own env.ts requires it in production unconditionally
       # (it is cheap to generate and a wrong default is a real
       # account-linking forgery risk the moment OIDC credentials ARE set),
