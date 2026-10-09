@@ -49,9 +49,12 @@ describe('getOidcProviderConfig', () => {
   });
 
   describe('validateIssuer', () => {
-    it("google accepts only accounts.google.com (or GOOGLE_ISSUER's override)", () => {
+    it("google accepts both documented forms of its issuer (or GOOGLE_ISSUER's override)", () => {
       const config = getOidcProviderConfig('google');
       expect(config.validateIssuer('https://accounts.google.com')).toBe(true);
+      // Google's own docs: some id_tokens send `iss` without the scheme —
+      // https://developers.google.com/identity/openid-connect/openid-connect#validatinganidtoken
+      expect(config.validateIssuer('accounts.google.com')).toBe(true);
       expect(config.validateIssuer('https://evil.example.com')).toBe(false);
     });
 
@@ -71,6 +74,27 @@ describe('getOidcProviderConfig', () => {
       expect(
         config.validateIssuer('https://login.microsoftonline.com/9188040d-6c67-4c5b-b112-36a304b66dad/v2.0'),
       ).toBe(false);
+    });
+
+    // Round 12 of plan/LoginSocial.md's review: a test-only override left
+    // set in a production environment must never swap out what an id_token
+    // is actually checked against.
+    it('ignores every test override in production — endpoints and issuers both fall back to the real ones', () => {
+      vi.stubEnv('NODE_ENV', 'production');
+      vi.stubEnv('GOOGLE_AUTHORIZATION_ENDPOINT', 'http://localhost:9/authorize');
+      vi.stubEnv('GOOGLE_ISSUER', 'https://evil.example.com');
+      vi.stubEnv('MICROSOFT_ISSUER', 'https://evil.example.com');
+
+      const google = getOidcProviderConfig('google');
+      expect(google.authorizationEndpoint).toBe('https://accounts.google.com/o/oauth2/v2/auth');
+      expect(google.validateIssuer('https://evil.example.com')).toBe(false);
+      expect(google.validateIssuer('https://accounts.google.com')).toBe(true);
+
+      const microsoft = getOidcProviderConfig('microsoft');
+      expect(microsoft.validateIssuer('https://evil.example.com')).toBe(false);
+      expect(
+        microsoft.validateIssuer('https://login.microsoftonline.com/9188040d-6c67-4c5b-b112-36a304b66dad/v2.0'),
+      ).toBe(true);
     });
   });
 });

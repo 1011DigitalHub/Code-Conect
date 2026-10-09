@@ -60,9 +60,15 @@ function redirectToLoginWithError(res: Response): void {
 export class OidcController {
   constructor(private readonly oidcService: OidcService) {}
 
+  // No @Throttle override here: LOGIN_THROTTLE (5/min) is for the one route
+  // that actually has a password to brute-force (link, below). This route
+  // has nothing to guess, and a tight limit on a plain page navigation means
+  // a 429 in raw JSON mid-redirect — easy to hit for anyone behind a shared
+  // NAT, or just clicking the button a few times across two providers. The
+  // global ThrottlerGuard's DEFAULT_THROTTLE (100/min) still applies, same
+  // as every other route — this only opts out of the *tighter* one.
   @Public()
   @NoCsrf()
-  @Throttle({ default: LOGIN_THROTTLE })
   @Get(':provider/start')
   @ApiOperation({ summary: 'Inicia o login via OIDC (Google/Microsoft): redireciona para o provedor' })
   @ApiResponse({
@@ -71,7 +77,7 @@ export class OidcController {
       'Redireciona para o authorization_endpoint do provedor, ou para /login?oidcError=1 se o provider não estiver configurado — isto é um link clicado numa navegação de página, nunca uma chamada XHR, então nunca deveria devolver um corpo JSON (ver OidcController.callback para o mesmo raciocínio).',
   })
   @ApiBadRequestResponse({ type: ErrorResponseDto, description: ':provider desconhecido (rota malformada, não alcançável pelo botão)' })
-  @ApiTooManyRequestsResponse({ type: ErrorResponseDto })
+  @ApiTooManyRequestsResponse({ type: ErrorResponseDto, description: 'sob o DEFAULT_THROTTLE global (100/min/IP), não o LOGIN_THROTTLE apertado' })
   start(
     @Param('provider') providerParam: string,
     @Res() res: Response,
@@ -95,9 +101,12 @@ export class OidcController {
     res.redirect(this.oidcService.buildAuthorizationUrl(provider, state, codeChallenge));
   }
 
+  // Same reasoning as /start above: no LOGIN_THROTTLE override, just the
+  // global DEFAULT_THROTTLE. The provider calls this one back automatically
+  // after the person authenticates there, so it's even less under their
+  // direct control than /start, and just as wrong to 429 in raw JSON.
   @Public()
   @NoCsrf()
-  @Throttle({ default: LOGIN_THROTTLE })
   @Get(':provider/callback')
   @ApiOperation({
     summary: 'Callback do provedor OIDC: valida o retorno e inicia a sessão ou pede vinculação',
@@ -108,7 +117,7 @@ export class OidcController {
       'Login concluído (/perfil), vinculação pendente (/vincular-conta) ou qualquer falha — state/code/id_token inválido, o usuário cancelou no provedor — (/login?oidcError=1, lido pelo LoginPage para mostrar um erro genérico). Essas rejeições nunca viram um corpo JSON: tudo aqui acontece em redirects do navegador que um usuário real está seguindo, não em chamadas XHR.',
   })
   @ApiBadRequestResponse({ type: ErrorResponseDto, description: ':provider desconhecido (rota malformada, não alcançável pelo fluxo normal)' })
-  @ApiTooManyRequestsResponse({ type: ErrorResponseDto })
+  @ApiTooManyRequestsResponse({ type: ErrorResponseDto, description: 'sob o DEFAULT_THROTTLE global (100/min/IP), não o LOGIN_THROTTLE apertado' })
   async callback(
     @Param('provider') providerParam: string,
     @Query('code') code: string | undefined,
