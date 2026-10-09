@@ -156,7 +156,7 @@ describe('OidcController', () => {
         tokenType: 'Bearer',
         expiresIn: 3600,
       });
-      const { res, cookie, redirect } = fakeResponse();
+      const { res, cookie, clearCookie, redirect } = fakeResponse();
       const req = fakeRequest(flowCookieHeader(flow));
 
       await controller.callback('google', 'the-code', 'state-abc', undefined, req, res);
@@ -171,6 +171,10 @@ describe('OidcController', () => {
       ];
       expect(verifyCsrfToken(csrfCall[1], sessionKey('token-123'))).toBe(true);
       expect(redirect).toHaveBeenCalledWith('http://localhost:5173/perfil');
+      // Round 14 of plan/LoginSocial.md's review: a leftover linking_token
+      // from an earlier, abandoned /vincular-conta attempt must not survive
+      // a successful sign-in through a different path.
+      expect(clearCookie).toHaveBeenCalledWith('linking_token', expect.any(Object));
     });
 
     it('sets the linking_token cookie and redirects to /vincular-conta when linking is required', async () => {

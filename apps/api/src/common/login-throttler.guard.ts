@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import type { ExecutionContext } from '@nestjs/common';
 import { ThrottlerGuard } from '@nestjs/throttler';
+import { AuthController } from '../auth/auth.controller.js';
+import { OidcController } from '../auth/oidc/oidc.controller.js';
 
 // AuthController.login and OidcController.link both end up checking a
 // password against the same local account (OidcService.linkAccount calls
@@ -20,9 +22,17 @@ import { ThrottlerGuard } from '@nestjs/throttler';
 // top of the already-global one runs it twice per request and
 // double-counts. Overriding generateKey here is the only way to merge two
 // routes' buckets without reintroducing that bug.
+//
+// Built from the actual classes/methods (round 14 of plan/LoginSocial.md's
+// review), not string literals: renaming AuthController.login or
+// OidcController.link would otherwise silently stop sharing the bucket,
+// with nothing — not even the unit test, which only exercises generateKey
+// in isolation — ever flagging it. `AuthController.prototype.login` fails
+// to compile the moment that method is renamed or removed, which a plain
+// 'AuthController.login' string never would.
 const SHARED_PASSWORD_GUESS_HANDLERS: ReadonlySet<string> = new Set([
-  'AuthController.login',
-  'OidcController.link',
+  `${AuthController.name}.${AuthController.prototype.login.name}`,
+  `${OidcController.name}.${OidcController.prototype.link.name}`,
 ]);
 
 @Injectable()
