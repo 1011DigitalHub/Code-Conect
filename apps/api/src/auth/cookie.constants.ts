@@ -98,12 +98,11 @@ export function getClearCookieOptions(): CookieOptions {
 // the server itself refusing a stale one.
 export const OIDC_COOKIE_MAX_AGE_MS = 5 * 60 * 1000;
 
-// Both OIDC cookies are forced to SameSite=Lax regardless of COOKIE_SAMESITE:
-// oidc_flow must survive the top-level, cross-site redirect back from the
-// provider's own domain (a Strict cookie would not be sent on that
-// navigation), and linking_token is set by that same redirect. Lax still
-// only sends the cookie on a top-level GET navigation, which is exactly
-// what both of these are.
+// oidc_flow is forced to SameSite=Lax regardless of COOKIE_SAMESITE: it
+// must survive the top-level, cross-site redirect back from the provider's
+// own domain (a Strict cookie would not be sent on that navigation). Lax
+// still only sends the cookie on a top-level GET navigation, which is
+// exactly what this is.
 export function getOidcFlowCookieOptions(): CookieOptions {
   return {
     secure: isCookieSecure(),
@@ -115,14 +114,31 @@ export function getOidcFlowCookieOptions(): CookieOptions {
   };
 }
 
+// Deliberately NOT forced to Lax like oidc_flow above: linking_token is set
+// by the same callback redirect, but read back on a same-origin-to-the-API
+// XHR POST (/auth/oidc/link) from the web app's page, not a top-level
+// navigation. If the web app and the API are deployed on different
+// registrable domains (COOKIE_SAMESITE=none, see security-standards.md),
+// that XHR is itself cross-site — a cookie hardcoded to Lax would never be
+// sent on it, and linking would always 401 with "missing token" in exactly
+// that deployment shape. Respecting the configured COOKIE_SAMESITE (via
+// baseCookieOptions, the same as the session/CSRF cookies) is what makes
+// this work in both the same-site and cross-site cases.
 export function getLinkingTokenCookieOptions(): CookieOptions {
-  return getOidcFlowCookieOptions();
+  return {
+    ...baseCookieOptions(),
+    httpOnly: true,
+    maxAge: OIDC_COOKIE_MAX_AGE_MS,
+  };
 }
 
-// Mirrors the SameSite=Lax override above: clearing with the default
-// (COOKIE_SAMESITE-derived) attributes wouldn't reliably match the cookie
-// that was set with Lax.
-export function getClearOidcCookieOptions(): CookieOptions {
+// Mirrors the SameSite=Lax override above: clearing oidc_flow with the
+// default (COOKIE_SAMESITE-derived) attributes wouldn't reliably match the
+// cookie that was set with Lax. linking_token doesn't need this — it was
+// never forced to Lax, so the existing getClearCookieOptions() (same
+// configurable attributes baseCookieOptions already gives every other
+// cookie) already matches it.
+export function getClearOidcFlowCookieOptions(): CookieOptions {
   return {
     secure: isCookieSecure(),
     sameSite: 'lax',

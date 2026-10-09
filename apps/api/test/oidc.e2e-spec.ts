@@ -353,7 +353,10 @@ describe('OIDC login (e2e)', () => {
       expect(() => setCookie(res, 'access_token')).toThrow();
       const linkingCookie = setCookie(res, 'linking_token');
       expect(linkingCookie).toMatch(/HttpOnly/i);
-      expect(linkingCookie).toMatch(/SameSite=Lax/i);
+      // Unlike oidc_flow, linking_token respects the configured
+      // COOKIE_SAMESITE (default Strict in tests) rather than being forced
+      // to Lax — see cookie.constants.ts's getLinkingTokenCookieOptions.
+      expect(linkingCookie).toMatch(/SameSite=Strict/i);
     });
 
     it('rejects POST /auth/oidc/link with the wrong password — generic 401, no identity created', async () => {

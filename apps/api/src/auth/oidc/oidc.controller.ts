@@ -30,9 +30,9 @@ import { LOGIN_THROTTLE } from '../../common/throttle.constants.js';
 import {
   ACCESS_TOKEN_COOKIE,
   CSRF_COOKIE,
+  getClearCookieOptions,
   getCsrfCookieOptions,
   getLinkingTokenCookieOptions,
-  getClearOidcCookieOptions,
   getSessionCookieOptions,
   LINKING_TOKEN_COOKIE,
 } from '../cookie.constants.js';
@@ -199,7 +199,7 @@ export class OidcController {
     // how long it can be retried against. It's only cleared below, once
     // actually consumed by a successful link.
     const session = await this.oidcService.linkAccount(linkingToken, dto.password);
-    res.clearCookie(LINKING_TOKEN_COOKIE, getClearOidcCookieOptions());
+    res.clearCookie(LINKING_TOKEN_COOKIE, getClearCookieOptions());
 
     res.cookie(ACCESS_TOKEN_COOKIE, session.accessToken, getSessionCookieOptions(false, session.expiresIn));
     const csrfToken = mintCsrfToken(sessionKey(session.accessToken));

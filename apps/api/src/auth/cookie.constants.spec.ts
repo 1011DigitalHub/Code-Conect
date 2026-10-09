@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   getClearCookieOptions,
+  getClearOidcFlowCookieOptions,
   getCookieSameSite,
   getCsrfCookieOptions,
+  getLinkingTokenCookieOptions,
+  getOidcFlowCookieOptions,
   getSessionCookieOptions,
   isCookieSecure,
 } from './cookie.constants.js';
@@ -87,5 +90,50 @@ describe('getClearCookieOptions', () => {
     expect(cleared.domain).toBe(set.domain);
     expect(cleared.sameSite).toBe(set.sameSite);
     expect(cleared.secure).toBe(set.secure);
+  });
+});
+
+describe('getOidcFlowCookieOptions', () => {
+  it('is always SameSite=Lax, regardless of COOKIE_SAMESITE — it must survive the cross-site redirect back from the provider', () => {
+    vi.stubEnv('COOKIE_SAMESITE', 'strict');
+    expect(getOidcFlowCookieOptions().sameSite).toBe('lax');
+    vi.stubEnv('COOKIE_SAMESITE', 'none');
+    expect(getOidcFlowCookieOptions().sameSite).toBe('lax');
+  });
+
+  it('is httpOnly with the 5-minute OIDC max age', () => {
+    const options = getOidcFlowCookieOptions();
+    expect(options.httpOnly).toBe(true);
+    expect(options.maxAge).toBe(5 * 60 * 1000);
+  });
+
+  it('getClearOidcFlowCookieOptions matches its SameSite=Lax, not the configured COOKIE_SAMESITE', () => {
+    vi.stubEnv('COOKIE_SAMESITE', 'strict');
+    expect(getClearOidcFlowCookieOptions().sameSite).toBe('lax');
+  });
+});
+
+describe('getLinkingTokenCookieOptions', () => {
+  // The real bug this guards against: linking_token is read back on a
+  // same-origin-to-the-API XHR POST (/auth/oidc/link), not a top-level
+  // navigation like oidc_flow — hardcoding Lax here would make that XHR
+  // silently drop the cookie whenever the web app and the API are deployed
+  // on different registrable domains (COOKIE_SAMESITE=none).
+  it('respects the configured COOKIE_SAMESITE, unlike oidc_flow', () => {
+    vi.stubEnv('COOKIE_SAMESITE', 'none');
+    expect(getLinkingTokenCookieOptions().sameSite).toBe('none');
+    vi.stubEnv('COOKIE_SAMESITE', 'strict');
+    expect(getLinkingTokenCookieOptions().sameSite).toBe('strict');
+  });
+
+  it('is httpOnly with the 5-minute OIDC max age', () => {
+    const options = getLinkingTokenCookieOptions();
+    expect(options.httpOnly).toBe(true);
+    expect(options.maxAge).toBe(5 * 60 * 1000);
+  });
+
+  it('clears with getClearCookieOptions (the shared, configurable one) rather than a Lax-specific clear', () => {
+    vi.stubEnv('COOKIE_SAMESITE', 'none');
+    expect(getClearCookieOptions().sameSite).toBe(getLinkingTokenCookieOptions().sameSite);
   });
 });

@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import {
-  getClearOidcCookieOptions,
+  getClearOidcFlowCookieOptions,
   getOidcFlowCookieOptions,
   OIDC_COOKIE_MAX_AGE_MS,
   OIDC_FLOW_COOKIE,
@@ -57,5 +57,5 @@ export function readOidcFlowCookie(req: Request): OidcFlowState | undefined {
 }
 
 export function clearOidcFlowCookie(res: Response): void {
-  res.clearCookie(OIDC_FLOW_COOKIE, getClearOidcCookieOptions());
+  res.clearCookie(OIDC_FLOW_COOKIE, getClearOidcFlowCookieOptions());
 }

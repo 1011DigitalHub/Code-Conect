@@ -8,14 +8,16 @@
 //
 // /posts/novo and /perfil are absent on purpose: both redirect an anonymous
 // visitor to /login, so they are private and get their own suites.
+// /vincular-conta is absent for a different reason: it's Disallow'd in
+// robots.txt (a transient flow step, not indexable content — see
+// plan/LoginSocial.md), and Lighthouse's SEO audit scores a route listed
+// here *and* blocked by robots.txt as a failure — that's what excluding it
+// here avoids, not a lack of a11y coverage (LinkAccountPage.test.tsx
+// already runs expectNoA11yViolations at the component level).
 export const routes = [
   { name: 'Feed', path: '/' },
   { name: 'Login', path: '/login' },
   { name: 'Cadastro', path: '/cadastro' },
-  // Reachable by an anonymous visitor mid-OIDC-flow, same as /login — it
-  // renders the same password form regardless of whether a real
-  // linking_token cookie is present, so it's testable the same way.
-  { name: 'Vincular conta', path: '/vincular-conta' },
   { name: 'Componentes React na prática', path: '/posts/componentes-react-na-pratica' },
   // The catch-all route. Any unmatched path renders it, and the SPA serves it
   // with HTTP 200 (try_files falls back to index.html), so the Lighthouse

@@ -140,6 +140,26 @@ describe('env', () => {
     );
   });
 
+  it('rejects OIDC_LINKING_TOKEN_SECRET reusing JWT_SECRET or CSRF_SECRET', async () => {
+    const shared = 'c'.repeat(32);
+    await expect(
+      importWithEnv({ JWT_SECRET: shared, OIDC_LINKING_TOKEN_SECRET: shared }),
+    ).rejects.toThrow(/OIDC_LINKING_TOKEN_SECRET.*JWT_SECRET/s);
+
+    await expect(
+      importWithEnv({ CSRF_SECRET: shared, OIDC_LINKING_TOKEN_SECRET: shared }),
+    ).rejects.toThrow(/OIDC_LINKING_TOKEN_SECRET.*CSRF_SECRET/s);
+  });
+
+  it('allows OIDC_LINKING_TOKEN_SECRET to differ from both', async () => {
+    const { env } = await importWithEnv({
+      JWT_SECRET: 'a'.repeat(32),
+      CSRF_SECRET: 'b'.repeat(32),
+      OIDC_LINKING_TOKEN_SECRET: 'c'.repeat(32),
+    });
+    expect(env.oidcLinkingTokenSecret).toBe('c'.repeat(32));
+  });
+
   it('allows API_ORIGIN/WEB_APP_ORIGIN to default to localhost in production when no OIDC credential is configured', async () => {
     const { env } = await importWithEnv({
       NODE_ENV: 'production',

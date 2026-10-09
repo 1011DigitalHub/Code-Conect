@@ -135,6 +135,17 @@ function readOidcLinkingTokenSecret(): string {
     if (raw.length < 32) {
       errors.push('OIDC_LINKING_TOKEN_SECRET must be at least 32 characters');
     }
+    // The doc comment above says this is never shared with JWT_SECRET/
+    // CSRF_SECRET — this is that rule actually enforced, not just
+    // documented. Compared against the raw env vars, not the resolved
+    // getJwtSecret()/csrfSecret values, so this still catches the reuse
+    // even if one of them is relying on its own dev default.
+    if (raw === process.env.JWT_SECRET) {
+      errors.push('OIDC_LINKING_TOKEN_SECRET must not be the same value as JWT_SECRET');
+    }
+    if (raw === process.env.CSRF_SECRET) {
+      errors.push('OIDC_LINKING_TOKEN_SECRET must not be the same value as CSRF_SECRET');
+    }
     return raw;
   }
   if (isProduction) {
