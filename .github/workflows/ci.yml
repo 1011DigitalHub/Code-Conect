@@ -188,6 +188,14 @@ jobs:
   claude-review:
     needs: [changes, static-api, static-web]
     if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft && !failure() && !cancelled() && (needs.changes.outputs.api == 'true' || needs.changes.outputs.web == 'true') }}
+    # The called claude.yml defines pull-requests: write and id-token: write at
+    # the job level. GitHub validates that the calling job grants at least those
+    # permissions before starting any jobs (startup_failure otherwise). The
+    # workflow-level `permissions: contents: read` is too narrow for this job.
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
     uses: ./.github/workflows/claude.yml
     secrets: inherit
 
