@@ -32,11 +32,13 @@ export function getWebAppOrigin(): string {
 }
 
 // Never the same secret as the session JWT or the CSRF double-submit token:
-// this one signs the linking_token, the single artifact that proves "this
+// this one signs both the linking_token (the artifact that proves "this
 // OIDC identity belongs to this email" across the redirect to
-// /vincular-conta, and from there grants linking it to an existing local
-// account. A shared secret would mean a leak of either of the other two
-// doubles as a way to forge that proof.
+// /vincular-conta) and, since round 8 of plan/LoginSocial.md's review, the
+// oidc_flow cookie (see oidc-flow-cookie.ts) — each with its own
+// domain-separation prefix, same convention as csrf.ts sharing CSRF_SECRET
+// across its own uses. A shared secret with JWT_SECRET/CSRF_SECRET would
+// mean a leak of either of those doubles as a way to forge this proof.
 export function getOidcLinkingTokenSecret(): string {
   return process.env.OIDC_LINKING_TOKEN_SECRET || DEV_LINKING_SECRET;
 }

@@ -29,12 +29,40 @@ describe('oidc-flow-cookie', () => {
     expect(readOidcFlowCookie(fakeRequestWithCookie(undefined))).toBeUndefined();
   });
 
-  it('returns undefined for a malformed or tampered cookie, instead of throwing', () => {
+  it('returns undefined for a malformed cookie (no signature at all), instead of throwing', () => {
     expect(readOidcFlowCookie(fakeRequestWithCookie('not-base64url-json'))).toBeUndefined();
-    const notAnObject = Buffer.from('"just a string"').toString('base64url');
-    expect(readOidcFlowCookie(fakeRequestWithCookie(notAnObject))).toBeUndefined();
-    const missingField = Buffer.from(JSON.stringify({ provider: 'google' })).toString('base64url');
-    expect(readOidcFlowCookie(fakeRequestWithCookie(missingField))).toBeUndefined();
+  });
+
+  it('rejects a self-consistent payload signed with the wrong signature — the round-8 login-CSRF case: a sibling subdomain (under a shared COOKIE_DOMAIN) can set this cookie to any value it likes, but can\'t produce a signature we accept without the secret', () => {
+    const forgedPayload = Buffer.from(
+      JSON.stringify({ provider: 'google', state: 'attacker-state', codeVerifier: 'attacker-verifier', exp: Date.now() + 60_000 }),
+    ).toString('base64url');
+    expect(readOidcFlowCookie(fakeRequestWithCookie(`${forgedPayload}.not-the-real-mac`))).toBeUndefined();
+  });
+
+  it('rejects a correctly-signed payload whose fields were edited afterwards', () => {
+    const { res, cookie } = fakeResponse();
+    setOidcFlowCookie(res, flow);
+    const [, value] = cookie.mock.calls[0] as [string, string];
+    const [encoded, mac] = value.split('.');
+    const tamperedPayload = Buffer.from(
+      JSON.stringify({ ...flow, state: 'attacker-state', exp: Date.now() + 60_000 }),
+    ).toString('base64url');
+    expect(
+      readOidcFlowCookie(fakeRequestWithCookie(encodeURIComponent(`${tamperedPayload}.${mac}`))),
+    ).toBeUndefined();
+    // sanity check: the untampered value this mac actually belongs to still works
+    expect(readOidcFlowCookie(fakeRequestWithCookie(encodeURIComponent(`${encoded}.${mac}`)))).toEqual(flow);
+  });
+
+  it('rejects a cookie signed with a different secret', () => {
+    vi.stubEnv('OIDC_LINKING_TOKEN_SECRET', 'a'.repeat(32));
+    const { res, cookie } = fakeResponse();
+    setOidcFlowCookie(res, flow);
+    const [, value] = cookie.mock.calls[0] as [string, string];
+    vi.stubEnv('OIDC_LINKING_TOKEN_SECRET', 'b'.repeat(32));
+    expect(readOidcFlowCookie(fakeRequestWithCookie(encodeURIComponent(value)))).toBeUndefined();
+    vi.unstubAllEnvs();
   });
 
   it('treats an expired cookie as absent, independent of the cookie Max-Age the browser enforces', () => {

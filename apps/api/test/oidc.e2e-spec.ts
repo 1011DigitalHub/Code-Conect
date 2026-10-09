@@ -21,7 +21,8 @@ async function createApp(): Promise<NestExpressApplication> {
 }
 
 function decodeFlowCookie(raw: string): { provider: string; state: string; codeVerifier: string; exp: number } {
-  return JSON.parse(Buffer.from(cookieValue(raw), 'base64url').toString('utf8'));
+  const [encoded] = cookieValue(raw).split('.');
+  return JSON.parse(Buffer.from(encoded ?? '', 'base64url').toString('utf8'));
 }
 
 describe('OIDC login (e2e)', () => {

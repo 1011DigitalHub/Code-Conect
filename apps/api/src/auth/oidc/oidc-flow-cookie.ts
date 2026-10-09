@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Request, Response } from 'express';
 import {
   getClearOidcFlowCookieOptions,
@@ -6,6 +7,7 @@ import {
   OIDC_FLOW_COOKIE,
 } from '../cookie.constants.js';
 import { readCookie } from '../cookies.js';
+import { getOidcLinkingTokenSecret } from './oidc.constants.js';
 import type { OidcProvider } from './oidc.constants.js';
 
 export interface OidcFlowState {
@@ -18,14 +20,23 @@ interface OidcFlowPayload extends OidcFlowState {
   exp: number; // epoch ms
 }
 
-// httpOnly already keeps page JS and a cross-site reader off this cookie;
-// see cookie.constants.ts for why that's enough and no signature is added on
-// top. Base64url here is just encoding (JSON wouldn't survive raw in a
-// cookie value), not a security boundary.
+// 'oidc-flow:' domain-separates this HMAC from oidc-linking-token.ts's own
+// use of the same secret, same convention as csrf.ts's 'csrf:' prefix.
+function sign(encodedPayload: string): string {
+  return createHmac('sha256', getOidcLinkingTokenSecret())
+    .update(`oidc-flow:${encodedPayload}`)
+    .digest('base64url');
+}
+
+// See cookie.constants.ts's doc comment on OIDC_FLOW_COOKIE for why this is
+// signed: without it, a sibling subdomain able to set this cookie (under a
+// shared parent COOKIE_DOMAIN) could inject a self-consistent
+// {state, codeVerifier} of its own and turn that into a login CSRF. Base64url
+// here is just encoding — the signature below is the actual boundary.
 export function setOidcFlowCookie(res: Response, flow: OidcFlowState): void {
   const payload: OidcFlowPayload = { ...flow, exp: Date.now() + OIDC_COOKIE_MAX_AGE_MS };
   const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url');
-  res.cookie(OIDC_FLOW_COOKIE, encoded, getOidcFlowCookieOptions());
+  res.cookie(OIDC_FLOW_COOKIE, `${encoded}.${sign(encoded)}`, getOidcFlowCookieOptions());
 }
 
 // The cookie's own Max-Age only controls whether the *browser* still sends
@@ -36,8 +47,17 @@ export function readOidcFlowCookie(req: Request): OidcFlowState | undefined {
   const raw = readCookie(req, OIDC_FLOW_COOKIE);
   if (!raw) return undefined;
 
+  const [encoded, mac] = raw.split('.');
+  if (!encoded || !mac) return undefined;
+
+  const expected = Buffer.from(sign(encoded));
+  const actual = Buffer.from(mac);
+  if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
+    return undefined;
+  }
+
   try {
-    const parsed: unknown = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
+    const parsed: unknown = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
     if (
       typeof parsed === 'object' &&
       parsed !== null &&
@@ -51,7 +71,7 @@ export function readOidcFlowCookie(req: Request): OidcFlowState | undefined {
       return { provider, state, codeVerifier };
     }
   } catch {
-    // Malformed or tampered — treated the same as no cookie at all.
+    // Malformed — treated the same as no cookie at all.
   }
   return undefined;
 }

@@ -4,10 +4,18 @@ export const ACCESS_TOKEN_COOKIE = 'access_token';
 export const CSRF_COOKIE = 'csrf_token';
 export const CSRF_HEADER = 'x-csrf-token';
 // Carries { state, codeVerifier, provider } (JSON) between GET
-// /auth/oidc/:provider/start and its callback. httpOnly like access_token:
-// nothing here needs to be read by page JS, and signing it on top would add
-// nothing — tampering with it either fails our own state check or fails the
-// provider's own PKCE check, it doesn't grant anything (see plan/LoginSocial.md).
+// /auth/oidc/:provider/start and its callback. httpOnly like access_token —
+// but unlike linking_token below, it was NOT signed until round 8 of
+// plan/LoginSocial.md's review: httpOnly only stops page JS and a cross-site
+// XHR from touching it, not a sibling subdomain's own Set-Cookie response
+// when COOKIE_DOMAIN is a shared parent domain. That sibling can still set
+// this exact cookie name/domain/path to a self-consistent
+// {provider, state, codeVerifier} it chose itself, then lure the victim into
+// a provider authorization URL whose state/code_challenge match it — a
+// login-CSRF the old "tampering grants nothing" reasoning didn't account
+// for, since the attacker isn't tampering with a legitimate payload, they're
+// supplying a whole valid-looking one of their own. See
+// auth/oidc/oidc-flow-cookie.ts, now signed the same way linking_token is.
 export const OIDC_FLOW_COOKIE = 'oidc_flow';
 // Carries the signed linking_token (see auth/oidc/oidc-linking-token.ts)
 // between the callback and POST /auth/oidc/link. Unlike oidc_flow, this one
