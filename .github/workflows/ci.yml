@@ -127,7 +127,7 @@ jobs:
             echo "| Web (lint · typecheck · unit · e2e-web · Lighthouse) | $WEB |"
             echo "| Docs lint | $F_DOCS |"
             echo ""
-            echo "_$REASON_"
+            echo "_${REASON}_"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ── Stage 1: static analysis ──────────────────────────────────────────────────
@@ -344,7 +344,7 @@ jobs:
         working-directory: apps/web
         run: echo "version=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/cache@6849a6489940f00c2f30c0fb92c6274307ccb58a # v4.2.0
+      - uses: actions/cache@6849a6489940f00c2f30c0fb92c6274307ccb58a # v4.1.2
         id: pw-cache
         with:
           path: ~/.cache/ms-playwright
