@@ -5,40 +5,40 @@ import { expectNoA11yViolations } from '../../../test/axe'
 
 describe('SocialButton', () => {
   it('shows the provider name as visible text', () => {
-    render(<SocialButton name="Github" icon="/icons/github.svg" />)
+    render(<SocialButton name="Google" icon="/icons/google.svg" />)
 
-    expect(screen.getByText('Github')).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Github' })).toBeInTheDocument()
+    expect(screen.getByText('Google')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Google' })).toBeInTheDocument()
   })
 
   it('renders the logo as a decorative image', () => {
-    const { container } = render(<SocialButton name="Github" icon="/icons/github.svg" />)
+    const { container } = render(<SocialButton name="Google" icon="/icons/google.svg" />)
     const logo = container.querySelector('img')
 
-    expect(logo).toHaveAttribute('src', '/icons/github.svg')
+    expect(logo).toHaveAttribute('src', '/icons/google.svg')
     expect(logo).toHaveAttribute('alt', '')
   })
 
   it('calls onClick when clicked', async () => {
     const onClick = vi.fn()
-    render(<SocialButton name="Github" icon="/icons/github.svg" onClick={onClick} />)
+    render(<SocialButton name="Google" icon="/icons/google.svg" onClick={onClick} />)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Github' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Google' }))
 
     expect(onClick).toHaveBeenCalledTimes(1)
   })
 
   it('has no WCAG 2.2 AA violations', async () => {
-    const { container } = render(<SocialButton name="Github" icon="/icons/github.svg" />)
+    const { container } = render(<SocialButton name="Google" icon="/icons/google.svg" />)
 
     await expectNoA11yViolations(container)
   })
 
   it('can be disabled, and then ignores a click', async () => {
     const onClick = vi.fn()
-    render(<SocialButton name="Github" icon="/icons/github.svg" onClick={onClick} disabled />)
+    render(<SocialButton name="Google" icon="/icons/google.svg" onClick={onClick} disabled />)
 
-    const button = screen.getByRole('button', { name: 'Github' })
+    const button = screen.getByRole('button', { name: 'Google' })
     expect(button).toBeDisabled()
     await userEvent.click(button)
     expect(onClick).not.toHaveBeenCalled()
@@ -46,7 +46,7 @@ describe('SocialButton', () => {
 
   it('has no WCAG 2.2 AA violations when disabled', async () => {
     const { container } = render(
-      <SocialButton name="Github" icon="/icons/github.svg" disabled />,
+      <SocialButton name="Google" icon="/icons/google.svg" disabled />,
     )
 
     await expectNoA11yViolations(container)

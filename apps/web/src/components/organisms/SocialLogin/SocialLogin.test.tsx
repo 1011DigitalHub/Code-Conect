@@ -4,8 +4,8 @@ import { SocialLogin } from './SocialLogin'
 import { expectNoA11yViolations } from '../../../test/axe'
 
 const providers = [
-  { id: 'github', name: 'Github', icon: '/icons/github.svg' },
-  { id: 'google', name: 'Gmail', icon: '/icons/google.svg' },
+  { id: 'google', name: 'Google', icon: '/icons/google.svg' },
+  { id: 'microsoft', name: 'Microsoft', icon: '/icons/microsoft.svg' },
 ]
 
 describe('SocialLogin', () => {
@@ -13,17 +13,17 @@ describe('SocialLogin', () => {
     render(<SocialLogin providers={providers} onSelect={vi.fn()} />)
 
     expect(screen.getByText('ou entre com outras contas')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Github' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Gmail' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Google' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Microsoft' })).toBeInTheDocument()
   })
 
   it('calls onSelect with the chosen provider id', async () => {
     const onSelect = vi.fn()
     render(<SocialLogin providers={providers} onSelect={onSelect} />)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Github' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Google' }))
 
-    expect(onSelect).toHaveBeenCalledWith('github')
+    expect(onSelect).toHaveBeenCalledWith('google')
   })
 
   it('has no WCAG 2.2 AA violations', async () => {
@@ -35,8 +35,8 @@ describe('SocialLogin', () => {
   it('disables every button and renders fine with no onSelect at all', async () => {
     const { container } = render(<SocialLogin providers={providers} disabled />)
 
-    expect(screen.getByRole('button', { name: 'Github' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Gmail' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Google' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Microsoft' })).toBeDisabled()
     await expectNoA11yViolations(container)
   })
 })
