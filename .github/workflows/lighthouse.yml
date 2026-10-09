@@ -1,27 +1,15 @@
 name: Lighthouse
 
+# Called by ci.yml's `lighthouse` job (stage 3, web scope only). Can also be
+# triggered directly via workflow_dispatch for a manual run. The concurrency
+# group that prevents duplicate runs is owned by ci.yml when called from there;
+# direct workflow_dispatch runs have no cancellation policy of their own.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'apps/web/**'
-      - 'apps/api/**'
-      - 'pnpm-lock.yaml'
-      - '.github/workflows/lighthouse.yml'
-  pull_request:
-    paths:
-      - 'apps/web/**'
-      - 'apps/api/**'
-      - 'pnpm-lock.yaml'
-      - '.github/workflows/lighthouse.yml'
+  workflow_call:
   workflow_dispatch:
 
 permissions:
   contents: read
-
-concurrency:
-  group: lighthouse-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   lighthouse:
