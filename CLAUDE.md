@@ -30,13 +30,13 @@ pnpm test:web:a11y     # web browser suites (Playwright, e2e/*.e2e.ts): accessib
 pnpm test:api          # api unit tests (*.spec.ts), no database needed
 pnpm test:api:e2e      # api e2e tests (test/*.e2e-spec.ts, separate vitest config); needs pnpm db:up
 pnpm start:api         # node dist/main (needs a build first)
-pnpm db:up             # start PostgreSQL in Docker (docker-compose.yml) and wait until healthy
+pnpm db:up             # start PostgreSQL in Docker (docker-compose.yml) and wait until healthy — also needs OIDC_LINKING_TOKEN_SECRET (and POSTGRES_PASSWORD/JWT_SECRET) in the root .env: compose interpolates every service's env vars upfront, even when only postgres is targeted
 pnpm db:down           # stop it; data stays in the code-connect-pgdata volume
 pnpm db:migrate        # prisma migrate dev: apply migrations / create one after editing schema.prisma
 pnpm db:studio         # Prisma Studio, to browse the data
 ```
 
-The hardened production images (`apps/api/Dockerfile`, `apps/web/Dockerfile`) aren't part of the day-to-day loop above — `pnpm dev` against `pnpm db:up`'s postgres is faster. Build and smoke-test them locally with `docker compose up --build api web` (needs `JWT_SECRET`/`CORS_ORIGINS`/`VITE_API_URL` in the root `.env`, see `.env.example`); `pnpm dev`/`pnpm db:up` stays the normal workflow.
+The hardened production images (`apps/api/Dockerfile`, `apps/web/Dockerfile`) aren't part of the day-to-day loop above — `pnpm dev` against `pnpm db:up`'s postgres is faster. Build and smoke-test them locally with `docker compose up --build api web` (needs `JWT_SECRET`/`CORS_ORIGINS`/`VITE_API_URL`/`OIDC_LINKING_TOKEN_SECRET` in the root `.env`, see `.env.example`); `pnpm dev`/`pnpm db:up` stays the normal workflow.
 
 To run any other app script: `pnpm api <script>` / `pnpm web <script>`. Examples:
 
