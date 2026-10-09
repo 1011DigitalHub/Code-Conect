@@ -1,0 +1,51 @@
+{
+  // Markdownlint configuration for this monorepo.
+  // Calibrated against the existing plan/ documents and ai-guidelines/ files.
+  // Enforces structure (headings, lists, code fences) while disabling rules
+  // that conflict with the project's writing style (long prose lines, tables,
+  // HTML fragments in documentation).
+  "config": {
+    // ── Disabled: writing-style rules ───────────────────────────────────────
+    // Long lines are normal in tables and blockquotes throughout plan/.
+    "MD013": false,
+
+    // plan/ files legitimately use the same heading text across sections
+    // (e.g., "## Passos", "## Contexto" appear in every plan). Only flag
+    // duplicates that are siblings under the same parent heading.
+    "MD024": { "siblings_only": true },
+
+    // HTML fragments appear in some guidelines (e.g., <br>, <details>).
+    "MD033": false,
+
+    // Not all documents start with an h1 — some begin with a blockquote
+    // (plan files include a status/approval notice at the very top).
+    "MD041": false,
+
+    // Blank lines inside blockquotes are used deliberately for readability.
+    "MD028": false,
+
+    // Bare URLs appear in blockquotes and inline references.
+    "MD034": false,
+
+    // ── Enabled: structural rules ────────────────────────────────────────────
+    // Consistent heading levels (no skipping from h1 to h3).
+    "MD001": true,
+
+    // No trailing whitespace.
+    "MD009": true,
+
+    // Fenced code blocks must declare a language.
+    "MD040": true,
+
+    // No trailing punctuation in headings (keeps headings clean).
+    "MD026": true
+  },
+  // Ignore generated files and assets that are not hand-written prose.
+  "ignores": [
+    "node_modules/**",
+    "**/node_modules/**",
+    "apps/api/src/generated/**",
+    "plan/assets/**",
+    "CHANGELOG.md"
+  ]
+}
