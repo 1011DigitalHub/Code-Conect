@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, UnauthorizedException } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { getClearLinkingTokenCookieOptions } from '../cookie.constants.js';
 import { verifyCsrfToken, sessionKey } from '../csrf.js';
 import { setOidcFlowCookie } from './oidc-flow-cookie.js';
 import { OidcController } from './oidc.controller.js';
@@ -171,10 +172,12 @@ describe('OidcController', () => {
       ];
       expect(verifyCsrfToken(csrfCall[1], sessionKey('token-123'))).toBe(true);
       expect(redirect).toHaveBeenCalledWith('http://localhost:5173/perfil');
-      // Round 14 of plan/LoginSocial.md's review: a leftover linking_token
-      // from an earlier, abandoned /vincular-conta attempt must not survive
-      // a successful sign-in through a different path.
-      expect(clearCookie).toHaveBeenCalledWith('linking_token', expect.any(Object));
+      // Round 14 of plan/LoginSocial.md's review (tightened in PR #28's own
+      // second round): a leftover linking_token from an earlier, abandoned
+      // /vincular-conta attempt must not survive a successful sign-in
+      // through a different path — and the options must match what it was
+      // actually set with, or the browser never drops the cookie.
+      expect(clearCookie).toHaveBeenCalledWith('linking_token', getClearLinkingTokenCookieOptions());
     });
 
     it('sets the linking_token cookie and redirects to /vincular-conta when linking is required', async () => {

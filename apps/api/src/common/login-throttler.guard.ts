@@ -23,13 +23,17 @@ import { OidcController } from '../auth/oidc/oidc.controller.js';
 // double-counts. Overriding generateKey here is the only way to merge two
 // routes' buckets without reintroducing that bug.
 //
-// Built from the actual classes/methods (round 14 of plan/LoginSocial.md's
-// review), not string literals: renaming AuthController.login or
-// OidcController.link would otherwise silently stop sharing the bucket,
-// with nothing — not even the unit test, which only exercises generateKey
-// in isolation — ever flagging it. `AuthController.prototype.login` fails
-// to compile the moment that method is renamed or removed, which a plain
-// 'AuthController.login' string never would.
+// The actual method references (PR #28's own second round of review), not
+// name strings: context.getHandler() returns the real handler function
+// (Function, same as ExecutionContext's own declared return type), so
+// comparing it by identity against AuthController.prototype.login itself
+// closes two gaps a name-string comparison left open — an unrelated class
+// that happened to also be named 'AuthController' with a 'login' method
+// would no longer collide, and a decorator that ever wrapped/replaced the
+// method (none here does — @Throttle/@Public only attach Reflector
+// metadata via SetMetadata, they don't replace the function) would no
+// longer silently stop matching. Renaming either method still fails to
+// compile here, same as the name-string version did.
 //
 // Reading these at module-evaluation time means a future import cycle
 // through this file (none exists today — neither controller imports
@@ -37,16 +41,23 @@ import { OidcController } from '../auth/oidc/oidc.controller.js';
 // AuthController/OidcController instead of failing more legibly elsewhere.
 // Worth knowing if a cycle ever gets introduced, not worth guarding against
 // with no cycle to guard against yet.
-const SHARED_PASSWORD_GUESS_HANDLERS: ReadonlySet<string> = new Set([
-  `${AuthController.name}.${AuthController.prototype.login.name}`,
-  `${OidcController.name}.${OidcController.prototype.link.name}`,
+//
+// oxlint's unbound-method warning fires on both prototype references below
+// (and on the matching ones in this file's own spec) — it's checking for
+// exactly the opposite usage of what's happening here: these are compared
+// for identity, never invoked, so there is no `this` to lose.
+const SHARED_PASSWORD_GUESS_HANDLERS: ReadonlySet<Function> = new Set([
+  AuthController.prototype.login,
+  OidcController.prototype.link,
 ]);
 
 @Injectable()
 export class LoginThrottlerGuard extends ThrottlerGuard {
   protected generateKey(context: ExecutionContext, suffix: string, name: string): string {
-    const handlerKey = `${context.getClass().name}.${context.getHandler().name}`;
-    const bucket = SHARED_PASSWORD_GUESS_HANDLERS.has(handlerKey) ? 'shared-password-guess' : handlerKey;
+    const handler = context.getHandler();
+    const bucket = SHARED_PASSWORD_GUESS_HANDLERS.has(handler)
+      ? 'shared-password-guess'
+      : `${context.getClass().name}.${handler.name}`;
     return `${bucket}-${name}-${suffix}`;
   }
 }
