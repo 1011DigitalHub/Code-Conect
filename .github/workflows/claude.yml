@@ -1,15 +1,13 @@
 name: Claude Code Review
 
+# Called by ci.yml's `claude-review` job, which gates on stage 1 passing and
+# on the PR touching api/ or web/ files. The caller also handles the draft
+# check and concurrency cancellation (see ci.yml for the full conditions).
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-    paths:
-      - 'apps/api/**'
-      - 'apps/web/**'
+  workflow_call:
 
 jobs:
   review:
-    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     permissions:
       contents: read

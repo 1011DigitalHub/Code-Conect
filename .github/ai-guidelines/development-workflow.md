@@ -18,22 +18,76 @@ Every execution plan for this project lives in `plan/` at the repo root, one Mar
 
 ## PR validation
 
-Four GitHub Actions workflows, with different path scopes — know which ones actually ran before trusting a green PR:
+Five files drive CI. `ci.yml` is the orchestrator; the others are either independent (`security.yml`) or reusable workflows called by `ci.yml` (`lighthouse.yml`, `claude.yml`).
 
-- `.github/workflows/ci.yml` — **no path filter, runs on every push/PR regardless of what changed.** Three jobs: `quality` (`pnpm lint`, `pnpm typecheck`, `pnpm test:api`, `pnpm test:web`, no database), `e2e-api` (a Postgres service container, then `pnpm test:api:e2e`), `e2e-web` (`pnpm test:web:a11y` against the production build). This is the deterministic gate; keep it passing before merging.
-- `.github/workflows/security.yml` — **also no path filter.** Secret scanning (TruffleHog, full git history), SAST (Semgrep OSS — oxlint has no security plugin of its own), and `pnpm audit --audit-level=high`.
-- `.github/workflows/lighthouse.yml` — scoped to `apps/web/**` (plus the lockfile and its own workflow file). Performance/a11y/SEO scores against the production build; see "Performance and SEO (Lighthouse)" in `frontend-ux-seo.md`.
-- `.github/workflows/claude.yml` — scoped to `apps/api/**` and `apps/web/**`. The Claude Code GitHub Action, reviewing the diff on PRs in that path scope and posting findings as a PR comment.
+### Scope detection and the condition matrix
 
-The only genuinely unscoped automation gaps are Lighthouse (never runs for an API-only change — correctly, it has nothing to measure) and Claude's review (never runs for a PR that only touches `plan/*.md`, `CLAUDE.md`, or root tooling config outside `apps/*`). For a PR like that, run the relevant commands by hand instead of assuming a review happened:
+On every PR, `ci.yml`'s first job (`changes`) classifies the changed files and sets the flags that all downstream jobs gate on:
+
+| Changed files | `api` | `web` | `docs` |
+|---|---|---|---|
+| `apps/api/**`, `prisma/**` | ✓ | — | — |
+| `apps/web/**` | — | ✓ | — |
+| `**/*.md` only | — | — | ✓ |
+| `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `.github/**` (core) | ✓ | ✓ | — |
+| Anything outside the scopes above (unclassified, fail-closed) | ✓ | ✓ | — |
+| Push to `main` or `workflow_dispatch` | ✓ | ✓ | — |
+
+The step summary of the `changes` job prints the computed scope so you can confirm what triggered.
+
+### Stage layout
+
+```text
+changes ─┬─ [Stage 1] static-api    (pnpm lint:api · pnpm typecheck:api)
+         ├─ [Stage 1] static-web    (pnpm lint:web · pnpm typecheck:web)
+         ├─ [Stage 1] docs-lint     (markdownlint on changed .md files)
+         │
+         ├─ claude-review           (reusable claude.yml)  needs: stage 1
+         │
+         ├─ [Stage 2] unit-api      (pnpm test:api)        needs: all of stage 1*
+         ├─ [Stage 2] component-web (pnpm test:web)        needs: all of stage 1*
+         │
+         ├─ [Stage 3] e2e-api       (Postgres + pnpm test:api:e2e)    needs: all of stage 2
+         ├─ [Stage 3] e2e-web       (Postgres + Playwright + pnpm test:web:a11y) needs: all of stage 2
+         ├─ [Stage 3] lighthouse    (reusable lighthouse.yml)          needs: all of stage 2
+         │
+         └─ ci-gate (if: always()) — the only required check
+```
+
+\* `docs-lint` is intentionally **not** in the `needs` of stages 2 and 3. A markdown style error must not delay test feedback on code changes. Only `ci-gate` waits for it.
+
+\* `unit-api` and `component-web` both depend on `static-api` **and** `static-web` for cross-app fail-fast: a lint or typecheck failure in either scope aborts both unit suites. A skipped job (`result: skipped`) does not trigger `failure()`, so scope isolation is preserved.
+
+### Fail-fast
+
+A failure in any job blocks all subsequent stages. Jobs skipped because they are out of scope are never counted as failures. The pipeline aborts at the stage boundary — jobs in the same stage run in parallel and cannot cancel each other.
+
+### Workflows
+
+- `.github/workflows/ci.yml` — orchestrator. Handles scope detection, all stage gating and calls `lighthouse.yml` and `claude.yml` as reusable workflows.
+- `.github/workflows/security.yml` — **no path filter, runs on every PR.** Secret scanning (TruffleHog, full git history), SAST (Semgrep OSS) and `pnpm audit --audit-level=high`. Unchanged by this pipeline.
+- `.github/workflows/lighthouse.yml` — reusable workflow (`workflow_call`). Triggered by `ci.yml`'s `lighthouse` job only when `web == true` (D1: API-only changes do not affect LCP metrics, so Lighthouse is skipped). Can also be run manually via `workflow_dispatch`.
+- `.github/workflows/claude.yml` — reusable workflow (`workflow_call`). Triggered by `ci.yml`'s `claude-review` job after stage 1 passes on non-draft PRs that touch `apps/api/**` or `apps/web/**`. Never runs for docs-only PRs.
+
+### The required check: `ci-gate`
+
+`ci-gate` is the **only** job configured as a required status check in GitHub's branch protection for `main`. It runs with `if: always()` and fails if any job had `result: failure` or `result: cancelled`. All other jobs can be skipped without blocking merge.
+
+> **Manual step:** replace any existing per-job required checks (e.g., `quality`, `e2e-web`) with the single `ci-gate` check in the repository's branch protection settings. See `plan/OtimizacaoPipelineCI.md`, point 1.
+
+### Docs-only PRs
+
+A PR that only touches `**/*.md` runs `docs-lint` (markdownlint on changed files) and nothing else. The `ci-gate` still turns green once docs-lint passes. If you need to validate code manually for an unusual change, run the relevant commands locally:
 
 ```bash
-pnpm lint          # oxlint in every app
-pnpm typecheck     # tsc -b / tsc --noEmit in every app
-pnpm test:web      # web component tests
-pnpm test:api      # api unit tests
-pnpm test:web:a11y # only if the change could affect accessibility/SEO (needs the browser suite)
-pnpm test:api:e2e  # only if the change could affect API behavior backed by the database (needs pnpm db:up)
+pnpm lint:api      # oxlint for the API
+pnpm typecheck:api
+pnpm test:api
+pnpm test:api:e2e  # needs pnpm db:up
+pnpm lint:web
+pnpm typecheck:web
+pnpm test:web
+pnpm test:web:a11y # needs the browser suite; pnpm db:up for the feed
 ```
 
 ## Git: Conventional Commits
