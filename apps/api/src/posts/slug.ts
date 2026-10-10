@@ -3,16 +3,20 @@ import { matches } from 'class-validator';
 export const SLUG_MAX_LENGTH = 160;
 
 // What slugify()/uniqueSlug() below already guarantee by construction: no
-// leading/trailing/double hyphen, nothing outside [a-z0-9-]. Asserted again at
-// the call site (posts.service.ts) as a regression guard — if a future change
-// to either function ever breaks that invariant, this fails the create instead
-// of persisting a slug that could later reach TextLink's own guard as an
-// unexpected throw.
+// leading/trailing/double hyphen, nothing outside [a-z0-9-], within the
+// column width. Asserted again at the call site (posts.service.ts) as a
+// regression guard — if a future change to either function ever breaks that
+// invariant, this fails the create instead of persisting a slug that could
+// later reach TextLink's own guard as an unexpected throw.
 export const SLUG_FORMAT = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export function assertSlugFormat(slug: string): void {
-  if (!matches(slug, SLUG_FORMAT)) {
-    throw new Error(`Generated slug "${slug}" does not match the safe slug format`);
+  if (slug.length > SLUG_MAX_LENGTH || !matches(slug, SLUG_FORMAT)) {
+    // JSON.stringify, not raw interpolation: slug reached this point because
+    // the invariant it's supposed to satisfy already broke, so it cannot be
+    // trusted not to contain control characters — logging it unescaped would
+    // let it forge extra lines in whatever reads this log.
+    throw new Error(`Generated slug ${JSON.stringify(slug)} does not match the safe slug format`);
   }
 }
 

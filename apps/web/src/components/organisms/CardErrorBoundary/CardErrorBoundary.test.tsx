@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import { expectNoA11yViolations } from '../../../test/axe'
 import { CardErrorBoundary } from './CardErrorBoundary'
 
 function Explodes(): never {
@@ -49,5 +50,15 @@ describe('CardErrorBoundary', () => {
       expect.any(Error),
       expect.any(String),
     )
+  })
+
+  it('has no WCAG 2.2 AA violations', async () => {
+    const { container } = render(
+      <CardErrorBoundary>
+        <p>Conteúdo normal</p>
+      </CardErrorBoundary>,
+    )
+
+    await expectNoA11yViolations(container)
   })
 })

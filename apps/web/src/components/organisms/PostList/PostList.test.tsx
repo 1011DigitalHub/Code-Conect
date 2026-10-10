@@ -121,18 +121,23 @@ describe('PostList', () => {
   it('isolates a single bad card instead of losing the whole feed', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    const broken = posts.map((p, index) =>
-      index === 2 ? { ...p, author: null as unknown as PostCardPost['author'] } : p,
-    )
-    renderWithRouter(
-      <PostList posts={broken} authenticated={false} onToggleLike={vi.fn()} now={now} />,
-    )
+    // try/finally, not a trailing mockRestore(): an assertion failing below
+    // would otherwise skip the restore and leave the spy swallowing
+    // console.error for every test that runs after this one in the file.
+    try {
+      const broken = posts.map((p, index) =>
+        index === 2 ? { ...p, author: null as unknown as PostCardPost['author'] } : p,
+      )
+      renderWithRouter(
+        <PostList posts={broken} authenticated={false} onToggleLike={vi.fn()} now={now} />,
+      )
 
-    expect(screen.getAllByRole('listitem')).toHaveLength(posts.length - 1)
-    expect(screen.queryByText('Post número 3')).not.toBeInTheDocument()
-    expect(screen.getByText('Post número 1')).toBeInTheDocument()
-    expect(screen.getByText('Post número 5')).toBeInTheDocument()
-
-    vi.mocked(console.error).mockRestore()
+      expect(screen.getAllByRole('listitem')).toHaveLength(posts.length - 1)
+      expect(screen.queryByText('Post número 3')).not.toBeInTheDocument()
+      expect(screen.getByText('Post número 1')).toBeInTheDocument()
+      expect(screen.getByText('Post número 5')).toBeInTheDocument()
+    } finally {
+      vi.mocked(console.error).mockRestore()
+    }
   })
 })

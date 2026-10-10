@@ -73,7 +73,21 @@ describe('assertSlugFormat', () => {
     ['termina-com-hifen-', 'a trailing hyphen'],
     ['tem_underscore', 'an underscore'],
     ['', 'an empty string'],
+    ['a'.repeat(SLUG_MAX_LENGTH + 1), 'longer than the column width'],
   ])('rejects %j (%s)', (slug) => {
     expect(() => assertSlugFormat(slug)).toThrow(/does not match the safe slug format/);
+  });
+
+  it('never lets the rejected slug forge extra log lines', () => {
+    let message = '';
+    try {
+      assertSlugFormat('bad\nslug\rwith "quotes"');
+    } catch (error) {
+      message = (error as Error).message;
+    }
+
+    expect(message).not.toContain('\n');
+    expect(message).not.toContain('\r');
+    expect(message).toContain('bad\\nslug\\rwith \\"quotes\\"');
   });
 });
