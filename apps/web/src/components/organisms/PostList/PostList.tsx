@@ -1,3 +1,4 @@
+import { CardErrorBoundary } from '../CardErrorBoundary'
 import { PostCard, type PostCardPost } from '../PostCard'
 
 export type PostListProps = {
@@ -27,17 +28,19 @@ export function PostList({
       className="grid gap-6 md:grid-cols-2 xl:grid-cols-3"
     >
       {posts.map((post, index) => (
-        <li key={post.slug}>
-          <PostCard
-            post={post}
-            authenticated={authenticated}
-            priority={index === 0}
-            eager={index > 0 && index < EAGER_CARDS}
-            pending={pendingSlug === post.slug}
-            onToggleLike={onToggleLike}
-            now={now}
-          />
-        </li>
+        <CardErrorBoundary key={post.slug}>
+          <li>
+            <PostCard
+              post={post}
+              authenticated={authenticated}
+              priority={index === 0}
+              eager={index > 0 && index < EAGER_CARDS}
+              pending={pendingSlug === post.slug}
+              onToggleLike={onToggleLike}
+              now={now}
+            />
+          </li>
+        </CardErrorBoundary>
       ))}
     </ul>
   )

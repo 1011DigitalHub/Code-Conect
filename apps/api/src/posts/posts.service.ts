@@ -11,7 +11,7 @@ import {
   PostRecord,
   PostSummaryEntity,
 } from './entities/post.entity.js';
-import { uniqueSlug } from './slug.js';
+import { assertSlugFormat, uniqueSlug } from './slug.js';
 
 const UNIQUE_VIOLATION = 'P2002';
 
@@ -150,6 +150,7 @@ export class PostsService {
       });
       return existing !== null;
     });
+    assertSlugFormat(slug);
 
     try {
       const post = await this.prisma.post.create({
