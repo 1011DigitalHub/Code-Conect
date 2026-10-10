@@ -30,6 +30,13 @@ import { OidcController } from '../auth/oidc/oidc.controller.js';
 // in isolation — ever flagging it. `AuthController.prototype.login` fails
 // to compile the moment that method is renamed or removed, which a plain
 // 'AuthController.login' string never would.
+//
+// Reading these at module-evaluation time means a future import cycle
+// through this file (none exists today — neither controller imports
+// anything that leads back here) would risk a TDZ ReferenceError on
+// AuthController/OidcController instead of failing more legibly elsewhere.
+// Worth knowing if a cycle ever gets introduced, not worth guarding against
+// with no cycle to guard against yet.
 const SHARED_PASSWORD_GUESS_HANDLERS: ReadonlySet<string> = new Set([
   `${AuthController.name}.${AuthController.prototype.login.name}`,
   `${OidcController.name}.${OidcController.prototype.link.name}`,
