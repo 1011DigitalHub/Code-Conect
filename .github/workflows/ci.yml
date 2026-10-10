@@ -46,7 +46,7 @@ jobs:
       full:       ${{ steps.scope.outputs.full }}
       docs_files: ${{ steps.filter.outputs.docs_files }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Depth 2 is enough for paths-filter to diff HEAD against its parent
           # on push events; PR events use the base ref supplied by the GH API.
@@ -140,7 +140,7 @@ jobs:
     if: ${{ needs.changes.outputs.api == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/setup-workspace
         with:
@@ -156,7 +156,7 @@ jobs:
     if: ${{ needs.changes.outputs.web == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/setup-workspace
         with:
@@ -215,7 +215,7 @@ jobs:
     env:
       NODE_ENV: test
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/setup-workspace
         with:
@@ -229,7 +229,7 @@ jobs:
     if: ${{ !failure() && !cancelled() && needs.changes.outputs.web == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/setup-workspace
         with:
@@ -266,7 +266,7 @@ jobs:
       # (see src/env.ts) and nothing about this value is sensitive.
       JWT_SECRET: ci-only-jwt-secret-not-a-real-secret-32-chars-minimum
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/setup-workspace
         with:
@@ -329,7 +329,7 @@ jobs:
       # CI-only, never a real secret: src/env.ts requires 32+ characters.
       JWT_SECRET: ci-only-jwt-secret-not-a-real-secret-32-chars-minimum
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/setup-workspace
         with:
