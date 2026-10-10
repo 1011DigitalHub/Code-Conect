@@ -182,3 +182,14 @@ resto do módulo já usa para validar campos, não uma regex "nua" isolada.
 É uma troca de estilo sem efeito em corretude, segurança ou comportamento —
 ambas as formas são válidas; `matches()` foi mantido por consistência com o
 restante do arquivo `create-post.dto.ts`.
+
+**Rodada 4** (disparada pelo push só de docs da rodada 3) — **aprovado**.
+Uma observação não bloqueante, registrada e **não aplicada agora**: se todos
+os cards de uma página do feed falharem, a `<ul>` fica vazia sem nenhuma
+mensagem, diferente do estado "nenhum post encontrado" que o `FeedPage` já
+trata para busca sem resultado. Não aplicado porque exigiria cada
+`CardErrorBoundary` reportar sua falha ao `PostList`/`FeedPage` — mais
+invasivo que o fallback `null` atual — e o risco é baixo (precisa de várias
+falhas simultâneas, não uma). Registrado como
+[issue #30](https://github.com/1011DigitalHub/Code-Conect/issues/30) para
+decidir depois.
