@@ -172,11 +172,10 @@ describe('OidcController', () => {
       ];
       expect(verifyCsrfToken(csrfCall[1], sessionKey('token-123'))).toBe(true);
       expect(redirect).toHaveBeenCalledWith('http://localhost:5173/perfil');
-      // Round 14 of plan/LoginSocial.md's review (tightened in PR #28's own
-      // second round): a leftover linking_token from an earlier, abandoned
-      // /vincular-conta attempt must not survive a successful sign-in
-      // through a different path — and the options must match what it was
-      // actually set with, or the browser never drops the cookie.
+      // A leftover linking_token from an earlier, abandoned /vincular-conta
+      // attempt must not survive a successful sign-in through a different
+      // path — and the options must match what it was actually set with,
+      // or the browser never drops the cookie.
       expect(clearCookie).toHaveBeenCalledWith('linking_token', getClearLinkingTokenCookieOptions());
     });
 
