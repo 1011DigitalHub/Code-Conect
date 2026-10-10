@@ -23,24 +23,17 @@ import { OidcController } from '../auth/oidc/oidc.controller.js';
 // double-counts. Overriding generateKey here is the only way to merge two
 // routes' buckets without reintroducing that bug.
 //
-// The actual method references (PR #28's own second round of review), not
-// name strings: context.getHandler() returns the real handler function
-// (Function, same as ExecutionContext's own declared return type), so
-// comparing it by identity against AuthController.prototype.login itself
-// closes two gaps a name-string comparison left open — an unrelated class
-// that happened to also be named 'AuthController' with a 'login' method
-// would no longer collide, and a decorator that ever wrapped/replaced the
-// method (none here does — @Throttle/@Public only attach Reflector
-// metadata via SetMetadata, they don't replace the function) would no
-// longer silently stop matching. Renaming either method still fails to
-// compile here, same as the name-string version did.
+// Compared by identity against the actual method references, not name
+// strings (see plan/LoginSocial.md for the review history behind this
+// choice): context.getHandler() returns the real handler function
+// (Function, same as ExecutionContext's own declared return type), and
+// neither @Throttle nor @Public replaces it — they only attach Reflector
+// metadata via SetMetadata — so the comparison holds at runtime.
 //
 // Reading these at module-evaluation time means a future import cycle
-// through this file (none exists today — neither controller imports
-// anything that leads back here) would risk a TDZ ReferenceError on
-// AuthController/OidcController instead of failing more legibly elsewhere.
-// Worth knowing if a cycle ever gets introduced, not worth guarding against
-// with no cycle to guard against yet.
+// through this file (none exists today) would risk a TDZ ReferenceError on
+// AuthController/OidcController. Worth knowing if a cycle ever gets
+// introduced, not worth guarding against with none to guard against yet.
 //
 // unbound-method is checking for exactly the opposite usage of what's
 // happening here: these are compared for identity, never invoked, so there
