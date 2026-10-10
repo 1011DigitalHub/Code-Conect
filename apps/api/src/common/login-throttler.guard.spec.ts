@@ -6,7 +6,11 @@ import { LoginThrottlerGuard } from './login-throttler.guard.js';
 // handlerRef is the actual method (e.g. AuthController.prototype.login), the
 // same value a real ExecutionContext.getHandler() would return — exercising
 // the guard's real identity comparison, not a hand-rolled string that would
-// just mirror whatever the guard happens to compute internally.
+// just mirror whatever the guard happens to compute internally. Every
+// prototype-method reference below trips oxlint's unbound-method warning,
+// which assumes the reference will be called — none of these ever are, only
+// compared for identity, so there is no `this` to lose.
+/* oxlint-disable typescript/unbound-method */
 function contextFor(classRef: { name: string }, handlerRef: Function): ExecutionContext {
   return {
     getClass: () => classRef,
@@ -85,3 +89,4 @@ describe('LoginThrottlerGuard', () => {
     expect(impostorKey).not.toBe(realKey);
   });
 });
+/* oxlint-enable typescript/unbound-method */

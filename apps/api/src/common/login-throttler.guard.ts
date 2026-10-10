@@ -42,14 +42,15 @@ import { OidcController } from '../auth/oidc/oidc.controller.js';
 // Worth knowing if a cycle ever gets introduced, not worth guarding against
 // with no cycle to guard against yet.
 //
-// oxlint's unbound-method warning fires on both prototype references below
-// (and on the matching ones in this file's own spec) — it's checking for
-// exactly the opposite usage of what's happening here: these are compared
-// for identity, never invoked, so there is no `this` to lose.
+// unbound-method is checking for exactly the opposite usage of what's
+// happening here: these are compared for identity, never invoked, so there
+// is no `this` to lose.
+/* oxlint-disable typescript/unbound-method */
 const SHARED_PASSWORD_GUESS_HANDLERS: ReadonlySet<Function> = new Set([
   AuthController.prototype.login,
   OidcController.prototype.link,
 ]);
+/* oxlint-enable typescript/unbound-method */
 
 @Injectable()
 export class LoginThrottlerGuard extends ThrottlerGuard {
