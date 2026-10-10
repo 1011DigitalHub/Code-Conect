@@ -154,6 +154,31 @@ confirmar que passa.
   `PostList`).
 - PR contra a `main` fechando a issue #18.
 
-## Rodadas de revisão
+## Rodadas de revisão (PR #20)
 
-_(preenchido depois que a PR for aberta e revisada)_
+**Rodada 1** — achados confirmados no código e corrigidos:
+- `PostList.test.tsx`: `mockRestore()` do spy de `console.error` ficava no fim
+  do teste; se um `expect` falhasse antes, o spy vazava para os testes
+  seguintes. Corrigido com `try/finally`.
+- `CardErrorBoundary.test.tsx`: faltava o caso `has no WCAG 2.2 AA violations`
+  que `frontend-ux-seo.md` exige em todo arquivo de teste de componente.
+- `slug.ts`: a mensagem de erro interpolava o slug cru (risco de log
+  injection, já que o slug só chega ali depois que a invariante que deveria
+  garantir já quebrou) e `assertSlugFormat` não checava `SLUG_MAX_LENGTH`.
+  Corrigido com `JSON.stringify` na mensagem e a checagem de comprimento.
+
+**Rodada 2** — achado confirmado e corrigido:
+- `CardErrorBoundary.tsx`: o comentário de cabeçalho ainda apontava o
+  `TextLink`/slug como gatilho provável, contradizendo a descoberta já
+  registrada neste plano. Corrigido para apontar um campo malformado
+  qualquer (ex.: `author` ausente) como o gatilho realista.
+
+**Rodada 3** — LGTM, nada bloqueante. Um nit opcional, verificado e **não
+aplicado**: usar `SLUG_FORMAT.test(slug)` direto em vez de `matches()` do
+`class-validator`, para não acoplar um util puro de domínio à lib de
+validação de DTOs. Não aplicado porque a escolha de `matches()` foi
+deliberada (ver seção 1): manter a validação do slug na mesma base que o
+resto do módulo já usa para validar campos, não uma regex "nua" isolada.
+É uma troca de estilo sem efeito em corretude, segurança ou comportamento —
+ambas as formas são válidas; `matches()` foi mantido por consistência com o
+restante do arquivo `create-post.dto.ts`.
