@@ -1,27 +1,15 @@
 name: Lighthouse
 
+# Called by ci.yml's `lighthouse` job (stage 3, web scope only). Can also be
+# triggered directly via workflow_dispatch for a manual run. The concurrency
+# group that prevents duplicate runs is owned by ci.yml when called from there;
+# direct workflow_dispatch runs have no cancellation policy of their own.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'apps/web/**'
-      - 'apps/api/**'
-      - 'pnpm-lock.yaml'
-      - '.github/workflows/lighthouse.yml'
-  pull_request:
-    paths:
-      - 'apps/web/**'
-      - 'apps/api/**'
-      - 'pnpm-lock.yaml'
-      - '.github/workflows/lighthouse.yml'
+  workflow_call:
   workflow_dispatch:
 
 permissions:
   contents: read
-
-concurrency:
-  group: lighthouse-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   lighthouse:
@@ -96,7 +84,7 @@ jobs:
           JWT_SECRET: ci-only-jwt-secret-not-a-real-secret-32-chars-minimum
         run: |
           nohup node dist/main.js > api.log 2>&1 &
-          for i in $(seq 1 30); do
+          for _attempt in $(seq 1 30); do
             curl -sf http://localhost:3000 > /dev/null && exit 0
             sleep 2
           done

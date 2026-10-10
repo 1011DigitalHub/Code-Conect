@@ -1,0 +1,127 @@
+name: Validar Wiki
+
+# Governança "Documentação como Código": todo PR para as branches principais que
+# mexe em código precisa atualizar /docs/wiki no mesmo PR — ou declarar
+# explicitamente a exceção (label `skip-wiki` ou a string `[x] skip-wiki` no corpo).
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled, edited]
+    branches: [main, master, develop]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: validate-wiki-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  wiki-sync:
+    runs-on: ubuntu-latest
+    if: ${{ !github.event.pull_request.draft }}
+    steps:
+      # fetch-depth: 0 — o diff compara contra origin/<base>, que um checkout
+      # raso não tem (mesmo padrão de claude.yml / security.yml).
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Detectar mudanças de código e de Wiki
+        id: detect
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$BASE_REF"
+
+          CHANGED="$(git diff --name-only "origin/${BASE_REF}...HEAD")"
+          echo "Arquivos alterados no PR:"
+          echo "$CHANGED"
+
+          # Código = pastas de código conhecidas (deste monorepo e as genéricas)
+          # OU extensões de código comuns. Exclui toda a documentação e o cliente
+          # Prisma gerado automaticamente (não escrito à mão).
+          CODE_RE='(^(apps|src|server|backend|frontend)/|\.(ts|tsx|js|jsx|mjs|cjs|py|java|cs|go|rb|php|rs)$)'
+          EXCLUDE_RE='(^docs/|^apps/api/src/generated/)'
+          WIKI_RE='^docs/wiki/'
+
+          code_changed=false
+          wiki_changed=false
+          if printf '%s\n' "$CHANGED" | grep -E "$CODE_RE" | grep -vE "$EXCLUDE_RE" | grep -q .; then
+            code_changed=true
+          fi
+          if printf '%s\n' "$CHANGED" | grep -qE "$WIKI_RE"; then
+            wiki_changed=true
+          fi
+
+          echo "code_changed=$code_changed" >> "$GITHUB_OUTPUT"
+          echo "wiki_changed=$wiki_changed" >> "$GITHUB_OUTPUT"
+          echo "➡️  Código alterado: $code_changed | Wiki alterada: $wiki_changed"
+
+      - name: Cobrar atualização da Wiki (comenta e falha)
+        if: steps.detect.outputs.code_changed == 'true' && steps.detect.outputs.wiki_changed == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+
+          # Escape hatch 1: label `skip-wiki`.
+          if printf ',%s,' "$LABELS" | grep -q ',skip-wiki,'; then
+            echo "::warning::Escape hatch acionado via label 'skip-wiki' — merge permitido sem atualização da Wiki."
+            exit 0
+          fi
+          # Escape hatch 2: string literal "[x] skip-wiki" no corpo do PR
+          # (case-insensitive e tolerante a espaços: "[x] skip-wiki" ou "[X]skip-wiki").
+          if printf '%s' "$PR_BODY" | grep -qiE '\[x\][[:space:]]*skip-wiki'; then
+            echo "::warning::Escape hatch acionado via checkbox '[x] skip-wiki' no corpo do PR — merge permitido sem atualização da Wiki."
+            exit 0
+          fi
+
+          MSG="⚠️ Detectamos alterações no código-fonte, mas nenhuma atualização na Wikipédia do projeto (/docs/wiki). Por favor, certifique-se de documentar os conceitos alterados antes de prosseguir com o Merge."
+          MARKER='<!-- validate-wiki-bot -->'
+          FULL="${MARKER}
+${MSG}
+
+**Você tem duas alternativas para liberar este PR:**
+
+1. 📚 **Documentar** — atualize ou crie a página correspondente em \`/docs/wiki\` (e ajuste o Índice/Home), depois faça push. O check reavalia automaticamente e fica verde ✅.
+2. 🏷️ **Escape hatch** — se a mudança for trivial e comprovadamente **não** exige documentação (ex.: formatação, bump trivial, typo), acione uma das opções abaixo e justifique na descrição:
+   - marque o checkbox **\`[x] skip-wiki\`** no corpo do PR, **ou**
+   - aplique a label **\`skip-wiki\`** ao PR.
+
+_Documentação como Código: a teoria na Wiki caminha junto com o código._"
+
+          # Comentário "sticky": reaproveita o mesmo comentário (marcador HTML) em
+          # vez de poluir a timeline a cada push.
+          EXISTING="$(gh api "repos/${GH_REPO}/issues/${PR}/comments" \
+            --jq "map(select(.body | startswith(\"${MARKER}\")))[0].id // empty")"
+          if [ -n "$EXISTING" ]; then
+            gh api -X PATCH "repos/${GH_REPO}/issues/comments/${EXISTING}" -f body="$FULL" >/dev/null
+          else
+            gh api -X POST "repos/${GH_REPO}/issues/${PR}/comments" -f body="$FULL" >/dev/null
+          fi
+
+          echo "::error::${MSG}"
+          exit 1
+
+      - name: Resolver alerta quando a Wiki foi atualizada
+        if: steps.detect.outputs.code_changed == 'true' && steps.detect.outputs.wiki_changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          MARKER='<!-- validate-wiki-bot -->'
+          EXISTING="$(gh api "repos/${GH_REPO}/issues/${PR}/comments" \
+            --jq "map(select(.body | startswith(\"${MARKER}\")))[0].id // empty")"
+          if [ -n "$EXISTING" ]; then
+            gh api -X PATCH "repos/${GH_REPO}/issues/comments/${EXISTING}" \
+              -f body="${MARKER}
+✅ Wiki atualizada neste PR. Obrigado por manter a documentação em sincronia com o código!" >/dev/null
+          fi

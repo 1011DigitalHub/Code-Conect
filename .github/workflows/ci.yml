@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+    # ready_for_review re-triggers when a draft is promoted, preserving the
+    # claude-review behaviour the previous standalone claude.yml had.
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 permissions:
@@ -18,36 +21,229 @@ env:
   NODE_VERSION: 22
 
 jobs:
-  # Lint, typecheck and the unit suites of both apps — no database needed,
-  # so this is the fast, always-on gate.
-  quality:
+  # ── Scope detection ───────────────────────────────────────────────────────────
+  # Classifies changed files into known scopes (api, web, core, docs) and
+  # computes the effective flags used by every downstream job. All rules:
+  #
+  #   D2 — non-PR events (push to main, workflow_dispatch) always run full suite.
+  #   D3 — core files (package.json, lockfile, workflow files) trigger full suite.
+  #   D3 — unclassified files (nothing matched) trigger full suite (fail-closed).
+  #
+  # docs-lint always gates on `docs == 'true'` and is never in the needs of
+  # stages 2 or 3 — a markdown style error must not delay test feedback.
+  changes:
+    runs-on: ubuntu-latest
+    # dorny/paths-filter calls the GitHub API (listFiles) on PR events and
+    # needs pull-requests: read to do so. The workflow-level `contents: read`
+    # is too narrow; job-level permissions override it for this job only.
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      api:        ${{ steps.scope.outputs.api }}
+      web:        ${{ steps.scope.outputs.web }}
+      docs:       ${{ steps.scope.outputs.docs }}
+      full:       ${{ steps.scope.outputs.full }}
+      docs_files: ${{ steps.filter.outputs.docs_files }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # Depth 2 is enough for paths-filter to diff HEAD against its parent
+          # on push events; PR events use the base ref supplied by the GH API.
+          fetch-depth: 2
+
+      # Classify changed files. `list-files: shell` emits a shell-safe
+      # list of changed docs paths for the docs-lint job.
+      # Note: dorny/paths-filter v3 does not apply negative (!) patterns to
+      # the boolean result when list-files is set — using a catch-all
+      # `unclassified: ['**', '!...']` filter always returns true because `**`
+      # matches every file before negations are considered. Unclassified
+      # detection is therefore handled in the shell script below instead.
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3
+        id: filter
+        with:
+          list-files: shell
+          filters: |
+            api:
+              - 'apps/api/**'
+              - 'prisma/**'
+            web:
+              - 'apps/web/**'
+            core:
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - '.github/workflows/**'
+              - '.github/actions/**'
+            docs:
+              - '**/*.md'
+
+      - name: Compute scope and write step summary
+        id: scope
+        env:
+          F_API:  ${{ steps.filter.outputs.api }}
+          F_WEB:  ${{ steps.filter.outputs.web }}
+          F_CORE: ${{ steps.filter.outputs.core }}
+          F_DOCS: ${{ steps.filter.outputs.docs }}
+          EVENT:  ${{ github.event_name }}
+        run: |
+          # D2 + D3: full suite for non-PR events, core file changes, or
+          # anything that fell outside every known scope (unclassified files).
+          # Unclassified = no known scope matched on a PR event (fail-closed).
+          UNCLASSIFIED=false
+          if [[ "$F_API" == "false" && "$F_WEB" == "false" && "$F_DOCS" == "false" && "$F_CORE" == "false" && "$EVENT" == "pull_request" ]]; then
+            UNCLASSIFIED=true
+          fi
+
+          if [[ "$EVENT" != "pull_request" || "$F_CORE" == "true" || "$UNCLASSIFIED" == "true" ]]; then
+            FULL=true
+          else
+            FULL=false
+          fi
+
+          [[ "$F_API" == "true" || "$FULL" == "true" ]] && API=true  || API=false
+          [[ "$F_WEB" == "true" || "$FULL" == "true" ]] && WEB=true  || WEB=false
+
+          {
+            echo "full=$FULL"
+            echo "api=$API"
+            echo "web=$WEB"
+            echo "docs=$F_DOCS"
+          } >> "$GITHUB_OUTPUT"
+
+          # Step summary: one-line table so the decision is visible in the UI.
+          if   [[ "$FULL" == "true" && "$EVENT" != "pull_request" ]]; then
+            REASON="non-PR event — full suite"
+          elif [[ "$FULL" == "true" && "$F_CORE" == "true" ]]; then
+            REASON="core files changed — full suite"
+          elif [[ "$FULL" == "true" ]]; then
+            REASON="unclassified files (no known scope matched) — full suite (fail-closed)"
+          else
+            REASON="path filter"
+          fi
+
+          {
+            echo "## CI scope"
+            echo ""
+            echo "| Scope | Will run |"
+            echo "|-------|----------|"
+            echo "| API (lint · typecheck · unit · e2e-api) | $API |"
+            echo "| Web (lint · typecheck · unit · e2e-web · Lighthouse) | $WEB |"
+            echo "| Docs lint | $F_DOCS |"
+            echo ""
+            echo "_${REASON}_"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Stage 1: static analysis ──────────────────────────────────────────────────
+  static-api:
+    needs: [changes]
+    if: ${{ needs.changes.outputs.api == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: ./.github/actions/setup-workspace
         with:
-          version: ${{ env.PNPM_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
 
+      - run: pnpm lint:api
+
+      - run: pnpm typecheck:api
+
+  static-web:
+    needs: [changes]
+    if: ${{ needs.changes.outputs.web == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: ./.github/actions/setup-workspace
+        with:
+          pnpm-version: ${{ env.PNPM_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+
+      - run: pnpm lint:web
+
+      - run: pnpm typecheck:web
+
+  # Intentionally NOT included in the `needs:` of stages 2 or 3. A markdown
+  # style error must not delay test feedback on code changes. Only `ci-gate`
+  # waits for this job (see plan/OtimizacaoPipelineCI.md, approved point 2).
+  docs-lint:
+    needs: [changes]
+    if: ${{ needs.changes.outputs.docs == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
 
-      - run: pnpm install --frozen-lockfile
+      - name: Lint changed markdown files
+        # docs_files is a shell-quoted list from dorny/paths-filter
+        # (list-files: shell). No pnpm install needed: npx fetches the tool.
+        run: npx markdownlint-cli2@0.17.2 ${{ needs.changes.outputs.docs_files }}
 
-      - run: pnpm lint
+  # ── Claude code review ─────────────────────────────────────────────────────────
+  # Runs only after stage 1 succeeds so tokens are never spent on code that
+  # fails lint or typecheck. Inherits the ci.yml concurrency group (a new push
+  # to the PR cancels an in-flight review — accepted trade-off, approved
+  # point 3 in plan/OtimizacaoPipelineCI.md).
+  claude-review:
+    needs: [changes, static-api, static-web]
+    if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft && !failure() && !cancelled() && (needs.changes.outputs.api == 'true' || needs.changes.outputs.web == 'true') }}
+    # The called claude.yml defines pull-requests: write and id-token: write at
+    # the job level. GitHub validates that the calling job grants at least those
+    # permissions before starting any jobs (startup_failure otherwise). The
+    # workflow-level `permissions: contents: read` is too narrow for this job.
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    uses: ./.github/workflows/claude.yml
+    secrets: inherit
 
-      - run: pnpm typecheck
+  # ── Stage 2: unit and component tests ─────────────────────────────────────────
+  # Both jobs depend on BOTH static-api AND static-web so that a failure in
+  # either scope aborts the other (cross-app fail-fast). A skipped job has
+  # result "skipped", not "failure", so failure() stays false for out-of-scope
+  # runs and scope isolation is preserved.
+  unit-api:
+    needs: [changes, static-api, static-web]
+    if: ${{ !failure() && !cancelled() && needs.changes.outputs.api == 'true' }}
+    runs-on: ubuntu-latest
+    env:
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: ./.github/actions/setup-workspace
+        with:
+          pnpm-version: ${{ env.PNPM_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
 
       - run: pnpm test:api
 
+  component-web:
+    needs: [changes, static-api, static-web]
+    if: ${{ !failure() && !cancelled() && needs.changes.outputs.web == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: ./.github/actions/setup-workspace
+        with:
+          pnpm-version: ${{ env.PNPM_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+
       - run: pnpm test:web
 
-  # The API e2e suite, which the previous lighthouse-only CI setup never
-  # ran at all — this is what actually exercises configureApp (helmet, the
-  # body limit, CORS, rate limiting) and the whole cookie/CSRF auth flow.
+  # ── Stage 3: e2e, browser suites and metrics ──────────────────────────────────
+  # The API e2e suite exercises configureApp (helmet, body limit, CORS, rate
+  # limiting) and the full cookie/CSRF auth flow against a real Postgres db.
   e2e-api:
+    needs: [changes, unit-api, component-web]
+    if: ${{ !failure() && !cancelled() && needs.changes.outputs.api == 'true' }}
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -72,21 +268,14 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: ./.github/actions/setup-workspace
         with:
-          version: ${{ env.PNPM_VERSION }}
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
+          pnpm-version: ${{ env.PNPM_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
 
       # The dev/test databases themselves (docker-compose.yml's
-      # docker/postgres/init/ only runs for that local setup); migrations
-      # are applied separately by test/global-setup.ts against
-      # TEST_DATABASE_URL.
+      # docker/postgres/init/ only runs for that local setup); migrations are
+      # applied by test/global-setup.ts against TEST_DATABASE_URL.
       - name: Create the databases
         run: |
           PGPASSWORD=codeconnect-ci-only psql -h localhost -U codeconnect -d postgres \
@@ -95,10 +284,11 @@ jobs:
 
       - run: pnpm test:api:e2e
 
-  # The browser suite (a11y + the new security headers), against the
-  # production build — same as Lighthouse CI, but for correctness/a11y
-  # instead of performance scores.
+  # The browser suite (a11y + security headers), against the production build
+  # — same as Lighthouse CI, but for correctness/a11y instead of scores.
   e2e-web:
+    needs: [changes, unit-api, component-web]
+    if: ${{ !failure() && !cancelled() && needs.changes.outputs.web == 'true' }}
     runs-on: ubuntu-latest
     # Safety net against a webServer teardown hang (see playwright.config.ts),
     # which would otherwise run until the runner's default 6-hour timeout.
@@ -141,16 +331,10 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: ./.github/actions/setup-workspace
         with:
-          version: ${{ env.PNPM_VERSION }}
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
+          pnpm-version: ${{ env.PNPM_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
 
       # Built here rather than chained into playwright.config.ts's webServer,
       # so the command it supervises is a plain `node dist/main.js` it can
@@ -163,8 +347,101 @@ jobs:
           pnpm --filter api exec prisma migrate deploy
           pnpm db:seed
 
+      # Cache the Playwright browser binary to avoid re-downloading it on each
+      # run. The apt system libraries (the slow part, ~9 min) cannot be cached
+      # here, so `install-deps` still runs on a cache hit; only the browser
+      # binary download is skipped.
+      - name: Read Playwright version for cache key
+        id: pw-version
+        working-directory: apps/web
+        run: echo "version=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@d4323d4df104b026a6aa633fdb11d772146be0bf # v4.2.2
+        id: pw-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw-version.outputs.version }}
+
       - name: Install the browser Playwright drives (new headless Chromium)
         working-directory: apps/web
-        run: pnpm exec playwright install --with-deps chromium
+        run: |
+          if [[ "${{ steps.pw-cache.outputs.cache-hit }}" == "true" ]]; then
+            # Browser binary already in cache; only install system libraries.
+            pnpm exec playwright install-deps chromium
+          else
+            pnpm exec playwright install --with-deps chromium
+          fi
 
       - run: pnpm test:web:a11y
+
+  # Lighthouse is called as a reusable workflow so it participates in the
+  # fail-fast stage gating. Only triggers when web files changed (D1 in
+  # plan/OtimizacaoPipelineCI.md: an API-only change does not affect LCP).
+  lighthouse:
+    needs: [changes, unit-api, component-web]
+    if: ${{ !failure() && !cancelled() && needs.changes.outputs.web == 'true' }}
+    uses: ./.github/workflows/lighthouse.yml
+    secrets: inherit
+
+  # ── Gate: the only required check ─────────────────────────────────────────────
+  # Configure this job as the single required status check in GitHub's branch
+  # protection settings for `main`. Because out-of-scope jobs are "skipped"
+  # (not "failure"), they do not block the merge — the gate handles that.
+  # Manual setup required: replace any existing per-job required checks with
+  # this single `ci-gate` check (see plan/OtimizacaoPipelineCI.md, point 1).
+  ci-gate:
+    needs:
+      - changes
+      - static-api
+      - static-web
+      - docs-lint
+      - claude-review
+      - unit-api
+      - component-web
+      - e2e-api
+      - e2e-web
+      - lighthouse
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check all jobs passed or were skipped
+        env:
+          STATIC_API:    ${{ needs.static-api.result }}
+          STATIC_WEB:    ${{ needs.static-web.result }}
+          DOCS_LINT:     ${{ needs.docs-lint.result }}
+          CLAUDE_REVIEW: ${{ needs.claude-review.result }}
+          UNIT_API:      ${{ needs.unit-api.result }}
+          COMPONENT_WEB: ${{ needs.component-web.result }}
+          E2E_API:       ${{ needs.e2e-api.result }}
+          E2E_WEB:       ${{ needs.e2e-web.result }}
+          LIGHTHOUSE:    ${{ needs.lighthouse.result }}
+        run: |
+          declare -A jobs=(
+            [static-api]="$STATIC_API"
+            [static-web]="$STATIC_WEB"
+            [docs-lint]="$DOCS_LINT"
+            [claude-review]="$CLAUDE_REVIEW"
+            [unit-api]="$UNIT_API"
+            [component-web]="$COMPONENT_WEB"
+            [e2e-api]="$E2E_API"
+            [e2e-web]="$E2E_WEB"
+            [lighthouse]="$LIGHTHOUSE"
+          )
+          # Only "failure" is a hard stop. "cancelled" is intentionally
+          # excluded: when concurrency cancel-in-progress supersedes this
+          # run with a newer one, every queued job lands as "cancelled"
+          # with no "failure" ancestor — treating that as a gate failure
+          # would permanently red-light the PR until a manual re-run. A
+          # job cancelled because its *dependency* failed always has a
+          # "failure" result on that dependency, which this loop catches
+          # independently; the downstream "cancelled" adds no information.
+          failed=false
+          for name in "${!jobs[@]}"; do
+            result="${jobs[$name]}"
+            printf '%-20s %s\n' "$name:" "$result"
+            if [[ "$result" == "failure" ]]; then
+              echo "::error::$name $result"
+              failed=true
+            fi
+          done
+          [[ "$failed" == "true" ]] && exit 1 || echo "All jobs passed or were skipped."

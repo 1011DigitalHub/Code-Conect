@@ -1,0 +1,27 @@
+name: Setup workspace
+description: >
+  Installs pnpm, Node and the project dependencies. This composite action
+  replaces the three boilerplate steps that every job used to repeat.
+
+inputs:
+  pnpm-version:
+    description: pnpm version to install
+    default: '12.6.0'
+  node-version:
+    description: Node.js version to install
+    default: '22'
+
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      with:
+        version: ${{ inputs.pnpm-version }}
+
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: pnpm
+
+    - run: pnpm install --frozen-lockfile
+      shell: bash
