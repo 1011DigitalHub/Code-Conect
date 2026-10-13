@@ -4,6 +4,16 @@
 
 This file covers execution plans, PR validation, Conventional Commits and cross-cutting conventions/gotchas for the whole monorepo. See the root `CLAUDE.md` for commands and the full guideline index.
 
+## Issue management
+
+O repositório usa três templates de issue (em `.github/ISSUE_TEMPLATE/`): **Bug Report** (`bug`, `prio:medium`), **Feature Request** (`feature`, `prio:medium`) e **Débito Técnico** (`refactor`, `prio:low`). Blank issues estão desabilitadas — sempre use um template.
+
+O workflow `.github/workflows/todo-to-issue.yml` (action `alstr/todo-to-issue-action@v5`) varre o código a cada push em `main` e converte comentários `// TODO:` e `// FIXME:` em issues com label `refactor`. Quando o marcador é removido do código, a issue é fechada automaticamente.
+
+Para varrer os marcadores localmente: `pnpm find-todos`.
+
+Ao criar um PR que resolve uma issue, use `Closes #N` na descrição para fechar automaticamente. Veja o fluxo completo em [`CONTRIBUTING.md`](../../CONTRIBUTING.md).
+
 ## Execution plans (`plan/`)
 
 Every execution plan for this project lives in `plan/` at the repo root, one Markdown file per feature. Name the file after the feature in PascalCase and in Portuguese, for example `plan/PaginaLogin.md` or `plan/PaginaCadastro.md`.
