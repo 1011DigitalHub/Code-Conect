@@ -18,6 +18,8 @@ export type SignUpFormProps = {
   error?: string
 }
 
+type FieldErrors = { name?: string; email?: string; password?: string }
+
 export function SignUpForm({ onSubmit, submitting = false, error }: SignUpFormProps) {
   const [values, setValues] = useState<SignUpFormValues>({
     name: '',
@@ -25,14 +27,35 @@ export function SignUpForm({ onSubmit, submitting = false, error }: SignUpFormPr
     password: '',
     remember: false,
   })
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
+
+  function validate(): boolean {
+    const errors: FieldErrors = {}
+    if (!values.name.trim()) {
+      errors.name = 'Nome é obrigatório'
+    }
+    if (!values.email.trim()) {
+      errors.email = 'Email é obrigatório'
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)) {
+      errors.email = 'Email inválido'
+    }
+    if (!values.password) {
+      errors.password = 'Senha é obrigatória'
+    } else if (values.password.length < 8) {
+      errors.password = 'Senha deve ter no mínimo 8 caracteres'
+    }
+    setFieldErrors(errors)
+    return Object.keys(errors).length === 0
+  }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (!validate()) return
     onSubmit(values)
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+    <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
       <FormField
         id="name"
         name="name"
@@ -42,7 +65,11 @@ export function SignUpForm({ onSubmit, submitting = false, error }: SignUpFormPr
         maxLength={100}
         required
         value={values.name}
-        onChange={(event) => setValues({ ...values, name: event.target.value })}
+        error={fieldErrors.name}
+        onChange={(event) => {
+          setValues({ ...values, name: event.target.value })
+          if (fieldErrors.name) setFieldErrors({ ...fieldErrors, name: undefined })
+        }}
       />
       <FormField
         id="email"
@@ -53,7 +80,11 @@ export function SignUpForm({ onSubmit, submitting = false, error }: SignUpFormPr
         autoComplete="email"
         required
         value={values.email}
-        onChange={(event) => setValues({ ...values, email: event.target.value })}
+        error={fieldErrors.email}
+        onChange={(event) => {
+          setValues({ ...values, email: event.target.value })
+          if (fieldErrors.email) setFieldErrors({ ...fieldErrors, email: undefined })
+        }}
       />
       <div className="flex flex-col gap-2">
         <FormField
@@ -68,7 +99,11 @@ export function SignUpForm({ onSubmit, submitting = false, error }: SignUpFormPr
           hint="Mínimo de 8 caracteres"
           required
           value={values.password}
-          onChange={(event) => setValues({ ...values, password: event.target.value })}
+          error={fieldErrors.password}
+          onChange={(event) => {
+            setValues({ ...values, password: event.target.value })
+            if (fieldErrors.password) setFieldErrors({ ...fieldErrors, password: undefined })
+          }}
         />
         <CheckboxField
           id="remember"
