@@ -1,0 +1,21 @@
+name: TODO → Issue
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  todo-to-issue:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: alstr/todo-to-issue-action@v5
+        with:
+          IDENTIFIERS: '["TODO", "FIXME"]'
+          EXCLUDED_DIRS: '["node_modules", "dist", ".next", "coverage", "plan", "apps/api/src/generated", "postman", ".github/ISSUE_TEMPLATE"]'
+          LABELS: '["refactor"]'

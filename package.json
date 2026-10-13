@@ -27,7 +27,8 @@
     "db:down": "docker compose down",
     "db:migrate": "pnpm --filter api exec prisma migrate dev",
     "db:seed": "pnpm --filter api exec prisma db seed",
-    "db:studio": "pnpm --filter api exec prisma studio"
+    "db:studio": "pnpm --filter api exec prisma studio",
+    "find-todos": "bash scripts/find-todos.sh"
   },
   "devDependencies": {
     "lint-staged": "^17.6.0",

@@ -132,6 +132,66 @@ O DoD inclui explicitamente:
 
 O escape hatch `[x] skip-wiki` aparece no proprio template como um checkbox. Marcado com justificativa na descricao, libera o merge sem atualizar a wiki.
 
+### Gestao de Issues: templates, labels e automacao de TODOs
+
+O repositorio tem tres templates de issue em `.github/ISSUE_TEMPLATE/`, que tornam o relato de problemas e melhorias padronizado e rastreavel.
+
+#### Os tres templates
+
+| Template | Quando usar | Labels automaticas |
+|---|---|---|
+| **Bug Report** | Comportamento inesperado, erro em producao ou regressao | `bug`, `prio:medium` |
+| **Feature Request** | Nova funcionalidade ou melhoria de UX | `feature`, `prio:medium` |
+| **Debito Tecnico** | Refatoracao, codigo acoplado, melhoria de arquitetura | `refactor`, `prio:low` |
+
+Blank issues estao desabilitadas — todo problema precisa de contexto estruturado.
+
+#### Sistema de prioridades
+
+As labels de prioridade permitem triar o backlog rapidamente:
+
+| Label | Significado tipico |
+|---|---|
+| `prio:high` | Bloqueia usuarios em producao ou afeta seguranca |
+| `prio:medium` | Impacta a experiencia mas tem contorno |
+| `prio:low` | Melhoria ou divida tecnica sem urgencia |
+
+#### O workflow `todo-to-issue.yml`: de comentario a issue automaticamente
+
+O workflow `.github/workflows/todo-to-issue.yml` roda a cada push em `main` e converte marcadores no codigo em GitHub Issues.
+
+**Formato dos marcadores:**
+```ts
+// TODO: descrever a tarefa pendente
+// FIXME: descrever o problema a corrigir
+```
+
+O marcador deve ser seguido de `:` — isso diferencia o marcador tecnico da palavra portuguesa "todo" (= "tudo/cada") e evita falsos positivos. A action cria uma issue com a descricao do marcador, referencia o arquivo e a linha, e aplica a label `refactor` automaticamente. Quando o marcador e removido do codigo (tarefa concluida), a issue e fechada.
+
+**Diretorios ignorados pelo scanner:**
+`node_modules`, `dist`, `.next`, `coverage`, `plan/`, `apps/api/src/generated/`, `postman/`, `.github/ISSUE_TEMPLATE/`
+
+**Varredura local antes do push:**
+```bash
+pnpm find-todos
+```
+
+O script `scripts/find-todos.sh` lista todos os marcadores com arquivo e linha, usando as mesmas exclusoes do workflow de CI.
+
+#### Linkando PRs a issues com palavras-chave
+
+Ao abrir um PR que resolve uma issue, use palavras-chave na **Descricao** do PR para fechar a issue automaticamente no merge:
+
+```
+Closes #12
+Fixes #34
+Resolves #56
+```
+
+Multiplas issues podem ser linkadas no mesmo PR: `Closes #12, Closes #15`.
+
+Veja o fluxo completo para contribuidores em [`CONTRIBUTING.md`](../../CONTRIBUTING.md).
+
 ### Planos de execucao em `plan/`
 
 Antes de implementar qualquer funcionalidade de porte, o projeto exige um **plano de execucao** em `plan/` — um arquivo Markdown nomeado em PascalCase e em portugues (ex: `plan/LoginSocial.md`).
@@ -217,7 +277,13 @@ O timeout existe porque `playwright install --with-deps` pode levar ate ~10 minu
 | `simple-git-hooks` + `lint-staged` (hook de commit) | `.github/ai-guidelines/development-workflow.md` | secao "Conventions / gotchas" |
 | ESM e extensao `.js` obrigatoria em imports | `.github/ai-guidelines/development-workflow.md` | "API is native ESM" |
 | `exactOptionalPropertyTypes` desligado no web | `.github/ai-guidelines/development-workflow.md` | "exactOptionalPropertyTypes" |
+| Templates de issue (bug, feature, debito tecnico) | `.github/ISSUE_TEMPLATE/` | `bug_report.md`, `feature_request.md`, `technical_debt.md` |
+| Workflow de conversao TODO → Issue | `.github/workflows/todo-to-issue.yml` | todos os steps |
+| Script de varredura local de TODOs | `scripts/find-todos.sh` | todos |
+| Guia de contribuicao (templates, TODOs, Closes #N) | `CONTRIBUTING.md` | todos |
+| Labels de prioridade e tipo (`prio:*`, `feature`, `refactor`) | GitHub Labels | configuradas via `gh label create` |
+| Secao Issue management na guideline de workflow | `.github/ai-guidelines/development-workflow.md` | secao "Issue management" |
 
 ---
 
-_Ultima atualizacao: 2026-10-09 | Gerado a partir do codigo-fonte._
+_Ultima atualizacao: 2026-10-13 | Gerado a partir do codigo-fonte._

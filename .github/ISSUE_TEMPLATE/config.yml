@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: "\U0001F4DA Documentação (Wiki)"
+    url: https://github.com/1011DigitalHub/Code-Conect/tree/main/docs/wiki
+    about: Consulte a documentação do projeto antes de abrir uma issue.
