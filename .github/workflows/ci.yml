@@ -167,6 +167,28 @@ jobs:
 
       - run: pnpm typecheck:web
 
+  # Dead code and duplication checks (Knip + jscpd). Non-blocking: knip runs
+  # with --no-exit-code and jscpd with continue-on-error until thresholds are
+  # validated. Promote to blocking once the codebase is clean.
+  static-quality:
+    needs: [changes]
+    if: ${{ needs.changes.outputs.api == 'true' || needs.changes.outputs.web == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/setup-workspace
+        with:
+          pnpm-version: ${{ env.PNPM_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Dead code check (Knip)
+        run: pnpm knip --no-exit-code --reporter compact
+
+      - name: Copy-paste detection (jscpd)
+        run: pnpm cpd
+        continue-on-error: true
+
   # Intentionally NOT included in the `needs:` of stages 2 or 3. A markdown
   # style error must not delay test feedback on code changes. Only `ci-gate`
   # waits for this job (see plan/OtimizacaoPipelineCI.md, approved point 2).
@@ -394,6 +416,7 @@ jobs:
       - changes
       - static-api
       - static-web
+      - static-quality
       - docs-lint
       - claude-review
       - unit-api
@@ -406,9 +429,10 @@ jobs:
     steps:
       - name: Check all jobs passed or were skipped
         env:
-          STATIC_API:    ${{ needs.static-api.result }}
-          STATIC_WEB:    ${{ needs.static-web.result }}
-          DOCS_LINT:     ${{ needs.docs-lint.result }}
+          STATIC_API:     ${{ needs.static-api.result }}
+          STATIC_WEB:     ${{ needs.static-web.result }}
+          STATIC_QUALITY: ${{ needs.static-quality.result }}
+          DOCS_LINT:      ${{ needs.docs-lint.result }}
           CLAUDE_REVIEW: ${{ needs.claude-review.result }}
           UNIT_API:      ${{ needs.unit-api.result }}
           COMPONENT_WEB: ${{ needs.component-web.result }}
@@ -419,6 +443,7 @@ jobs:
           declare -A jobs=(
             [static-api]="$STATIC_API"
             [static-web]="$STATIC_WEB"
+            [static-quality]="$STATIC_QUALITY"
             [docs-lint]="$DOCS_LINT"
             [claude-review]="$CLAUDE_REVIEW"
             [unit-api]="$UNIT_API"
