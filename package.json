@@ -30,9 +30,11 @@
     "db:studio": "pnpm --filter api exec prisma studio",
     "find-todos": "bash scripts/find-todos.sh",
     "knip": "knip",
-    "knip:fix": "knip --fix"
+    "knip:fix": "knip --fix",
+    "cpd": "jscpd apps/"
   },
   "devDependencies": {
+    "jscpd": "^5.4.1",
     "knip": "^6.41.0",
     "lint-staged": "^17.6.0",
     "simple-git-hooks": "^2.14.0"
