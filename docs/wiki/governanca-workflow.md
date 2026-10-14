@@ -55,19 +55,33 @@ O projeto tem cinco workflows, cada um com escopo e responsabilidade distintos:
 
 #### 1. `ci.yml` — O gate principal
 
-Roda em **todo push e todo PR**, sem filtro de caminho. E o workflow mais importante porque:
-- Nao ha como pular por "so alterei docs" ou "so alterei config"
-- Tem tres jobs paralelos:
+Roda em **todo push e todo PR**. Usa deteccao de escopo (`changes` job) para rodar apenas os jobs relevantes a cada PR — alteracoes so na API pulam Lighthouse e e2e-web; PRs so de docs so rodam `docs-lint`. A estrutura e em tres estagios com fail-fast:
 
-| Job | O que faz | Precisa de banco? |
-|-----|-----------|-------------------|
-| `quality` | `pnpm lint`, `pnpm typecheck`, `pnpm test:api`, `pnpm test:web` | Nao |
-| `e2e-api` | `pnpm test:api:e2e` com container PostgreSQL | Sim (service container) |
-| `e2e-web` | `pnpm test:web:a11y` contra o build de producao | Sim (service container) |
+```
+Stage 1 (paralelo): static-api · static-web · static-quality · docs-lint
+Stage 2 (paralelo): unit-api · component-web          (aguarda stage 1)
+Stage 3 (paralelo): e2e-api · e2e-web · lighthouse · bundlemon  (aguarda stage 2)
+Gate: ci-gate                                          (aguarda todos)
+```
 
-O job `e2e-web` tem um timeout de 25 minutos (linha 109 do ci.yml). Isso porque o `playwright install --with-deps` baixa bibliotecas de sistema do browser, o que pode levar ate ~10 minutos em um runner frio. Sem timeout, um travamento no teardown esperaria ate o limite padrao de 6 horas do GitHub Actions.
+| Job | O que faz |
+|-----|-----------|
+| `static-api` | `pnpm lint:api`, `pnpm typecheck:api` |
+| `static-web` | `pnpm lint:web`, `pnpm typecheck:web` |
+| `static-quality` | Knip (codigo morto) + jscpd (duplicacao) — nao-bloqueante |
+| `docs-lint` | markdownlint nos arquivos `.md` alterados |
+| `unit-api` | `pnpm test:api` (Vitest, sem banco) |
+| `component-web` | `pnpm test:web` (Testing Library + axe) |
+| `e2e-api` | `pnpm test:api:e2e` com container PostgreSQL |
+| `e2e-web` | `pnpm test:web:a11y` contra build de producao (Playwright) |
+| `lighthouse` | Scores de performance, acessibilidade e SEO |
+| `bundlemon` | Delta de tamanho do bundle web por PR — nao-bloqueante |
+| `claude-review` | Revisao automatica do diff pelo Claude Code |
+| `ci-gate` | Unico check obrigatorio no branch protection |
 
-Um detalhe importante: o job `e2e-web` deliberadamente **nao define `NODE_ENV`** no nivel do job. Se definisse, o `vite build` geraria o bundle de desenvolvimento (576 kB vs 347 kB de producao) — a suite auditaria algo que os usuarios nunca recebem.
+O job `e2e-web` tem timeout de 25 minutos porque `playwright install --with-deps` pode levar ~10 minutos em runner frio. Sem timeout, um travamento no teardown esperaria ate o limite padrao de 6 horas do GitHub Actions.
+
+O job `e2e-web` deliberadamente **nao define `NODE_ENV`** no nivel do job. Se definisse, o `vite build` geraria o bundle de desenvolvimento (576 kB vs 347 kB de producao) — a suite auditaria algo que os usuarios nunca recebem.
 
 #### 2. `security.yml` — Seguranca em tres frentes
 
@@ -207,6 +221,48 @@ Planos para paginas web tambem documentam acessibilidade (casos axe, rotas para 
 
 O plano **nao e deletado depois**: ao fechar a feature, o plano e marcado como concluido com uma nota datada. Se o escopo mudou durante a implementacao, o plano e atualizado com o que mudou e por que.
 
+### Guardrails de minimalismo
+
+O projeto tem cinco camadas progressivas para detectar e sinalizar codigo duplicado, complexo, morto ou desnecessariamente verboso:
+
+#### Camada 1 — Regras de complexidade no oxlint
+
+Quatro regras ativadas como `warn` nos dois `.oxlintrc.json` (api e web):
+
+| Regra | Limite | O que sinaliza |
+|-------|--------|---------------|
+| `max-lines` | 300 linhas | Arquivo grande demais |
+| `max-lines-per-function` | 50 linhas | Funcao gigante |
+| `max-params` | 4 parametros | Funcao com muitos argumentos (use um objeto) |
+| `complexity` | 15 | Complexidade ciclomatica alta (muitos caminhos) |
+
+Comecam como `warn` para nao quebrar o CI. Promover a `error` quando o codebase estiver limpo.
+
+#### Camada 2 — Knip: codigo morto e exports nao usados
+
+`pnpm knip` escaneia o monorepo e reporta arquivos, exports, tipos e dependencias que ninguem importa. Roda no CI (job `static-quality`, stage 1) com `--no-exit-code` e `continue-on-error: true` — nao-bloqueante ate os thresholds serem validados.
+
+```bash
+pnpm knip          # listar dead code
+pnpm knip:fix      # remover automaticamente
+```
+
+#### Camada 3 — jscpd: copy-paste
+
+`pnpm cpd` detecta blocos de codigo duplicados (threshold 5%, minimo 5 linhas / 50 tokens, ignora testes). Roda no job `static-quality` com `continue-on-error: true`.
+
+```bash
+pnpm cpd           # rodar detector (exibe % de duplicacao)
+```
+
+#### Camada 4 — BundleMon: delta de bundle no PR
+
+O GitHub App BundleMon comenta no PR o delta de tamanho de cada arquivo do bundle web. Limites: `index.js` ≤ 250 kB, `index.css` ≤ 50 kB, maximo 10% de aumento por PR. Roda no job `bundlemon` (stage 3), nao-bloqueante.
+
+#### Camada 5 — Escada de decisao antes de escrever codigo
+
+Antes de criar uma funcao, classe ou arquivo, percorra os cinco pontos documentados em `.github/ai-guidelines/development-workflow.md` (secao "Antes de escrever codigo novo"): ja existe? pode estender? precisa ser codigo? qual e a menor mudanca? vai ser usado? As camadas 2 e 3 verificam automaticamente os pontos 1 e 5.
+
 ### `simple-git-hooks` + `lint-staged`: a guarda local antes do push
 
 Configurado em `package.json`. A cada commit que toca `apps/api` ou `apps/web`, o hook executa `pnpm --filter <app> lint` (oxlint) sobre o app modificado. Intencional mente leve — o oxlint `--type-aware` precisa da resolucao completa do projeto, nao de arquivos isolados, entao ele roda sobre o app inteiro, nao so os arquivos staged.
@@ -283,7 +339,14 @@ O timeout existe porque `playwright install --with-deps` pode levar ate ~10 minu
 | Guia de contribuicao (templates, TODOs, Closes #N) | `CONTRIBUTING.md` | todos |
 | Labels de prioridade e tipo (`prio:*`, `feature`, `refactor`) | GitHub Labels | configuradas via `gh label create` |
 | Secao Issue management na guideline de workflow | `.github/ai-guidelines/development-workflow.md` | secao "Issue management" |
+| Job `static-quality` (Knip + jscpd, nao-bloqueante) | `.github/workflows/ci.yml` | job `static-quality` |
+| Job `bundlemon` (delta de bundle por PR, nao-bloqueante) | `.github/workflows/ci.yml` | job `bundlemon` |
+| Regras oxlint de complexidade (`max-lines`, `max-lines-per-function`, `max-params`, `complexity`) | `apps/api/.oxlintrc.json`, `apps/web/.oxlintrc.json` | secao `rules` |
+| Config do Knip (workspaces api/web, ignore validate-wiki.yml) | `knip.config.ts` | todos |
+| Config do jscpd (threshold 5%, ignora testes) | `.jscpd.json` | todos |
+| Config do BundleMon (limites index.js 250 kB, index.css 50 kB) | `bundlemon.config.json` | todos |
+| Escada de decisao antes de escrever codigo novo | `.github/ai-guidelines/development-workflow.md` | secao "Antes de escrever codigo novo" |
 
 ---
 
-_Ultima atualizacao: 2026-10-13 | Gerado a partir do codigo-fonte._
+_Ultima atualizacao: 2026-10-14 | Gerado a partir do codigo-fonte._
