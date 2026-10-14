@@ -405,6 +405,36 @@ jobs:
     uses: ./.github/workflows/lighthouse.yml
     secrets: inherit
 
+  # BundleMon comments bundle-size delta on PRs. Requires the BundleMon GitHub
+  # App to be installed on the repository (manual step — see
+  # plan/GuardrailsMinimalismo.md). Non-blocking: the step runs with
+  # continue-on-error: true until the App is installed and limits are validated.
+  bundlemon:
+    needs: [changes, unit-api, component-web]
+    if: ${{ !failure() && !cancelled() && needs.changes.outputs.web == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/setup-workspace
+        with:
+          pnpm-version: ${{ env.PNPM_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Build web app
+        run: pnpm build:web
+
+      - name: Bundle size check (BundleMon)
+        run: npx bundlemon@2.1.0
+        continue-on-error: true
+        env:
+          BUNDLEMON_PROJECT_ID: ${{ secrets.BUNDLEMON_PROJECT_ID }}
+          BUNDLEMON_PROJECT_APIKEY: ${{ secrets.BUNDLEMON_PROJECT_APIKEY }}
+          CI_COMMIT_SHA: ${{ github.sha }}
+          CI_BRANCH: ${{ github.head_ref || github.ref_name }}
+          CI_TARGET_BRANCH: ${{ github.base_ref }}
+          CI_PR_NUMBER: ${{ github.event.pull_request.number }}
+
   # ── Gate: the only required check ─────────────────────────────────────────────
   # Configure this job as the single required status check in GitHub's branch
   # protection settings for `main`. Because out-of-scope jobs are "skipped"
@@ -424,6 +454,7 @@ jobs:
       - e2e-api
       - e2e-web
       - lighthouse
+      - bundlemon
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
@@ -439,6 +470,7 @@ jobs:
           E2E_API:       ${{ needs.e2e-api.result }}
           E2E_WEB:       ${{ needs.e2e-web.result }}
           LIGHTHOUSE:    ${{ needs.lighthouse.result }}
+          BUNDLEMON:     ${{ needs.bundlemon.result }}
         run: |
           declare -A jobs=(
             [static-api]="$STATIC_API"
@@ -451,6 +483,7 @@ jobs:
             [e2e-api]="$E2E_API"
             [e2e-web]="$E2E_WEB"
             [lighthouse]="$LIGHTHOUSE"
+            [bundlemon]="$BUNDLEMON"
           )
           # Only "failure" is a hard stop. "cancelled" is intentionally
           # excluded: when concurrency cancel-in-progress supersedes this
