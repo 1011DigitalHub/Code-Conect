@@ -11,6 +11,10 @@
     "no-new-func": "error",
     "no-implied-eval": "error",
     "no-script-url": "error",
-    "no-console": "warn"
+    "no-console": "warn",
+    "max-lines": ["warn", { "max": 300, "skipBlankLines": true, "skipComments": true }],
+    "max-lines-per-function": ["warn", { "max": 50, "skipBlankLines": true, "skipComments": true }],
+    "max-params": ["warn", { "max": 4 }],
+    "complexity": ["warn", { "max": 15 }]
   }
 }

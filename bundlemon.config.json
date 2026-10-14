@@ -1,0 +1,8 @@
+{
+  "baseDir": "apps/web/dist",
+  "files": [
+    { "path": "assets/index-*.js", "maxSize": "250kb", "maxPercentIncrease": 10 },
+    { "path": "assets/index-*.css", "maxSize": "50kb", "maxPercentIncrease": 10 },
+    { "path": "**/*.js", "maxSize": "300kb" }
+  ]
+}

@@ -28,9 +28,14 @@
     "db:migrate": "pnpm --filter api exec prisma migrate dev",
     "db:seed": "pnpm --filter api exec prisma db seed",
     "db:studio": "pnpm --filter api exec prisma studio",
-    "find-todos": "bash scripts/find-todos.sh"
+    "find-todos": "bash scripts/find-todos.sh",
+    "knip": "knip",
+    "knip:fix": "knip --fix",
+    "cpd": "jscpd apps/"
   },
   "devDependencies": {
+    "jscpd": "^5.4.1",
+    "knip": "^6.41.0",
     "lint-staged": "^17.6.0",
     "simple-git-hooks": "^2.14.0"
   },
@@ -38,7 +43,11 @@
     "pre-commit": "pnpm exec lint-staged"
   },
   "lint-staged": {
-    "apps/api/**/*.ts": ["pnpm --filter api lint"],
-    "apps/web/**/*.{ts,tsx}": ["pnpm --filter web lint"]
+    "apps/api/**/*.ts": [
+      "pnpm --filter api lint"
+    ],
+    "apps/web/**/*.{ts,tsx}": [
+      "pnpm --filter web lint"
+    ]
   }
 }
