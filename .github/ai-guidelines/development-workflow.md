@@ -100,6 +100,18 @@ pnpm test:web
 pnpm test:web:a11y # needs the browser suite; pnpm db:up for the feed
 ```
 
+## Antes de escrever codigo novo
+
+Antes de criar uma funcao, classe ou arquivo, percorra esta escada de decisao:
+
+1. **Ja existe?** Busque no codebase (`grep -r`, glob) por funcionalidade similar.
+2. **Pode estender?** Se algo parecido existe, estenda-o em vez de criar outro.
+3. **Precisa ser codigo?** Uma configuracao, flag ou constante resolve?
+4. **Qual e a menor mudanca?** Escreva o minimo que resolve o problema.
+5. **Vai ser usado?** Todo export novo deve ter pelo menos um import. Nao crie "por via das dudas".
+
+As camadas de Knip (codigo morto) e jscpd (duplicacao) no CI verificam automaticamente os pontos 1 e 5.
+
 ## Git: Conventional Commits
 
 Both apps use [Conventional Commits](https://www.conventionalcommits.org/):

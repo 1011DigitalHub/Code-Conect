@@ -34,6 +34,9 @@ pnpm db:up             # start PostgreSQL in Docker (docker-compose.yml) and wai
 pnpm db:down           # stop it; data stays in the code-connect-pgdata volume
 pnpm db:migrate        # prisma migrate dev: apply migrations / create one after editing schema.prisma
 pnpm db:studio         # Prisma Studio, to browse the data
+pnpm knip              # dead code / unused exports (Knip)
+pnpm knip:fix          # auto-remove unused exports
+pnpm cpd               # copy-paste detection (jscpd, threshold 5%)
 ```
 
 The hardened production images (`apps/api/Dockerfile`, `apps/web/Dockerfile`) aren't part of the day-to-day loop above — `pnpm dev` against `pnpm db:up`'s postgres is faster. Build and smoke-test them locally with `docker compose up --build api web` (needs `JWT_SECRET`/`CORS_ORIGINS`/`VITE_API_URL`/`OIDC_LINKING_TOKEN_SECRET` in the root `.env`, see `.env.example`); `pnpm dev`/`pnpm db:up` stays the normal workflow.
