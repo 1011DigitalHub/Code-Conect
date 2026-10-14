@@ -207,6 +207,68 @@ jobs:
         # (list-files: shell). No pnpm install needed: npx fetches the tool.
         run: npx markdownlint-cli2@0.17.2 ${{ needs.changes.outputs.docs_files }}
 
+  # Wiki gate: fails when code or CI workflow files change without a docs/wiki
+  # update in the same PR. Lives here (not in validate-wiki.yml) so it is
+  # covered by ci-gate — the only required check in branch protection. The
+  # validate-wiki.yml workflow keeps the sticky PR comment feature.
+  # Escape hatches: label `skip-wiki` or `[x] skip-wiki` in the PR body.
+  wiki-check:
+    needs: [changes]
+    if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Verify wiki updated alongside code
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$BASE_REF"
+
+          CHANGED="$(git diff --name-only "origin/${BASE_REF}...HEAD")"
+          echo "Files changed in this PR:"
+          echo "$CHANGED"
+
+          # Code = app dirs, CI workflows, or source file extensions.
+          # Excludes docs/ and the auto-generated Prisma client.
+          CODE_RE='(^(apps|src|server|backend|frontend)/|^\.github/workflows/|\.(ts|tsx|js|jsx|mjs|cjs|py|java|cs|go|rb|php|rs)$)'
+          EXCLUDE_RE='(^docs/|^apps/api/src/generated/)'
+          WIKI_RE='^docs/wiki/'
+
+          code_changed=false
+          wiki_changed=false
+          if printf '%s\n' "$CHANGED" | grep -E "$CODE_RE" | grep -vE "$EXCLUDE_RE" | grep -q .; then
+            code_changed=true
+          fi
+          if printf '%s\n' "$CHANGED" | grep -qE "$WIKI_RE"; then
+            wiki_changed=true
+          fi
+
+          echo "code_changed=$code_changed | wiki_changed=$wiki_changed"
+
+          if [[ "$code_changed" == "true" && "$wiki_changed" == "false" ]]; then
+            if printf ',%s,' "$LABELS" | grep -q ',skip-wiki,'; then
+              echo "::warning::Escape hatch via label 'skip-wiki' — passing without wiki update."
+              exit 0
+            fi
+            if printf '%s' "$PR_BODY" | grep -qiE '\[x\][[:space:]]*skip-wiki'; then
+              echo "::warning::Escape hatch via '[x] skip-wiki' checkbox — passing without wiki update."
+              exit 0
+            fi
+            echo "::error::Code changed without a wiki update. Update docs/wiki/ or add the skip-wiki label / [x] skip-wiki checkbox."
+            exit 1
+          fi
+
+          echo "Wiki check passed."
+
   # ── Claude code review ─────────────────────────────────────────────────────────
   # Runs only after stage 1 succeeds so tokens are never spent on code that
   # fails lint or typecheck. Inherits the ci.yml concurrency group (a new push
@@ -449,6 +511,7 @@ jobs:
       - static-web
       - static-quality
       - docs-lint
+      - wiki-check
       - claude-review
       - unit-api
       - component-web
@@ -465,6 +528,7 @@ jobs:
           STATIC_WEB:     ${{ needs.static-web.result }}
           STATIC_QUALITY: ${{ needs.static-quality.result }}
           DOCS_LINT:      ${{ needs.docs-lint.result }}
+          WIKI_CHECK:     ${{ needs.wiki-check.result }}
           CLAUDE_REVIEW: ${{ needs.claude-review.result }}
           UNIT_API:      ${{ needs.unit-api.result }}
           COMPONENT_WEB: ${{ needs.component-web.result }}
@@ -478,6 +542,7 @@ jobs:
             [static-web]="$STATIC_WEB"
             [static-quality]="$STATIC_QUALITY"
             [docs-lint]="$DOCS_LINT"
+            [wiki-check]="$WIKI_CHECK"
             [claude-review]="$CLAUDE_REVIEW"
             [unit-api]="$UNIT_API"
             [component-web]="$COMPONENT_WEB"
