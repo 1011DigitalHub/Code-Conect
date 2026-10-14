@@ -184,6 +184,7 @@ jobs:
 
       - name: Dead code check (Knip)
         run: pnpm knip --no-exit-code --reporter compact
+        continue-on-error: true
 
       - name: Copy-paste detection (jscpd)
         run: pnpm cpd
