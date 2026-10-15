@@ -1,14 +1,10 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
-import { AppModule } from './../src/app.module.js';
-import { configureApp } from './../src/app.setup.js';
-import { setupSwagger } from './../src/swagger.js';
 import { isCookieSecure } from './../src/auth/cookie.constants.js';
-import { cookieValue, fetchCsrfToken, setCookie } from './cookies.js';
+import { fetchCsrfToken } from './cookies.js';
 import { resetDatabase } from './db.js';
-
-type Agent = ReturnType<typeof request.agent>;
+import { createTestApp } from './helpers/app.js';
+import { loginAs, type Agent } from './helpers/auth.js';
 
 const author = {
   name: 'Ana Souza',
@@ -29,18 +25,6 @@ const newPost = {
   content: 'Começar pelo componente menor costuma ser mais fácil de manter.',
 };
 
-async function createApp(): Promise<NestExpressApplication> {
-  const moduleFixture: TestingModule = await Test.createTestingModule({
-    imports: [AppModule],
-  }).compile();
-
-  const app = moduleFixture.createNestApplication<NestExpressApplication>();
-  configureApp(app);
-  setupSwagger(app);
-  await app.init();
-  return app;
-}
-
 describe('Comments (e2e)', () => {
   let app: NestExpressApplication;
   let slug: string;
@@ -50,7 +34,7 @@ describe('Comments (e2e)', () => {
   });
 
   beforeEach(async () => {
-    app = await createApp();
+    app = await createTestApp();
     await resetDatabase(app);
     const published = await publish();
     slug = published.slug;
@@ -60,29 +44,8 @@ describe('Comments (e2e)', () => {
     await app.close();
   });
 
-  async function signIn(
-    credentials: typeof author,
-  ): Promise<{ agent: Agent; csrfToken: string }> {
-    const agent = request.agent(app.getHttpServer());
-    const signUpToken = await fetchCsrfToken(agent);
-    await agent
-      .post('/users')
-      .set('X-CSRF-Token', signUpToken)
-      .send(credentials)
-      .expect(201);
-
-    // Login rotates the csrf token, so the pre-login one is no longer valid.
-    const res = await agent
-      .post('/auth/login')
-      .set('X-CSRF-Token', signUpToken)
-      .send({ email: credentials.email, password: credentials.password })
-      .expect(200);
-
-    return { agent, csrfToken: cookieValue(setCookie(res, 'csrf_token')) };
-  }
-
   async function publish(): Promise<{ slug: string }> {
-    const { agent, csrfToken } = await signIn(author);
+    const { agent, csrfToken } = await loginAs(app, author);
     const res = await agent
       .post('/posts')
       .set('X-CSRF-Token', csrfToken)
@@ -92,7 +55,7 @@ describe('Comments (e2e)', () => {
   }
 
   async function comment(body: string, credentials = commenter): Promise<string> {
-    const { agent, csrfToken } = await signIn(credentials);
+    const { agent, csrfToken } = await loginAs(app, credentials);
     const res = await agent
       .post(`/posts/${slug}/comments`)
       .set('X-CSRF-Token', csrfToken)
@@ -116,7 +79,7 @@ describe('Comments (e2e)', () => {
     });
 
     it('requires a csrf token', async () => {
-      const { agent } = await signIn(commenter);
+      const { agent } = await loginAs(app, commenter);
 
       await agent
         .post(`/posts/${slug}/comments`)
@@ -125,7 +88,7 @@ describe('Comments (e2e)', () => {
     });
 
     it('creates the comment: 201, Location and a dereferenceable self link', async () => {
-      const { agent, csrfToken } = await signIn(commenter);
+      const { agent, csrfToken } = await loginAs(app, commenter);
 
       const res = await agent
         .post(`/posts/${slug}/comments`)
@@ -148,7 +111,7 @@ describe('Comments (e2e)', () => {
     });
 
     it('trims the body', async () => {
-      const { agent, csrfToken } = await signIn(commenter);
+      const { agent, csrfToken } = await loginAs(app, commenter);
 
       const res = await agent
         .post(`/posts/${slug}/comments`)
@@ -160,7 +123,7 @@ describe('Comments (e2e)', () => {
     });
 
     it('rejects an empty body', async () => {
-      const { agent, csrfToken } = await signIn(commenter);
+      const { agent, csrfToken } = await loginAs(app, commenter);
 
       await agent
         .post(`/posts/${slug}/comments`)
@@ -170,7 +133,7 @@ describe('Comments (e2e)', () => {
     });
 
     it('rejects a body over 1000 characters with the standard error shape', async () => {
-      const { agent, csrfToken } = await signIn(commenter);
+      const { agent, csrfToken } = await loginAs(app, commenter);
 
       const res = await agent
         .post(`/posts/${slug}/comments`)
@@ -186,7 +149,7 @@ describe('Comments (e2e)', () => {
     });
 
     it('is 404 for an unknown post', async () => {
-      const { agent, csrfToken } = await signIn(commenter);
+      const { agent, csrfToken } = await loginAs(app, commenter);
 
       await agent
         .post('/posts/nao-existe/comments')
