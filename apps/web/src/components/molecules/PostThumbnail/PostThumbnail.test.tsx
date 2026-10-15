@@ -22,6 +22,19 @@ describe('PostThumbnail', () => {
     expect(image).toHaveAttribute('loading', 'lazy')
   })
 
+  it('applies the sizes attribute for the feed grid breakpoints', () => {
+    render(<PostThumbnail src="/posts/capa.webp" alt="" />)
+
+    expect(document.querySelector('img')).toHaveAttribute('sizes')
+  })
+
+  it('passes srcSet through to the img srcset attribute', () => {
+    const srcSet = '/posts/slug-400.webp 400w, /posts/slug.webp 800w'
+    render(<PostThumbnail src="/posts/slug.webp" alt="" srcSet={srcSet} />)
+
+    expect(document.querySelector('img')).toHaveAttribute('srcset', srcSet)
+  })
+
   it('fetches the LCP candidate eagerly and with high priority', () => {
     render(<PostThumbnail src="/posts/capa.webp" alt="Capa" priority />)
 
