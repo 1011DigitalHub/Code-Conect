@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common';
-import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller.js';
 import { AuthGuard } from './auth/auth.guard.js';
 import { AuthModule } from './auth/auth.module.js';
 import { CsrfGuard } from './auth/csrf.guard.js';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
+import { RequestIdInterceptor } from './common/interceptors/request-id.interceptor.js';
 import { LoginThrottlerGuard } from './common/login-throttler.guard.js';
 import { DEFAULT_THROTTLE } from './common/throttle.constants.js';
 import { HealthModule } from './health/health.module.js';
@@ -24,6 +25,7 @@ import { UsersModule } from './users/users.module.js';
   ],
   controllers: [AppController],
   providers: [
+    { provide: APP_INTERCEPTOR, useClass: RequestIdInterceptor },
     // All three global guards live in this one array, so their order is
     // explicit and doesn't depend on Nest's cross-module resolution order
     // (which isn't guaranteed for APP_GUARD providers declared in different
