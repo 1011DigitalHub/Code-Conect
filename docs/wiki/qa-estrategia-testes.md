@@ -177,6 +177,46 @@ O `RESTART IDENTITY` reinicia os sequences (auto-incremento dos IDs) apos cada t
 
 O `startFakeIdp()` levanta um servidor HTTP em processo na porta 0 (SO escolhe uma porta livre). As variaveis de ambiente `GOOGLE_TOKEN_ENDPOINT` etc. sao apontadas para esse servidor. Ao final do suite (`afterAll`), `fakeIdp.close()` encerra o servidor. Ver [seguranca-oidc.md](seguranca-oidc.md) para o detalhamento completo.
 
+**Helpers compartilhados dos testes e2e (`test/helpers/`):**
+
+Os arquivos e2e repetiam localmente duas funcoes identicas — `createApp()` e `signIn()`. Isso violava o limite de 5% de duplicacao do projeto (medido por jscpd). As funcoes foram extraidas para helpers reutilizaveis:
+
+| Helper | Arquivo | O que faz |
+|--------|---------|-----------|
+| `createTestApp()` | `test/helpers/app.ts` | Cria e inicializa a aplicacao NestJS com `configureApp`, retorna um `INestApplication` pronto para supertest. Elimina o boilerplate repetido em 6 spec files. |
+| `loginAs(app, credentials)` | `test/helpers/auth.ts` | Faz login via `POST /auth/login`, extrai os cookies de sessao e CSRF do response e devolve um `Agent` (supertest agent) ja configurado. |
+| `Agent` (tipo) | `test/helpers/auth.ts` | Re-exportacao do tipo `supertest.SuperAgentTest` com o nome semantico do dominio — evita importar `supertest` diretamente em cada spec so para tipar o agente. |
+
+```typescript
+// Padrao antes (duplicado em 4+ arquivos):
+async function createApp() {
+  const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+  const app = moduleRef.createNestApplication<NestExpressApplication>();
+  configureApp(app);
+  await app.init();
+  return app;
+}
+
+// Padrao depois (importado de test/helpers/app.ts):
+const app = await createTestApp();
+```
+
+```typescript
+// Antes (duplicado em posts e comments):
+async function signIn(app, credentials) {
+  const res = await request(app.getHttpServer()).post('/auth/login').send(credentials);
+  return request.agent(app.getHttpServer())
+    .set('Cookie', res.headers['set-cookie'])
+    .set('x-csrf-token', res.body.csrfToken);
+}
+
+// Depois (importado de test/helpers/auth.ts):
+const agent: Agent = await loginAs(app, credentials);
+```
+
+**Por que isso e relevante como padrao de design de testes?**
+Centralizar o bootstrap e o login em helpers garante que todos os spec files usam exatamente a mesma configuracao de `configureApp`. Se um novo middleware for adicionado ao `configureApp`, todos os e2e o testarao automaticamente — sem precisar atualizar cada arquivo individualmente.
+
 ### Camada 4: Testes e2e do frontend (Playwright)
 
 Ficam em `apps/web/e2e/`. Usam **Playwright** com um browser **Chromium headless** real. Rodados com `pnpm test:web:a11y`.
@@ -247,7 +287,9 @@ E tentador escrever apenas testes e2e porque eles "testam tudo". O problema: sao
 | Headers de seguranca servidos pelo `vite preview` | `apps/web/vite.config.ts` | linhas 22-38 |
 | Mock direto de Prisma (sem container DI) | `apps/api/src/users/users.service.spec.ts` | linhas 23-30 |
 | Mock de UsersService construido manualmente | `apps/api/src/auth/auth.service.spec.ts` | linhas 39-50 |
+| Helper `createTestApp()` — bootstrap centralizado dos e2e | `apps/api/test/helpers/app.ts` | todos |
+| Helper `loginAs()` e tipo `Agent` — autenticacao centralizada | `apps/api/test/helpers/auth.ts` | todos |
 
 ---
 
-_Ultima atualizacao: 2026-10-09 | Gerado a partir do codigo-fonte._
+_Ultima atualizacao: 2026-10-15 | Gerado a partir do codigo-fonte._
