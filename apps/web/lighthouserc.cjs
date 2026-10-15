@@ -11,6 +11,17 @@ const routesSource = readFileSync(join(__dirname, 'e2e', 'routes.ts'), 'utf8')
 const paths = [...routesSource.matchAll(/path:\s*'([^']+)'/g)].map(([, path]) => path)
 if (paths.length === 0) throw new Error('lighthouserc: no routes found in e2e/routes.ts')
 
+// Base assertions applied to every audited URL.
+const baseAssertions = {
+  'categories:performance': ['error', { minScore: 0.9 }],
+  'categories:accessibility': ['error', { minScore: 1 }],
+  'categories:best-practices': ['error', { minScore: 1 }],
+  'categories:seo': ['error', { minScore: 1 }],
+  'largest-contentful-paint': ['error', { maxNumericValue: 2500 }],
+  'cumulative-layout-shift': ['error', { maxNumericValue: 0.1 }],
+  'total-blocking-time': ['error', { maxNumericValue: 200 }],
+}
+
 module.exports = {
   ci: {
     collect: {
@@ -22,18 +33,14 @@ module.exports = {
       settings: { preset: 'desktop' },
     },
     assert: {
-      assertions: {
-        'categories:performance': ['error', { minScore: 0.9 }],
-        'categories:accessibility': ['error', { minScore: 1 }],
-        'categories:best-practices': ['error', { minScore: 1 }],
-        'categories:seo': ['error', { minScore: 1 }],
-        'largest-contentful-paint': ['error', { maxNumericValue: 2500 }],
-        'cumulative-layout-shift': ['error', { maxNumericValue: 0.1 }],
-        'total-blocking-time': ['error', { maxNumericValue: 200 }],
-      },
-      // The 404 page intentionally carries noindex — allow the is-crawlable
-      // audit to fail for that URL only, while all other assertions still apply.
+      // assertMatrix and assertions cannot coexist; use assertMatrix exclusively.
+      // The first entry covers all URLs; the second relaxes is-crawlable for the
+      // 404 page, which intentionally carries <meta name="robots" content="noindex">.
       assertMatrix: [
+        {
+          matchingUrlPattern: '.*',
+          assertions: baseAssertions,
+        },
         {
           matchingUrlPattern: 'essa-rota-nao-existe',
           assertions: {
