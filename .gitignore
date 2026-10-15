@@ -6,3 +6,4 @@ node_modules
 .DS_Store
 postman/environments/
 apps/api/src/generated/
+.claude/settings.local.json
