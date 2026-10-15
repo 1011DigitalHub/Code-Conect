@@ -31,6 +31,16 @@ module.exports = {
         'cumulative-layout-shift': ['error', { maxNumericValue: 0.1 }],
         'total-blocking-time': ['error', { maxNumericValue: 200 }],
       },
+      // The 404 page intentionally carries noindex — allow the is-crawlable
+      // audit to fail for that URL only, while all other assertions still apply.
+      assertMatrix: [
+        {
+          matchingUrlPattern: 'essa-rota-nao-existe',
+          assertions: {
+            'is-crawlable': 'off',
+          },
+        },
+      ],
     },
     upload: {
       target: 'filesystem',
