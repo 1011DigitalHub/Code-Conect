@@ -1,10 +1,8 @@
 import { useState, type FormEvent } from 'react'
-import { Button } from '../../atoms/Button'
-import { FormError } from '../../atoms/FormError'
-import { Icon } from '../../atoms/Icon'
 import { TextLink } from '../../atoms/TextLink'
 import { CheckboxField } from '../../molecules/CheckboxField'
 import { FormField } from '../../molecules/FormField'
+import { AuthFormWrapper } from '../../molecules/AuthFormWrapper'
 
 export type LoginFormValues = {
   email: string
@@ -55,7 +53,13 @@ export function LoginForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
+    <AuthFormWrapper
+      onSubmit={handleSubmit}
+      submitLabel="Login"
+      submittingLabel="Entrando..."
+      submitting={submitting}
+      error={error}
+    >
       <FormField
         id="email"
         name="email"
@@ -98,17 +102,6 @@ export function LoginForm({
           <TextLink href={forgotPasswordHref}>Esqueci a senha</TextLink>
         </div>
       </div>
-      <div className="mt-4 flex flex-col gap-4">
-        <FormError message={error} />
-        <Button
-          type="submit"
-          fullWidth
-          disabled={submitting}
-          icon={<Icon name="arrow-right" size="sm" />}
-        >
-          {submitting ? 'Entrando...' : 'Login'}
-        </Button>
-      </div>
-    </form>
+    </AuthFormWrapper>
   )
 }
