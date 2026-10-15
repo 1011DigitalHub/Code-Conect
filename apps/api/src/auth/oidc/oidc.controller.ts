@@ -11,6 +11,7 @@ import {
   Query,
   Req,
   Res,
+  UseFilters,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
@@ -27,22 +28,20 @@ import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { ErrorResponseDto } from '../../common/dto/error-response.dto.js';
 import { LOGIN_THROTTLE } from '../../common/throttle.constants.js';
+import { ThrottleBucket } from '../../common/throttle-bucket.decorator.js';
 import {
-  ACCESS_TOKEN_COOKIE,
-  CSRF_COOKIE,
   getClearLinkingTokenCookieOptions,
-  getCsrfCookieOptions,
   getLinkingTokenCookieName,
   getLinkingTokenCookieOptions,
-  getSessionCookieOptions,
 } from '../cookie.constants.js';
 import { readCookie } from '../cookies.js';
-import { mintCsrfToken, sessionKey } from '../csrf.js';
+import { AuthService } from '../auth.service.js';
 import { LoginResponseDto } from '../dto/login-response.dto.js';
 import { NoCsrf } from '../no-csrf.decorator.js';
 import { Public } from '../public.decorator.js';
 import { LinkAccountDto } from './dto/link-account.dto.js';
 import { clearOidcFlowCookie, readOidcFlowCookie, setOidcFlowCookie } from './oidc-flow-cookie.js';
+import { OidcThrottleExceptionFilter } from './oidc-throttle.filter.js';
 import { generatePkcePair, generateState, statesMatch } from './oidc-pkce.js';
 import { getOidcProviderConfig, getWebAppOrigin, parseOidcProvider } from './oidc.constants.js';
 import { OidcService } from './oidc.service.js';
@@ -54,6 +53,15 @@ import { OidcService } from './oidc.service.js';
 // with zero explanation for why they ended up back there (WCAG 3.3.1).
 function redirectToLoginWithError(res: Response): void {
   res.redirect(`${getWebAppOrigin()}/login?oidcError=1`);
+}
+
+// State mismatch despite a valid flow cookie: the browser overwrote the
+// oidc_flow cookie with a second tab's flow before the first callback
+// arrived. We can't recover server-side (no server-side state to fall back
+// on) — redirect with a distinct flag so the frontend can say "another tab
+// may have interrupted your login" rather than showing a generic error.
+function redirectToLoginWithRaceError(res: Response): void {
+  res.redirect(`${getWebAppOrigin()}/login?oidcError=1&oidcRace=1`);
 }
 
 @ApiTags('auth')
@@ -70,6 +78,7 @@ export class OidcController {
   // as every other route — this only opts out of the *tighter* one.
   @Public()
   @NoCsrf()
+  @UseFilters(OidcThrottleExceptionFilter)
   @Get(':provider/start')
   @ApiOperation({ summary: 'Inicia o login via OIDC (Google/Microsoft): redireciona para o provedor' })
   @ApiResponse({
@@ -108,6 +117,7 @@ export class OidcController {
   // direct control than /start, and just as wrong to 429 in raw JSON.
   @Public()
   @NoCsrf()
+  @UseFilters(OidcThrottleExceptionFilter)
   @Get(':provider/callback')
   @ApiOperation({
     summary: 'Callback do provedor OIDC: valida o retorno e inicia a sessão ou pede vinculação',
@@ -133,30 +143,26 @@ export class OidcController {
     // reloaded by the browser) must never succeed twice off the same cookie.
     clearOidcFlowCookie(res);
 
-    // Every one of these — the provider reporting ?error= (the person
-    // cancelled/declined at its own consent screen), a missing/mismatched/
-    // expired oidc_flow cookie — happens through a browser redirect a real
-    // person is driving, not an XHR call. A raw JSON error on the API's own
-    // origin mid-navigation would be jarring; bouncing back to /login lets
-    // them just try again. (An unrecognized :provider in the route itself
-    // is different — see parseOidcProvider above — that's a malformed
-    // request, not something reachable by following these redirects.)
-    const flowValid =
-      !providerError && !!flow && !!state && !!code && flow.provider === provider && statesMatch(flow.state, state);
-    if (!flowValid) {
+    // Every one of these happens through a browser redirect a real person is
+    // driving — a raw JSON error mid-navigation would be jarring; bouncing
+    // back to /login lets them try again. (An unrecognised :provider in the
+    // route itself is different — parseOidcProvider above handles that as a
+    // 400, not reachable through the normal buttons.)
+    if (providerError || !flow || !state || !code || flow.provider !== provider) {
       redirectToLoginWithError(res);
+      return;
+    }
+    // A valid flow cookie whose state doesn't match the callback URL means a
+    // second tab started a new flow and overwrote this one's cookie. The
+    // distinct flag lets the frontend show a clearer "try again" message.
+    if (!statesMatch(flow.state, state)) {
+      redirectToLoginWithRaceError(res);
       return;
     }
 
     let resolution: Awaited<ReturnType<OidcService['authenticate']>>;
     try {
-      // TypeScript can't see flowValid's implication that flow/code are
-      // defined; the check above already guarantees it.
-      resolution = await this.oidcService.authenticate(
-        provider,
-        code as string,
-        (flow as NonNullable<typeof flow>).codeVerifier,
-      );
+      resolution = await this.oidcService.authenticate(provider, code, flow.codeVerifier);
     } catch (error) {
       // A rejection OidcService itself raises on purpose (bad signature,
       // wrong aud, unverified email, ...) — same reasoning as above, bounce
@@ -184,9 +190,7 @@ export class OidcController {
     res.clearCookie(getLinkingTokenCookieName(), getClearLinkingTokenCookieOptions());
 
     const session = await this.oidcService.mintSession(resolution.user);
-    res.cookie(ACCESS_TOKEN_COOKIE, session.accessToken, getSessionCookieOptions(false, session.expiresIn));
-    const csrfToken = mintCsrfToken(sessionKey(session.accessToken));
-    res.cookie(CSRF_COOKIE, csrfToken, getCsrfCookieOptions(false, session.expiresIn));
+    AuthService.applySessionCookies(res, session);
     res.redirect(`${getWebAppOrigin()}/perfil`);
   }
 
@@ -201,6 +205,7 @@ export class OidcController {
   // OidcService.resolveIdentity), so leaving these as two independent
   // buckets would double an attacker's guesses/min against one account.
   @Public()
+  @ThrottleBucket('shared-password-guess')
   @Throttle({ default: LOGIN_THROTTLE })
   @Post('link')
   @HttpCode(HttpStatus.OK)
@@ -246,11 +251,7 @@ export class OidcController {
       throw error;
     }
     res.clearCookie(getLinkingTokenCookieName(), getClearLinkingTokenCookieOptions());
-
-    res.cookie(ACCESS_TOKEN_COOKIE, session.accessToken, getSessionCookieOptions(false, session.expiresIn));
-    const csrfToken = mintCsrfToken(sessionKey(session.accessToken));
-    res.cookie(CSRF_COOKIE, csrfToken, getCsrfCookieOptions(false, session.expiresIn));
-
+    AuthService.applySessionCookies(res, session);
     return { tokenType: session.tokenType, expiresIn: session.expiresIn };
   }
 }

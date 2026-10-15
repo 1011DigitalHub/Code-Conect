@@ -1,6 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-
-const DEV_LINKING_SECRET = 'dev-only-linking-secret-change-me';
+import { OIDC_LINKING_TOKEN_DEV_SECRET } from '../../env.js';
 
 export const OIDC_PROVIDERS = ['google', 'microsoft'] as const;
 export type OidcProvider = (typeof OIDC_PROVIDERS)[number];
@@ -31,16 +30,14 @@ export function getWebAppOrigin(): string {
   return process.env.WEB_APP_ORIGIN || 'http://localhost:5173';
 }
 
-// Never the same secret as the session JWT or the CSRF double-submit token:
-// this one signs both the linking_token (the artifact that proves "this
-// OIDC identity belongs to this email" across the redirect to
-// /vincular-conta) and, since round 8 of plan/LoginSocial.md's review, the
-// oidc_flow cookie (see oidc-flow-cookie.ts) — each with its own
-// domain-separation prefix, same convention as csrf.ts sharing CSRF_SECRET
-// across its own uses. A shared secret with JWT_SECRET/CSRF_SECRET would
-// mean a leak of either of those doubles as a way to forge this proof.
+// Boot-time validation and the dev-default string live in env.ts
+// (see readOidcLinkingTokenSecret there). Runtime reading stays here, reading
+// process.env per call — same pattern as getJwtSecret() in auth.constants.ts
+// — so vi.stubEnv works in tests and a future hot-reload would pick up a
+// rotated secret without a restart. Never the same value as JWT_SECRET/
+// CSRF_SECRET (enforced at boot by env.ts).
 export function getOidcLinkingTokenSecret(): string {
-  return process.env.OIDC_LINKING_TOKEN_SECRET || DEV_LINKING_SECRET;
+  return process.env.OIDC_LINKING_TOKEN_SECRET || OIDC_LINKING_TOKEN_DEV_SECRET;
 }
 
 export interface OidcProviderConfig {

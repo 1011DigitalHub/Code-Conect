@@ -9,5 +9,11 @@ export default defineConfig({
     globals: true,
     root: './',
     include: ['**/*.spec.ts'],
+    // Minimum env for env.ts validation to pass in unit tests (no database
+    // actually used; the real DATABASE_URL lives in .env for e2e).
+    env: {
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgresql://test:test@localhost:5432/test',
+    },
   },
 });

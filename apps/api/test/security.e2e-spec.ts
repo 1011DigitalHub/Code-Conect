@@ -4,8 +4,8 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
 import { AppModule } from './../src/app.module.js';
 import { configureApp } from './../src/app.setup.js';
-import { setupSwagger } from './../src/swagger.js';
 import { getJwtSecret, JWT_ALGORITHM } from './../src/auth/auth.constants.js';
+import { createTestApp } from './helpers/app.js';
 import { HealthService } from './../src/health/health.service.js';
 import { PrismaService } from './../src/prisma/prisma.service.js';
 import { fetchCsrfToken } from './cookies.js';
@@ -25,13 +25,7 @@ describe('Security regressions (e2e)', () => {
   };
 
   beforeEach(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-    app = moduleFixture.createNestApplication<NestExpressApplication>();
-    configureApp(app);
-    setupSwagger(app);
-    await app.init();
+    app = await createTestApp();
     await resetDatabase(app);
     jwtService = app.get(JwtService);
   });

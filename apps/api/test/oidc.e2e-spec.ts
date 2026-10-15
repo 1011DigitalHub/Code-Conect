@@ -1,24 +1,9 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
-import { AppModule } from './../src/app.module.js';
-import { configureApp } from './../src/app.setup.js';
-import { setupSwagger } from './../src/swagger.js';
 import { cookieValue, fetchCsrfToken, setCookie } from './cookies.js';
 import { resetDatabase } from './db.js';
 import { startFakeIdp, FAKE_IDP_ISSUER, type FakeIdp, type FakeIdTokenOptions } from './oidc-fake-idp.js';
-
-async function createApp(): Promise<NestExpressApplication> {
-  const moduleFixture: TestingModule = await Test.createTestingModule({
-    imports: [AppModule],
-  }).compile();
-
-  const app = moduleFixture.createNestApplication<NestExpressApplication>();
-  configureApp(app);
-  setupSwagger(app);
-  await app.init();
-  return app;
-}
+import { createTestApp } from './helpers/app.js';
 
 function decodeFlowCookie(raw: string): { provider: string; state: string; codeVerifier: string; exp: number } {
   const [encoded] = cookieValue(raw).split('.');
@@ -45,7 +30,7 @@ describe('OIDC login (e2e)', () => {
     vi.stubEnv('GOOGLE_JWKS_URI', `${fakeIdp.url}/jwks`);
     vi.stubEnv('GOOGLE_ISSUER', FAKE_IDP_ISSUER);
 
-    app = await createApp();
+    app = await createTestApp();
     await resetDatabase(app);
   });
 
