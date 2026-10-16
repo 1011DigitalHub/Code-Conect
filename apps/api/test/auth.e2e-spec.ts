@@ -1,30 +1,15 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
-import { AppModule } from './../src/app.module.js';
-import { configureApp } from './../src/app.setup.js';
-import { setupSwagger } from './../src/swagger.js';
 import { isCookieSecure } from './../src/auth/cookie.constants.js';
 import { cookieValue, fetchCsrfToken, setCookie } from './cookies.js';
 import { resetDatabase } from './db.js';
+import { createTestApp } from './helpers/app.js';
 
 const newUser = {
   name: 'Maria Silva',
   email: 'maria@exemplo.com',
   password: 'senha-segura-123',
 };
-
-async function createApp(): Promise<NestExpressApplication> {
-  const moduleFixture: TestingModule = await Test.createTestingModule({
-    imports: [AppModule],
-  }).compile();
-
-  const app = moduleFixture.createNestApplication<NestExpressApplication>();
-  configureApp(app);
-  setupSwagger(app);
-  await app.init();
-  return app;
-}
 
 describe('Auth (e2e)', () => {
   let app: NestExpressApplication;
@@ -39,7 +24,7 @@ describe('Auth (e2e)', () => {
 
   // A fresh app and an empty test database per test, so ids start at 1.
   beforeEach(async () => {
-    app = await createApp();
+    app = await createTestApp();
     await resetDatabase(app);
   });
 
@@ -423,7 +408,7 @@ describe('Auth (e2e)', () => {
       await app.close();
 
       // A new app instance, like restarting the API.
-      app = await createApp();
+      app = await createTestApp();
       const newAgent = request.agent(app.getHttpServer());
       const loginCsrfToken = await fetchCsrfToken(newAgent);
       await newAgent

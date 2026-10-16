@@ -177,6 +177,54 @@ O `RESTART IDENTITY` reinicia os sequences (auto-incremento dos IDs) apos cada t
 
 O `startFakeIdp()` levanta um servidor HTTP em processo na porta 0 (SO escolhe uma porta livre). As variaveis de ambiente `GOOGLE_TOKEN_ENDPOINT` etc. sao apontadas para esse servidor. Ao final do suite (`afterAll`), `fakeIdp.close()` encerra o servidor. Ver [seguranca-oidc.md](seguranca-oidc.md) para o detalhamento completo.
 
+**Helpers compartilhados dos testes e2e (`test/helpers/`):**
+
+Os arquivos e2e repetiam localmente duas funcoes identicas — `createApp()` e `signIn()`. Isso violava o limite de 5% de duplicacao do projeto (medido por jscpd). As funcoes foram extraidas para helpers reutilizaveis:
+
+| Helper | Arquivo | O que faz |
+|--------|---------|-----------|
+| `createTestApp()` | `test/helpers/app.ts` | Compila o `AppModule`, aplica `configureApp` e `setupSwagger`, chama `app.init()` e devolve um `NestExpressApplication` pronto para supertest. Elimina o boilerplate repetido em 6 spec files. |
+| `loginAs(app, credentials)` | `test/helpers/auth.ts` | Cadastra o usuario (`POST /users`) e faz login (`POST /auth/login`) com um `request.agent` (o cookie de sessao fica no jar). Devolve `{ agent, csrfToken }`. O `csrfToken` e o token novo lido do `Set-Cookie` do login, porque o login troca o token e o de antes deixa de valer. |
+| `Agent` (tipo) | `test/helpers/auth.ts` | Alias de `ReturnType<typeof request.agent>`, para tipar o agente nos specs sem repetir essa expressao. |
+
+```typescript
+// Padrao antes (duplicado em 4+ arquivos):
+async function createApp() {
+  const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+  const app = moduleRef.createNestApplication<NestExpressApplication>();
+  configureApp(app);
+  setupSwagger(app);
+  await app.init();
+  return app;
+}
+
+// Padrao depois (importado de test/helpers/app.ts):
+const app = await createTestApp();
+```
+
+```typescript
+// Antes (duplicado em posts e comments):
+async function signIn(credentials) {
+  const agent = request.agent(app.getHttpServer());
+  const signUpToken = await fetchCsrfToken(agent);
+  await agent.post('/users').set('X-CSRF-Token', signUpToken).send(credentials).expect(201);
+  // O login troca o csrf token: o de antes do login deixa de valer.
+  const res = await agent
+    .post('/auth/login')
+    .set('X-CSRF-Token', signUpToken)
+    .send({ email: credentials.email, password: credentials.password })
+    .expect(200);
+  return { agent, csrfToken: cookieValue(setCookie(res, 'csrf_token')) };
+}
+
+// Depois (importado de test/helpers/auth.ts):
+const { agent, csrfToken } = await loginAs(app, credentials);
+await agent.post('/posts').set('X-CSRF-Token', csrfToken).send(newPost);
+```
+
+**Por que isso e relevante como padrao de design de testes?**
+Centralizar o bootstrap e o login em helpers garante que 6 dos 8 spec files usam a mesma configuracao de `configureApp` e `setupSwagger`. Os dois blocos restantes em `security.e2e-spec.ts` continuam montando o app manualmente com `overrideProvider(HealthService)` — situacao prevista, pois precisam substituir dependencias para simular falha de banco.
+
 ### Camada 4: Testes e2e do frontend (Playwright)
 
 Ficam em `apps/web/e2e/`. Usam **Playwright** com um browser **Chromium headless** real. Rodados com `pnpm test:web:a11y`.
@@ -247,7 +295,9 @@ E tentador escrever apenas testes e2e porque eles "testam tudo". O problema: sao
 | Headers de seguranca servidos pelo `vite preview` | `apps/web/vite.config.ts` | linhas 22-38 |
 | Mock direto de Prisma (sem container DI) | `apps/api/src/users/users.service.spec.ts` | linhas 23-30 |
 | Mock de UsersService construido manualmente | `apps/api/src/auth/auth.service.spec.ts` | linhas 39-50 |
+| Helper `createTestApp()` — bootstrap centralizado dos e2e | `apps/api/test/helpers/app.ts` | todos |
+| Helper `loginAs()` e tipo `Agent` — autenticacao centralizada | `apps/api/test/helpers/auth.ts` | todos |
 
 ---
 
-_Ultima atualizacao: 2026-10-09 | Gerado a partir do codigo-fonte._
+_Ultima atualizacao: 2026-10-15 | Gerado a partir do codigo-fonte._
