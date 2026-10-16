@@ -101,7 +101,8 @@ describe('OIDC login (e2e)', () => {
       const code = fakeIdp.encodeCode();
       const res = await agent.get(`/auth/oidc/google/callback?code=${code}&state=not-the-real-state`);
       expect(res.status).toBe(302);
-      expect(res.headers.location).toBe('http://localhost:5173/login?oidcError=1');
+      // State mismatch = two-tab race condition: redirect carries oidcRace=1 in addition to oidcError=1.
+      expect(res.headers.location).toBe('http://localhost:5173/login?oidcError=1&oidcRace=1');
       expect(flow.state).not.toBe('not-the-real-state');
     });
 

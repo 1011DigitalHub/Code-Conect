@@ -121,15 +121,13 @@ function readTrustProxy(): number {
 // identity to an existing local account, so it gets its own key, not a
 // shared one that would widen the blast radius of either secret leaking.
 //
-// Only the boot-time requirement lives here; the actual secret used to
-// sign/verify tokens at runtime is read independently by
-// auth/oidc/oidc.constants.ts's own getOidcLinkingTokenSecret(), the same
-// split auth.constants.ts's getJwtSecret() already has with this file's
-// readJwtSecret() above — aggregating every failure into one boot-time
-// message is this file's only job; each domain's own constants module
-// still owns reading the value it actually uses.
+// Dev-only fallback used by the boot-time cross-validation below.
+// oidc.constants.ts defines the same literal independently to avoid
+// importing from this module (which runs validation side-effects at load).
+export const OIDC_LINKING_TOKEN_DEV_SECRET = 'dev-only-linking-secret-change-me';
+
 function readOidcLinkingTokenSecret(): string {
-  const DEV_SECRET = 'dev-only-linking-secret-change-me';
+  const DEV_SECRET = OIDC_LINKING_TOKEN_DEV_SECRET;
   const raw = process.env.OIDC_LINKING_TOKEN_SECRET;
   if (raw) {
     if (raw.length < 32) {
