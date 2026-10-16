@@ -240,6 +240,78 @@ export class PrismaService extends PrismaClient
 - **`OnModuleDestroy`**: o Nest chama `onModuleDestroy` quando recebe SIGTERM/SIGINT (graceful shutdown). A conexao e fechada de forma limpa, sem deixar conexoes abertas no pool.
 - **`omit: { user: { passwordHash: true } }`**: defesa em profundidade — o campo `passwordHash` nunca retorna em nenhuma query, a menos que o ponto de chamada explicitamente opte por isso. Sem isso, o hash poderia vazar em logs, dumps de erro ou endpoints futuros por descuido.
 
+### `RequestIdInterceptor` — rastreabilidade de requisicoes
+
+Registrado globalmente via `APP_INTERCEPTOR` no `AppModule` (antes dos guards, pois interceptores executam na ordem inversa à de saída):
+
+```ts
+// app.module.ts
+{ provide: APP_INTERCEPTOR, useClass: RequestIdInterceptor }
+```
+
+**Fluxo de execucao:**
+
+1. O interceptor le o header `X-Request-ID` da requisicao de entrada.
+2. Se ausente, gera um UUID v4 com `randomUUID()` do modulo nativo `node:crypto`.
+3. Injeta o valor final no header de resposta (`X-Request-ID`) e loga `[<id>] METHOD /path`.
+
+```ts
+// request-id.interceptor.ts
+const requestId =
+  (req.headers['x-request-id'] as string | undefined) ?? randomUUID();
+
+res.setHeader('x-request-id', requestId);
+this.logger.log(`[${requestId}] ${req.method} ${req.path}`);
+```
+
+**Por que propagar o ID enviado pelo cliente?**
+Quando um servico externo (API Gateway, frontend) ja atribuiu um ID a uma transacao, repassar o mesmo valor permite correlacionar logs de varios sistemas sem ter que mapear IDs diferentes — o ID atravessa toda a cadeia de chamadas.
+
+### `HealthController` — liveness e readiness probes
+
+```
+GET /health/live   — liveness probe
+GET /health/ready  — readiness probe
+```
+
+Ambos sao publicos (`@Public()`), sem CSRF (`@NoCsrf()`) e sem rate limit (`@SkipThrottle()`), pelos mesmos motivos do `AppController.getHealth()`.
+
+#### Diferenca entre liveness e readiness
+
+| Probe       | O que verifica                     | Resposta tipica              | Quem usa                         |
+|-------------|-----------------------------------|------------------------------|----------------------------------|
+| **liveness**  | O processo esta rodando           | `200 { status: 'ok' }` (sincrono) | Docker HEALTHCHECK, monitors de uptime |
+| **readiness** | O processo **e** o banco estao prontos | `200` (DB ok) / `503` (DB inalcancavel) | Orquestradores (K8s) para roteamento de trafego |
+
+A separacao importa para evitar reinicializacoes desnecessarias: se o banco tiver uma falha transitoria, o container nao esta "morto" (liveness ok) mas nao deve receber trafego novo (readiness falha).
+
+```ts
+// health.controller.ts
+@Get('live')
+live(): HealthResponseDto {
+  return { status: 'ok' }; // sincrono, sem I/O
+}
+
+@Get('ready')
+@HealthCheck()
+ready() {
+  return this.health.check([() => this.dbIndicator.isHealthy()]);
+}
+```
+
+O `DatabaseHealthIndicator` delega para `HealthService.isDatabaseReachable()` (com cache e coalescing) e usa a API do `@nestjs/terminus` para retornar o `HealthCheckResult` padronizado:
+
+```ts
+// database.health-indicator.ts
+async isHealthy(): Promise<HealthIndicatorResult<'database'>> {
+  const reachable = await this.healthService.isDatabaseReachable();
+  const session = this.healthIndicatorService.check('database');
+  return reachable ? session.up() : session.down('Database unreachable');
+}
+```
+
+O Dockerfile usa `GET /health/live` no `HEALTHCHECK` (e nao `/health/ready`) porque o Docker nao tem acesso ao banco em tempo de build — a probe de liveness e suficiente para verificar se o container esta respondendo.
+
 ---
 
 ## Erros Comuns e Armadilhas
@@ -315,7 +387,11 @@ Antes do refactoring, o `AuthGuard` era declarado no `AuthModule` e o `Throttler
 | `@Global()` e ciclo de vida do PrismaModule | [apps/api/src/prisma/prisma.module.ts](../../apps/api/src/prisma/prisma.module.ts) | L1–L9 |
 | `OnModuleInit`/`OnModuleDestroy` e `omit` | [apps/api/src/prisma/prisma.service.ts](../../apps/api/src/prisma/prisma.service.ts) | L7–L32 |
 | Constantes de throttle (default 100/min) | [apps/api/src/common/throttle.constants.ts](../../apps/api/src/common/throttle.constants.ts) | L7 |
+| `RequestIdInterceptor` — propagacao e geracao de UUID | [apps/api/src/common/interceptors/request-id.interceptor.ts](../../apps/api/src/common/interceptors/request-id.interceptor.ts) | L10–L26 |
+| Registro global do interceptor via `APP_INTERCEPTOR` | [apps/api/src/app.module.ts](../../apps/api/src/app.module.ts) | L28 |
+| `HealthController` — liveness e readiness | [apps/api/src/health/health.controller.ts](../../apps/api/src/health/health.controller.ts) | L21–L42 |
+| `DatabaseHealthIndicator` — adaptador terminus | [apps/api/src/health/database.health-indicator.ts](../../apps/api/src/health/database.health-indicator.ts) | L6–L17 |
 
 ---
 
-_Ultima atualizacao: 2026-10-09 | Gerado a partir do codigo-fonte._
+_Ultima atualizacao: 2026-10-15 | Gerado a partir do codigo-fonte._

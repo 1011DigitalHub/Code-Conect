@@ -56,8 +56,11 @@ ENTRYPOINT ["dumb-init", "--"]
 CMD ["node", "dist/main.js"]
 
 # The runtime stage installs nothing but dumb-init, so this uses Node 22's
-# global fetch instead of curl. GET / is the health check added in
-# src/health — a 503 (database unreachable) or a failed fetch both exit 1.
+# global fetch instead of curl. GET /health/live is the liveness probe
+# (src/health) — a failed fetch exits 1. Liveness only tests that the
+# process answers HTTP; it does NOT check the database, so a transient DB
+# hiccup never restarts the container unnecessarily. Use GET /health/ready
+# (which runs the DB probe) for readiness checks in an orchestrator.
 # Reads process.env.PORT rather than hardcoding 3000: EXPOSE above is
 # documentation only and doesn't change what the process actually binds to,
 # so a container started with a different PORT would otherwise probe the
@@ -77,4 +80,4 @@ CMD ["node", "dist/main.js"]
 # 25+ (API 1.44+) — confirm the deploy target's engine version; this repo's
 # dev machine runs 29.8, well past it, but an older engine wasn't tested.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --start-interval=2s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+  CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/health/live').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"

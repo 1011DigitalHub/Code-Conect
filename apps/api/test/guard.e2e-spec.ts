@@ -28,8 +28,10 @@ describe('Global AuthGuard (e2e)', () => {
     await app.close();
   });
 
-  it('keeps the health route public without configureApp', () => {
-    return request(app.getHttpServer()).get('/').expect(200).expect({ status: 'ok' });
+  it('keeps the health routes public without configureApp', async () => {
+    await request(app.getHttpServer()).get('/').expect(200).expect({ status: 'ok' });
+    await request(app.getHttpServer()).get('/health/live').expect(200).expect({ status: 'ok' });
+    await request(app.getHttpServer()).get('/health/ready').expect(200);
   });
 
   it('keeps sign-up public (no auth needed, just the csrf pair every unsafe method needs)', async () => {

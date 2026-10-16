@@ -276,7 +276,7 @@ jobs:
   # point 3 in plan/OtimizacaoPipelineCI.md).
   claude-review:
     needs: [changes, static-api, static-web]
-    if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft && !failure() && !cancelled() && (needs.changes.outputs.api == 'true' || needs.changes.outputs.web == 'true') }}
+    if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft && !failure() && !cancelled() && (needs.changes.outputs.api == 'true' || needs.changes.outputs.web == 'true') && github.actor != 'dependabot[bot]' }}
     # The called claude.yml defines pull-requests: write and id-token: write at
     # the job level. GitHub validates that the calling job grants at least those
     # permissions before starting any jobs (startup_failure otherwise). The
