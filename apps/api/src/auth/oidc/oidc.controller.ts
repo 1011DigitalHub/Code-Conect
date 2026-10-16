@@ -30,16 +30,16 @@ import { ErrorResponseDto } from '../../common/dto/error-response.dto.js';
 import { LOGIN_THROTTLE } from '../../common/throttle.constants.js';
 import { ThrottleBucket } from '../../common/throttle-bucket.decorator.js';
 import { AuthService } from '../auth.service.js';
-import {
-  clearLinkingTokenCookie,
-  readLinkingTokenCookie,
-  setLinkingTokenCookie,
-} from './oidc.utils.js';
 import { LoginResponseDto } from '../dto/login-response.dto.js';
 import { NoCsrf } from '../no-csrf.decorator.js';
 import { Public } from '../public.decorator.js';
 import { LinkAccountDto } from './dto/link-account.dto.js';
 import { clearOidcFlowCookie, readOidcFlowCookie, setOidcFlowCookie } from './oidc-flow-cookie.js';
+import {
+  clearLinkingTokenCookie,
+  readLinkingTokenCookie,
+  setLinkingTokenCookie,
+} from './oidc.utils.js';
 import { OidcThrottleExceptionFilter } from './oidc-throttle.filter.js';
 import { generatePkcePair, generateState, statesMatch } from './oidc-pkce.js';
 import { getOidcProviderConfig, getWebAppOrigin, parseOidcProvider } from './oidc.constants.js';

@@ -181,7 +181,7 @@ export class PostsService {
   // PUT and DELETE on the like singleton: both idempotent, both 204, so a
   // double click is harmless instead of a 409.
   async like(slug: string, userId: number): Promise<void> {
-    const postId = await this.resolvePostBySlug(slug);
+    const postId = await this.resolvePostIdBySlug(slug);
     await this.prisma.like.createMany({
       data: [{ postId, userId }],
       skipDuplicates: true,
@@ -189,13 +189,13 @@ export class PostsService {
   }
 
   async unlike(slug: string, userId: number): Promise<void> {
-    const postId = await this.resolvePostBySlug(slug);
+    const postId = await this.resolvePostIdBySlug(slug);
     await this.prisma.like.deleteMany({ where: { postId, userId } });
   }
 
   // Shared with CommentsService (same module): avoids identical Prisma query +
   // NotFoundException in both services.
-  async resolvePostBySlug(slug: string): Promise<number> {
+  async resolvePostIdBySlug(slug: string): Promise<number> {
     const post = await this.prisma.post.findUnique({
       where: { slug },
       select: { id: true },

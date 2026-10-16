@@ -27,7 +27,7 @@ function prismaMock() {
 }
 
 function postsMock() {
-  return { resolvePostBySlug: vi.fn() };
+  return { resolvePostIdBySlug: vi.fn() };
 }
 
 type PrismaMock = ReturnType<typeof prismaMock>;
@@ -46,7 +46,7 @@ describe('CommentsService.list', () => {
   it('lists the oldest comment first, so the thread reads as a conversation', async () => {
     const prisma = prismaMock();
     const posts = postsMock();
-    posts.resolvePostBySlug.mockResolvedValue(4);
+    posts.resolvePostIdBySlug.mockResolvedValue(4);
     prisma.comment.findMany.mockResolvedValue([record()]);
     prisma.comment.count.mockResolvedValue(1);
 
@@ -70,7 +70,7 @@ describe('CommentsService.list', () => {
   it('counts only the comments of that post', async () => {
     const prisma = prismaMock();
     const posts = postsMock();
-    posts.resolvePostBySlug.mockResolvedValue(4);
+    posts.resolvePostIdBySlug.mockResolvedValue(4);
     prisma.comment.findMany.mockResolvedValue([]);
     prisma.comment.count.mockResolvedValue(12);
 
@@ -84,7 +84,7 @@ describe('CommentsService.list', () => {
 
   it('throws for an unknown post', async () => {
     const posts = postsMock();
-    posts.resolvePostBySlug.mockRejectedValue(new NotFoundException('Post não encontrado'));
+    posts.resolvePostIdBySlug.mockRejectedValue(new NotFoundException('Post não encontrado'));
 
     await expect(
       serviceWith(prismaMock(), posts).list('nope', { ...query }),
@@ -96,7 +96,7 @@ describe('CommentsService.create', () => {
   it('stores the comment against the post and the author', async () => {
     const prisma = prismaMock();
     const posts = postsMock();
-    posts.resolvePostBySlug.mockResolvedValue(4);
+    posts.resolvePostIdBySlug.mockResolvedValue(4);
     prisma.comment.create.mockResolvedValue(record());
 
     const comment = await serviceWith(prisma, posts).create(
@@ -116,7 +116,7 @@ describe('CommentsService.create', () => {
 
   it('throws for an unknown post', async () => {
     const posts = postsMock();
-    posts.resolvePostBySlug.mockRejectedValue(new NotFoundException('Post não encontrado'));
+    posts.resolvePostIdBySlug.mockRejectedValue(new NotFoundException('Post não encontrado'));
 
     await expect(
       serviceWith(prismaMock(), posts).create('nope', { body: 'Oi' }, 3),
