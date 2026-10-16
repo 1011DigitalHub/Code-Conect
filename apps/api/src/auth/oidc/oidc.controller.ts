@@ -29,13 +29,12 @@ import type { Request, Response } from 'express';
 import { ErrorResponseDto } from '../../common/dto/error-response.dto.js';
 import { LOGIN_THROTTLE } from '../../common/throttle.constants.js';
 import { ThrottleBucket } from '../../common/throttle-bucket.decorator.js';
-import {
-  getClearLinkingTokenCookieOptions,
-  getLinkingTokenCookieName,
-  getLinkingTokenCookieOptions,
-} from '../cookie.constants.js';
-import { readCookie } from '../cookies.js';
 import { AuthService } from '../auth.service.js';
+import {
+  clearLinkingTokenCookie,
+  readLinkingTokenCookie,
+  setLinkingTokenCookie,
+} from './oidc.utils.js';
 import { LoginResponseDto } from '../dto/login-response.dto.js';
 import { NoCsrf } from '../no-csrf.decorator.js';
 import { Public } from '../public.decorator.js';
@@ -176,7 +175,7 @@ export class OidcController {
     }
 
     if (resolution.kind === 'linkingRequired') {
-      res.cookie(getLinkingTokenCookieName(), resolution.linkingToken, getLinkingTokenCookieOptions());
+      setLinkingTokenCookie(res, resolution.linkingToken);
       res.redirect(`${getWebAppOrigin()}/vincular-conta?provider=${provider}`);
       return;
     }
@@ -187,7 +186,7 @@ export class OidcController {
     // bound to that attempt's own email/provider/providerSub), but there is
     // no reason to leave it once this request is signing the person in
     // through a completely different path.
-    res.clearCookie(getLinkingTokenCookieName(), getClearLinkingTokenCookieOptions());
+    clearLinkingTokenCookie(res);
 
     const session = await this.oidcService.mintSession(resolution.user);
     AuthService.applySessionCookies(res, session);
@@ -230,7 +229,7 @@ export class OidcController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<LoginResponseDto> {
-    const linkingToken = readCookie(req, getLinkingTokenCookieName());
+    const linkingToken = readLinkingTokenCookie(req);
     // Unlike the callback's oidc_flow cookie, this one is NOT cleared up
     // front: a wrong password is exactly as retriable as a wrong password
     // on /auth/login (same LOGIN_THROTTLE bounds the attempts either way),
@@ -246,11 +245,11 @@ export class OidcController {
       session = await this.oidcService.linkAccount(linkingToken, dto.password);
     } catch (error) {
       if (error instanceof ConflictException) {
-        res.clearCookie(getLinkingTokenCookieName(), getClearLinkingTokenCookieOptions());
+        clearLinkingTokenCookie(res);
       }
       throw error;
     }
-    res.clearCookie(getLinkingTokenCookieName(), getClearLinkingTokenCookieOptions());
+    clearLinkingTokenCookie(res);
     AuthService.applySessionCookies(res, session);
     return { tokenType: session.tokenType, expiresIn: session.expiresIn };
   }
