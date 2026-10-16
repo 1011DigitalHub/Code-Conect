@@ -42,7 +42,7 @@ jobs:
           # Código = pastas de código conhecidas (deste monorepo e as genéricas)
           # OU extensões de código comuns. Exclui toda a documentação e o cliente
           # Prisma gerado automaticamente (não escrito à mão).
-          CODE_RE='(^(apps|src|server|backend|frontend)/|\.(ts|tsx|js|jsx|mjs|cjs|py|java|cs|go|rb|php|rs)$)'
+          CODE_RE='(^(apps|src|server|backend|frontend)/|^\.github/workflows/|\.(ts|tsx|js|jsx|mjs|cjs|py|java|cs|go|rb|php|rs)$)'
           EXCLUDE_RE='(^docs/|^apps/api/src/generated/)'
           WIKI_RE='^docs/wiki/'
 
