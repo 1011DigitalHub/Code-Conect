@@ -5,7 +5,7 @@ import { BadRequestException } from '@nestjs/common';
 // env.ts defines the same string independently for cross-validation at boot.
 const OIDC_LINKING_TOKEN_DEV_SECRET = 'dev-only-linking-secret-change-me';
 
-export const OIDC_PROVIDERS = ['google', 'microsoft'] as const;
+const OIDC_PROVIDERS = ['google', 'microsoft'] as const;
 export type OidcProvider = (typeof OIDC_PROVIDERS)[number];
 
 export function isOidcProvider(value: string): value is OidcProvider {

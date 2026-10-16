@@ -8,6 +8,7 @@ import {
   CommentEntity,
   CommentRecord,
 } from './entities/comment.entity.js';
+import { PostsService } from './posts.service.js';
 
 const commentSelect = {
   id: true,
@@ -19,13 +20,16 @@ const commentSelect = {
 
 @Injectable()
 export class CommentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly postsService: PostsService,
+  ) {}
 
   async list(
     slug: string,
     query: PaginationQueryDto,
   ): Promise<CommentCollectionDto> {
-    const postId = await this.requirePostId(slug);
+    const postId = await this.postsService.resolvePostIdBySlug(slug);
     const { page, perPage } = query;
 
     const [rows, total] = await Promise.all([
@@ -67,20 +71,11 @@ export class CommentsService {
     dto: CreateCommentDto,
     authorId: number,
   ): Promise<CommentEntity> {
-    const postId = await this.requirePostId(slug);
+    const postId = await this.postsService.resolvePostIdBySlug(slug);
     const comment: CommentRecord = await this.prisma.comment.create({
       data: { body: dto.body, postId, authorId },
       select: commentSelect,
     });
     return new CommentEntity(comment);
-  }
-
-  private async requirePostId(slug: string): Promise<number> {
-    const post = await this.prisma.post.findUnique({
-      where: { slug },
-      select: { id: true },
-    });
-    if (!post) throw new NotFoundException('Post não encontrado');
-    return post.id;
   }
 }

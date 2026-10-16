@@ -30,26 +30,26 @@ export type CreateUserBody = LoginBody & {
   name: string
 }
 
-export type PostAuthor = {
+type PostAuthor = {
   id: number
   name: string
   self: string
 }
 
-export type Pagination = {
+type Pagination = {
   page: number
   perPage: number
   total: number
   totalPages: number
 }
 
-export type CollectionLinks = {
+type CollectionLinks = {
   self: string
   next: string | null
   prev: string | null
 }
 
-export type PostLinks = {
+type PostLinks = {
   self: string
   comments: string
   like: string

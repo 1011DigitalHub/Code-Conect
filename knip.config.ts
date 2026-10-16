@@ -12,7 +12,6 @@ const config: KnipConfig = {
       ignore: ['src/generated/**'],
     },
     'apps/web': {
-      entry: ['src/main.tsx'],
       project: ['src/**/*.{ts,tsx}'],
     },
   },

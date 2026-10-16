@@ -1,1 +1,1 @@
-export { LinkAccountForm, type LinkAccountFormProps, type LinkAccountFormValues } from './LinkAccountForm'
+export { LinkAccountForm, type LinkAccountFormValues } from './LinkAccountForm'

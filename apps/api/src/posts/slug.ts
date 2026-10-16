@@ -8,7 +8,7 @@ export const SLUG_MAX_LENGTH = 160;
 // regression guard — if a future change to either function ever breaks that
 // invariant, this fails the create instead of persisting a slug that could
 // later reach TextLink's own guard as an unexpected throw.
-export const SLUG_FORMAT = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const SLUG_FORMAT = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export function assertSlugFormat(slug: string): void {
   if (slug.length > SLUG_MAX_LENGTH || !matches(slug, SLUG_FORMAT)) {

@@ -1,12 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
-import type { Post } from '../../generated/prisma/client.js';
 import {
   CollectionLinksDto,
   PaginationDto,
 } from '../../common/dto/paginated.dto.js';
-
-// Database record. Never sent to clients as is.
-export type StoredPost = Post;
 
 // The shape PostsService selects for the feed. Declared here so the entity
 // and the service agree on one projection.

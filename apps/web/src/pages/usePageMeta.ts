@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 
-export const SITE_NAME = 'Code Connect'
+const SITE_NAME = 'Code Connect'
 
 export type PageMetaOptions = {
   // Search engines should not index this page (e.g. 404, transient flows).
