@@ -183,9 +183,9 @@ Os arquivos e2e repetiam localmente duas funcoes identicas — `createApp()` e `
 
 | Helper | Arquivo | O que faz |
 |--------|---------|-----------|
-| `createTestApp()` | `test/helpers/app.ts` | Cria e inicializa a aplicacao NestJS com `configureApp`, retorna um `INestApplication` pronto para supertest. Elimina o boilerplate repetido em 6 spec files. |
-| `loginAs(app, credentials)` | `test/helpers/auth.ts` | Faz login via `POST /auth/login`, extrai os cookies de sessao e CSRF do response e devolve um `Agent` (supertest agent) ja configurado. |
-| `Agent` (tipo) | `test/helpers/auth.ts` | Re-exportacao do tipo `supertest.SuperAgentTest` com o nome semantico do dominio — evita importar `supertest` diretamente em cada spec so para tipar o agente. |
+| `createTestApp()` | `test/helpers/app.ts` | Compila o `AppModule`, aplica `configureApp` e `setupSwagger`, chama `app.init()` e devolve um `NestExpressApplication` pronto para supertest. Elimina o boilerplate repetido em 6 spec files. |
+| `loginAs(app, credentials)` | `test/helpers/auth.ts` | Cadastra o usuario (`POST /users`) e faz login (`POST /auth/login`) com um `request.agent` (o cookie de sessao fica no jar). Devolve `{ agent, csrfToken }`. O `csrfToken` e o token novo lido do `Set-Cookie` do login, porque o login troca o token e o de antes deixa de valer. |
+| `Agent` (tipo) | `test/helpers/auth.ts` | Alias de `ReturnType<typeof request.agent>`, para tipar o agente nos specs sem repetir essa expressao. |
 
 ```typescript
 // Padrao antes (duplicado em 4+ arquivos):
@@ -193,6 +193,7 @@ async function createApp() {
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   const app = moduleRef.createNestApplication<NestExpressApplication>();
   configureApp(app);
+  setupSwagger(app);
   await app.init();
   return app;
 }
@@ -203,19 +204,26 @@ const app = await createTestApp();
 
 ```typescript
 // Antes (duplicado em posts e comments):
-async function signIn(app, credentials) {
-  const res = await request(app.getHttpServer()).post('/auth/login').send(credentials);
-  return request.agent(app.getHttpServer())
-    .set('Cookie', res.headers['set-cookie'])
-    .set('x-csrf-token', res.body.csrfToken);
+async function signIn(credentials) {
+  const agent = request.agent(app.getHttpServer());
+  const signUpToken = await fetchCsrfToken(agent);
+  await agent.post('/users').set('X-CSRF-Token', signUpToken).send(credentials).expect(201);
+  // O login troca o csrf token: o de antes do login deixa de valer.
+  const res = await agent
+    .post('/auth/login')
+    .set('X-CSRF-Token', signUpToken)
+    .send({ email: credentials.email, password: credentials.password })
+    .expect(200);
+  return { agent, csrfToken: cookieValue(setCookie(res, 'csrf_token')) };
 }
 
 // Depois (importado de test/helpers/auth.ts):
-const agent: Agent = await loginAs(app, credentials);
+const { agent, csrfToken } = await loginAs(app, credentials);
+await agent.post('/posts').set('X-CSRF-Token', csrfToken).send(newPost);
 ```
 
 **Por que isso e relevante como padrao de design de testes?**
-Centralizar o bootstrap e o login em helpers garante que todos os spec files usam exatamente a mesma configuracao de `configureApp`. Se um novo middleware for adicionado ao `configureApp`, todos os e2e o testarao automaticamente — sem precisar atualizar cada arquivo individualmente.
+Centralizar o bootstrap e o login em helpers garante que 6 dos 8 spec files usam a mesma configuracao de `configureApp` e `setupSwagger`. Os dois blocos restantes em `security.e2e-spec.ts` continuam montando o app manualmente com `overrideProvider(HealthService)` — situacao prevista, pois precisam substituir dependencias para simular falha de banco.
 
 ### Camada 4: Testes e2e do frontend (Playwright)
 
