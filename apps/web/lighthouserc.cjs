@@ -42,8 +42,12 @@ module.exports = {
           assertions: baseAssertions,
         },
         {
+          // The 404 page intentionally carries <meta name="robots" content="noindex">,
+          // which makes is-crawlable and the whole SEO category irrelevant for this route.
+          // Later entries override earlier ones for the same key in assertMatrix.
           matchingUrlPattern: 'essa-rota-nao-existe',
           assertions: {
+            'categories:seo': 'off',
             'is-crawlable': 'off',
           },
         },
