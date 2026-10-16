@@ -36,17 +36,23 @@ module.exports = {
       // assertMatrix and assertions cannot coexist; use assertMatrix exclusively.
       // The first entry covers all URLs; the second relaxes is-crawlable for the
       // 404 page, which intentionally carries <meta name="robots" content="noindex">.
+      // assertMatrix entries are additive — LHCI applies the strictest assertion
+      // across all entries matching a URL, so overriding a key in a later entry
+      // has no effect. The correct pattern is to make the broad entry NOT match
+      // the exception URL (negative lookahead), then give that URL its own entry.
       assertMatrix: [
         {
-          matchingUrlPattern: '.*',
+          // All routes except the intentional 404 page.
+          matchingUrlPattern: '^(?!.*essa-rota-nao-existe).*$',
           assertions: baseAssertions,
         },
         {
-          // The 404 page intentionally carries <meta name="robots" content="noindex">,
-          // which makes is-crawlable and the whole SEO category irrelevant for this route.
-          // Later entries override earlier ones for the same key in assertMatrix.
+          // The 404 page carries <meta name="robots" content="noindex"> on purpose,
+          // so is-crawlable fails and drags categories:seo below 1. Both are turned
+          // off here; all other baseAssertions still apply.
           matchingUrlPattern: 'essa-rota-nao-existe',
           assertions: {
+            ...baseAssertions,
             'categories:seo': 'off',
             'is-crawlable': 'off',
           },
