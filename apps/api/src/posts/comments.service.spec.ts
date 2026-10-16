@@ -1,6 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import { CommentsService } from './comments.service.js';
+import type { PostsService } from './posts.service.js';
 import type { CommentRecord } from './entities/comment.entity.js';
 
 function record(overrides: Partial<CommentRecord> = {}): CommentRecord {
@@ -16,7 +17,6 @@ function record(overrides: Partial<CommentRecord> = {}): CommentRecord {
 
 function prismaMock() {
   return {
-    post: { findUnique: vi.fn() },
     comment: {
       findMany: vi.fn(),
       count: vi.fn(),
@@ -26,10 +26,18 @@ function prismaMock() {
   };
 }
 
-type PrismaMock = ReturnType<typeof prismaMock>;
+function postsMock() {
+  return { resolvePostIdBySlug: vi.fn() };
+}
 
-function serviceWith(prisma: PrismaMock) {
-  return new CommentsService(prisma as unknown as PrismaService);
+type PrismaMock = ReturnType<typeof prismaMock>;
+type PostsMock = ReturnType<typeof postsMock>;
+
+function serviceWith(prisma: PrismaMock, posts: PostsMock) {
+  return new CommentsService(
+    prisma as unknown as PrismaService,
+    posts as unknown as PostsService,
+  );
 }
 
 const query = { page: 1, perPage: 9 };
@@ -37,11 +45,12 @@ const query = { page: 1, perPage: 9 };
 describe('CommentsService.list', () => {
   it('lists the oldest comment first, so the thread reads as a conversation', async () => {
     const prisma = prismaMock();
-    prisma.post.findUnique.mockResolvedValue({ id: 4 });
+    const posts = postsMock();
+    posts.resolvePostIdBySlug.mockResolvedValue(4);
     prisma.comment.findMany.mockResolvedValue([record()]);
     prisma.comment.count.mockResolvedValue(1);
 
-    const result = await serviceWith(prisma).list('um-post', { ...query });
+    const result = await serviceWith(prisma, posts).list('um-post', { ...query });
 
     expect(prisma.comment.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -60,11 +69,12 @@ describe('CommentsService.list', () => {
 
   it('counts only the comments of that post', async () => {
     const prisma = prismaMock();
-    prisma.post.findUnique.mockResolvedValue({ id: 4 });
+    const posts = postsMock();
+    posts.resolvePostIdBySlug.mockResolvedValue(4);
     prisma.comment.findMany.mockResolvedValue([]);
     prisma.comment.count.mockResolvedValue(12);
 
-    const result = await serviceWith(prisma).list('um-post', { page: 2, perPage: 9 });
+    const result = await serviceWith(prisma, posts).list('um-post', { page: 2, perPage: 9 });
 
     expect(prisma.comment.count).toHaveBeenCalledWith({ where: { postId: 4 } });
     expect(result.pagination.totalPages).toBe(2);
@@ -73,11 +83,11 @@ describe('CommentsService.list', () => {
   });
 
   it('throws for an unknown post', async () => {
-    const prisma = prismaMock();
-    prisma.post.findUnique.mockResolvedValue(null);
+    const posts = postsMock();
+    posts.resolvePostIdBySlug.mockRejectedValue(new NotFoundException('Post não encontrado'));
 
     await expect(
-      serviceWith(prisma).list('nope', { ...query }),
+      serviceWith(prismaMock(), posts).list('nope', { ...query }),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 });
@@ -85,10 +95,11 @@ describe('CommentsService.list', () => {
 describe('CommentsService.create', () => {
   it('stores the comment against the post and the author', async () => {
     const prisma = prismaMock();
-    prisma.post.findUnique.mockResolvedValue({ id: 4 });
+    const posts = postsMock();
+    posts.resolvePostIdBySlug.mockResolvedValue(4);
     prisma.comment.create.mockResolvedValue(record());
 
-    const comment = await serviceWith(prisma).create(
+    const comment = await serviceWith(prisma, posts).create(
       'um-post',
       { body: 'Muito bom!' },
       3,
@@ -104,11 +115,11 @@ describe('CommentsService.create', () => {
   });
 
   it('throws for an unknown post', async () => {
-    const prisma = prismaMock();
-    prisma.post.findUnique.mockResolvedValue(null);
+    const posts = postsMock();
+    posts.resolvePostIdBySlug.mockRejectedValue(new NotFoundException('Post não encontrado'));
 
     await expect(
-      serviceWith(prisma).create('nope', { body: 'Oi' }, 3),
+      serviceWith(prismaMock(), posts).create('nope', { body: 'Oi' }, 3),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 });
@@ -119,7 +130,7 @@ describe('CommentsService.findOne', () => {
     prisma.comment.findFirst.mockResolvedValue(null);
 
     await expect(
-      serviceWith(prisma).findOne('outro-post', 1),
+      serviceWith(prisma, postsMock()).findOne('outro-post', 1),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(prisma.comment.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 1, post: { slug: 'outro-post' } } }),
@@ -130,7 +141,7 @@ describe('CommentsService.findOne', () => {
     const prisma = prismaMock();
     prisma.comment.findFirst.mockResolvedValue(record());
 
-    const comment = await serviceWith(prisma).findOne('um-post', 1);
+    const comment = await serviceWith(prisma, postsMock()).findOne('um-post', 1);
 
     expect(comment.id).toBe(1);
     expect(comment.body).toBe('Muito bom!');

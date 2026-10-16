@@ -7,8 +7,7 @@ import { FormError } from '../../components/atoms/FormError'
 import { ProfileCard } from '../../components/organisms/ProfileCard'
 import { CenteredTemplate } from '../../components/templates/CenteredTemplate'
 import { usePageMeta } from '../usePageMeta'
-
-type SessionStatus = 'loading' | 'authenticated' | 'anonymous'
+import type { SessionStatus } from '../useSession'
 
 // Private page. The session lives in an httpOnly cookie, invisible to JS, so
 // there is no synchronous "is there a token" check to gate the render on

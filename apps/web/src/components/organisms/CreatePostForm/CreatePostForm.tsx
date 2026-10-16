@@ -7,12 +7,12 @@ import { TextareaField } from '../../molecules/TextareaField'
 
 // Mirror the API's DTO constraints, so the person sees the problem before the
 // request is made rather than as a 400.
-export const TITLE_MIN = 3
-export const TITLE_MAX = 120
-export const EXCERPT_MIN = 50
-export const EXCERPT_MAX = 160
-export const CONTENT_MIN = 20
-export const CONTENT_MAX = 10_000
+const TITLE_MIN = 3
+const TITLE_MAX = 120
+const EXCERPT_MIN = 50
+const EXCERPT_MAX = 160
+const CONTENT_MIN = 20
+const CONTENT_MAX = 10_000
 
 export type CreatePostValues = {
   title: string

@@ -1,6 +1,6 @@
 import { Button } from '../../atoms/Button'
 
-export type ProfileCardUser = {
+type ProfileCardUser = {
   name: string
   email: string
   createdAt: string

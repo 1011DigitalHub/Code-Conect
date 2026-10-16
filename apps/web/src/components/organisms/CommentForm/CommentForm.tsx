@@ -4,7 +4,7 @@ import { FormError } from '../../atoms/FormError'
 import { TextLink } from '../../atoms/TextLink'
 import { TextareaField } from '../../molecules/TextareaField'
 
-export const COMMENT_MAX_LENGTH = 1000
+const COMMENT_MAX_LENGTH = 1000
 
 export type CommentFormProps = {
   authenticated: boolean

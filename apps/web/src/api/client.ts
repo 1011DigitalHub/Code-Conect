@@ -1,7 +1,7 @@
 import axios, { type InternalAxiosRequestConfig } from 'axios'
 import { ensureCsrfToken, resetCsrfToken } from './csrf'
 
-export const DEFAULT_API_URL = 'http://localhost:3000'
+const DEFAULT_API_URL = 'http://localhost:3000'
 
 // The OIDC login buttons navigate the whole page to the API's own
 // /auth/oidc/:provider/start (see auth.ts's startOidcLogin) instead of going

@@ -203,6 +203,28 @@ describe('PostsService.findBySlug', () => {
   });
 });
 
+describe('PostsService.resolvePostIdBySlug', () => {
+  it('returns the post id for a known slug', async () => {
+    const prisma = prismaMock();
+    prisma.post.findUnique.mockResolvedValue({ id: 5 });
+
+    await expect(serviceWith(prisma).resolvePostIdBySlug('um-post')).resolves.toBe(5);
+    expect(prisma.post.findUnique).toHaveBeenCalledWith({
+      where: { slug: 'um-post' },
+      select: { id: true },
+    });
+  });
+
+  it('throws NotFoundException for an unknown slug', async () => {
+    const prisma = prismaMock();
+    prisma.post.findUnique.mockResolvedValue(null);
+
+    await expect(serviceWith(prisma).resolvePostIdBySlug('nope')).rejects.toThrow(
+      new NotFoundException('Post não encontrado'),
+    );
+  });
+});
+
 describe('PostsService.create', () => {
   const dto = { title: 'Um post', excerpt: 'x'.repeat(60), content: 'Corpo do post' };
 
