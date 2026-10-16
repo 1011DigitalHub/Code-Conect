@@ -2,9 +2,9 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsInt, IsOptional, Max, Min } from 'class-validator';
 
-export const DEFAULT_PAGE = 1;
-export const DEFAULT_PER_PAGE = 9;
-export const MAX_PER_PAGE = 50;
+const DEFAULT_PAGE = 1;
+const DEFAULT_PER_PAGE = 9;
+const MAX_PER_PAGE = 50;
 
 // Query parameters arrive as strings, so @Type(() => Number) runs before the
 // @IsInt() check — the global ValidationPipe has transform: true.

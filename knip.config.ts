@@ -9,10 +9,11 @@ const config: KnipConfig = {
     'apps/api': {
       entry: ['src/main.ts'],
       project: ['src/**/*.ts'],
-      ignore: ['src/generated/**'],
+      // tslib is a TypeScript runtime helper used by emitted code, not by
+      // source files directly; it can't be detected by static import analysis.
+      ignoreDependencies: ['tslib'],
     },
     'apps/web': {
-      entry: ['src/main.tsx'],
       project: ['src/**/*.{ts,tsx}'],
     },
   },

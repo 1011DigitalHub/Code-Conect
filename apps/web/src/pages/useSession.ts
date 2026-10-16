@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { getSession, logout } from '../api/auth'
 import type { User } from '../api/types'
 
-export type SessionStatus = 'loading' | 'authenticated' | 'anonymous'
+type SessionStatus = 'loading' | 'authenticated' | 'anonymous'
 
 export type Session = {
   status: SessionStatus
