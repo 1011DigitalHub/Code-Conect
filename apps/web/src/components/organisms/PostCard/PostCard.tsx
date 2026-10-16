@@ -47,7 +47,15 @@ export function PostCard({
   return (
     <article className="flex flex-col gap-3 rounded-2xl bg-surface p-4">
       <PostThumbnail
-        src={post.thumbnailUrl}
+        // Convention: public/posts/<slug>.webp — authors drop a cover there
+        // and the card picks it up; onError in PostThumbnail falls back to
+        // the SVG placeholder when the file doesn't exist.
+        src={post.thumbnailUrl ?? `/posts/${post.slug}.webp`}
+        srcSet={
+          post.thumbnailUrl
+            ? undefined
+            : `/posts/${post.slug}-400.webp 400w, /posts/${post.slug}.webp 800w`
+        }
         // Decorative: the title sits right beside it as a link, so a
         // description here would just be read twice.
         alt=""

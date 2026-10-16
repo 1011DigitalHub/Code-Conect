@@ -12,6 +12,7 @@ export function NotFoundPage() {
   usePageMeta(
     'Página não encontrada',
     'O endereço que você abriu não existe no Code Connect. Volte para o feed para continuar explorando os posts da comunidade.',
+    { noindex: true },
   )
 
   return (

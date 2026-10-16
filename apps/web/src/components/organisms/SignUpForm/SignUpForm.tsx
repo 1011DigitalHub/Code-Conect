@@ -1,9 +1,7 @@
 import { useState, type FormEvent } from 'react'
-import { Button } from '../../atoms/Button'
-import { FormError } from '../../atoms/FormError'
-import { Icon } from '../../atoms/Icon'
 import { CheckboxField } from '../../molecules/CheckboxField'
 import { FormField } from '../../molecules/FormField'
+import { AuthFormWrapper } from '../../molecules/AuthFormWrapper'
 
 export type SignUpFormValues = {
   name: string
@@ -55,7 +53,13 @@ export function SignUpForm({ onSubmit, submitting = false, error }: SignUpFormPr
   }
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
+    <AuthFormWrapper
+      onSubmit={handleSubmit}
+      submitLabel="Cadastrar"
+      submittingLabel="Cadastrando..."
+      submitting={submitting}
+      error={error}
+    >
       <FormField
         id="name"
         name="name"
@@ -113,17 +117,6 @@ export function SignUpForm({ onSubmit, submitting = false, error }: SignUpFormPr
           onChange={(event) => setValues({ ...values, remember: event.target.checked })}
         />
       </div>
-      <div className="mt-4 flex flex-col gap-4">
-        <FormError message={error} />
-        <Button
-          type="submit"
-          fullWidth
-          disabled={submitting}
-          icon={<Icon name="arrow-right" size="sm" />}
-        >
-          {submitting ? 'Cadastrando...' : 'Cadastrar'}
-        </Button>
-      </div>
-    </form>
+    </AuthFormWrapper>
   )
 }

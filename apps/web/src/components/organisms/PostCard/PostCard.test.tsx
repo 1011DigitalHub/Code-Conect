@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react'
+import { fireEvent, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { PostCard, type PostCardPost } from './PostCard'
 import { renderWithRouter } from '../../../test/renderWithRouter'
@@ -80,10 +80,17 @@ describe('PostCard', () => {
     expect(onToggleLike).toHaveBeenCalledWith('componentes-react-na-pratica')
   })
 
-  it('shows the placeholder when the post has no cover', () => {
+  it('tries the slug-derived cover, then shows the placeholder when the file is absent', () => {
     const { container } = renderWithRouter(
       <PostCard post={post} authenticated={false} onToggleLike={vi.fn()} now={now} />,
     )
+
+    // Convention public/posts/<slug>.webp: an img is rendered so the browser
+    // can attempt to load it; if the file doesn't exist onError fires.
+    const img = container.querySelector('img')
+    expect(img).toHaveAttribute('src', '/posts/componentes-react-na-pratica.webp')
+
+    fireEvent.error(img as HTMLImageElement)
 
     expect(container.querySelector('img')).toBeNull()
     expect(container.querySelector('svg')).toBeInTheDocument()
