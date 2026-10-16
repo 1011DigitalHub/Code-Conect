@@ -387,19 +387,24 @@ Guardar o *valor* do src que falhou (em vez de um booleano + `useEffect`) faz o 
 
 **Nenhum token novo de cor, fonte ou tipografia.** O feed se monta com a paleta existente: `bg-page` (fundo), `bg-surface` (cards e rail), `text-offwhite`/`text-muted` (texto), `text-primary` (destaques e curtida ativa), `text-ink` (texto sobre o verde), `text-danger` (erros). Os tamanhos de texto saem de `text-subtitle` (h1), `text-paragraph-lg` (h2 dos cards), `text-lg`, `text-paragraph-sm` e `text-label`.
 
-Medidas do layout → token (**a conferir contra o Figma `155-3100`**; divergência vira nota datada):
+Medidas do layout → token (**conferidas contra o Figma `155-3100` em 2026-10-16**; ver `plan/ComparacaoLayoutFigma.md` para tabela completa):
 
-| Elemento | Valor de layout | Token |
-|---|---|---|
-| Largura do rail lateral (desktop) | ~256px | `w-64` |
-| Largura máxima da coluna de conteúdo | ~1024px | `max-w-5xl` |
-| Grid de cards | 1 / 2 / 3 colunas | `grid gap-6 md:grid-cols-2 xl:grid-cols-3` |
-| Proporção da thumbnail | 16:9 | `aspect-video` |
-| Raio do card e da thumbnail | ~16px | `rounded-2xl` |
-| Raio do card de página | ~24px | `rounded-4xl` (igual ao `CenteredTemplate`) |
-| Espaçamento interno do card | ~16px | `p-4` |
-| Alvo mínimo de botão de ícone | 40px | `size-10` (ícone `size-6` + padding) |
-| Clamp de título / resumo | 2 / 3 linhas | `line-clamp-2` / `line-clamp-3` (utilitários nativos do Tailwind v4) |
+| Elemento | Valor de layout | Token | Status vs. Figma (2026-10-16) |
+|---|---|---|---|
+| Largura do rail lateral (desktop) | ~256px | `w-64` | ACEITAR — Figma 177px, mas nav horizontal×vertical é decisão de a11y |
+| Largura máxima da coluna de conteúdo | ~1024px | `max-w-5xl` | ACEITAR — Figma 996px; sem token para 996px |
+| Grid de cards | 1 / 2 / 3 colunas | `grid gap-6 md:grid-cols-2 xl:grid-cols-3` | ACEITAR — Figma mostra 2 colunas; 3 colunas em xl é melhoria |
+| Gap entre cards | 24px | `gap-6` | ACEITAR ✅ — Figma `gap-[24px]` = 24px |
+| Proporção da thumbnail | 16:9 | `aspect-video` | ACEITAR ✅ |
+| Raio do card e da thumbnail | ~16px | `rounded-2xl` | ACEITAR — Figma 8px; delta = 8px (no threshold) |
+| Espaçamento interno do card (body) | ~16px | `p-4` no content wrapper | CORRIGIDO 2026-10-16 — thumbnail agora flush ao topo; `p-4` aplicado apenas no content div abaixo da thumbnail |
+| Gap interno card body | 16px | `gap-4` no content wrapper | CORRIGIDO 2026-10-16 — era `gap-3` (12px); agora `gap-4` (16px) = Figma `gap-[16px]` |
+| Gap content column (busca ↔ cards) | 56px | `gap-14` | CORRIGIDO 2026-10-16 — era `gap-8` (32px); Figma `gap-[56px]` |
+| Padding vertical `<main>` (desktop) | 56px | `md:py-14` | CORRIGIDO 2026-10-16 — era `md:py-10` (40px); Figma frame `py-[56px]` |
+| Padding vertical sidebar (desktop) | 40px | `md:py-10` | CORRIGIDO 2026-10-16 — era `py-6` (24px) em todos os breakpoints |
+| Gap logo → nav sidebar (desktop) | 80px | `md:gap-20` | CORRIGIDO 2026-10-16 — era `gap-6` (24px); Figma `gap-[80px]` |
+| Alvo mínimo de botão de ícone | ≥ 40px | `px-4 py-3` no Button ghost (≈ 55px altura) | ACEITAR ✅ — WCAG 2.5.8 cumprido |
+| Clamp de título / resumo | sem clamp | — | ACEITAR ✅ — WCAG 1.4.12 (remoção documentada na atualização de 2026-10-05) |
 
 ---
 
