@@ -26,6 +26,7 @@ import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { ErrorResponseDto } from '../common/dto/error-response.dto.js';
 import { LOGIN_THROTTLE } from '../common/throttle.constants.js';
+import { ThrottleBucket } from '../common/throttle-bucket.decorator.js';
 import { UserEntity } from '../users/entities/user.entity.js';
 import { UsersService } from '../users/users.service.js';
 import { AuthService } from './auth.service.js';
@@ -35,7 +36,6 @@ import {
   CSRF_COOKIE,
   getClearCookieOptions,
   getCsrfCookieOptions,
-  getSessionCookieOptions,
 } from './cookie.constants.js';
 import { readCookie } from './cookies.js';
 import { CurrentUser } from './current-user.decorator.js';
@@ -78,6 +78,7 @@ export class AuthController {
   // OidcController.link — both check a password against the same account,
   // so they share one 5/min budget instead of two.
   @Public()
+  @ThrottleBucket('shared-password-guess')
   @Throttle({ default: LOGIN_THROTTLE })
   @Post('login')
   @HttpCode(HttpStatus.OK)
@@ -95,19 +96,11 @@ export class AuthController {
   ): Promise<LoginResponseDto> {
     const remember = dto.remember ?? false;
     const result = await this.authService.signIn(dto.email, dto.password, remember);
-    res.cookie(
-      ACCESS_TOKEN_COOKIE,
-      result.accessToken,
-      getSessionCookieOptions(remember, result.expiresIn),
-    );
-    // Rotate the CSRF token bound to the NEW access token, not whatever
-    // access_token cookie (if any) the request happened to carry — a stale
-    // or anonymous session key here would mint a token that doesn't
-    // validate against the session that was just created.
-    const csrfToken = mintCsrfToken(sessionKey(result.accessToken));
-    res.cookie(CSRF_COOKIE, csrfToken, getCsrfCookieOptions(remember, result.expiresIn));
-    // The session itself stays in the cookie; the body never carries the
-    // raw token (see LoginResponseDto and SignInResult's doc comment).
+    // Rotate the CSRF token bound to the NEW access token (not whatever
+    // cookie the request happened to carry) and set both session cookies.
+    // The session itself stays in the cookie; the body never carries the raw
+    // token (see LoginResponseDto and SignInResult's doc comment).
+    AuthService.applySessionCookies(res, result, remember);
     return { tokenType: result.tokenType, expiresIn: result.expiresIn };
   }
 

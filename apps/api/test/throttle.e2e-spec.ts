@@ -1,8 +1,5 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
-import { AppModule } from './../src/app.module.js';
-import { configureApp } from './../src/app.setup.js';
 import {
   DEFAULT_THROTTLE,
   LOGIN_THROTTLE,
@@ -10,6 +7,7 @@ import {
 } from './../src/common/throttle.constants.js';
 import { fetchCsrfToken } from './cookies.js';
 import { resetDatabase } from './db.js';
+import { createTestApp } from './helpers/app.js';
 
 const newUser = {
   name: 'Maria Silva',
@@ -22,12 +20,7 @@ describe('Rate limiting (e2e)', () => {
 
   // A fresh app per test, so the in-memory request counters start at zero.
   beforeEach(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-    app = moduleFixture.createNestApplication<NestExpressApplication>();
-    configureApp(app);
-    await app.init();
+    app = await createTestApp();
     await resetDatabase(app);
   });
 

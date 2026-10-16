@@ -1,14 +1,10 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
-import { AppModule } from './../src/app.module.js';
-import { configureApp } from './../src/app.setup.js';
-import { setupSwagger } from './../src/swagger.js';
 import { isCookieSecure } from './../src/auth/cookie.constants.js';
-import { cookieValue, fetchCsrfToken, setCookie } from './cookies.js';
+import { fetchCsrfToken } from './cookies.js';
 import { resetDatabase } from './db.js';
-
-type Agent = ReturnType<typeof request.agent>;
+import { createTestApp } from './helpers/app.js';
+import { loginAs, type Agent } from './helpers/auth.js';
 
 const author = {
   name: 'Ana Souza',
@@ -29,18 +25,6 @@ const newPost = {
   content: 'Começar pelo componente menor costuma ser mais fácil de manter.',
 };
 
-async function createApp(): Promise<NestExpressApplication> {
-  const moduleFixture: TestingModule = await Test.createTestingModule({
-    imports: [AppModule],
-  }).compile();
-
-  const app = moduleFixture.createNestApplication<NestExpressApplication>();
-  configureApp(app);
-  setupSwagger(app);
-  await app.init();
-  return app;
-}
-
 describe('Posts (e2e)', () => {
   let app: NestExpressApplication;
 
@@ -52,7 +36,7 @@ describe('Posts (e2e)', () => {
   });
 
   beforeEach(async () => {
-    app = await createApp();
+    app = await createTestApp();
     await resetDatabase(app);
   });
 
@@ -60,34 +44,11 @@ describe('Posts (e2e)', () => {
     await app.close();
   });
 
-  // Signs a user up and logs them in. Returns the agent (whose jar now holds
-  // the session cookie) and the csrf token minted for that session — login
-  // rotates it, so the pre-login token is no longer valid.
-  async function signIn(
-    credentials: typeof author,
-  ): Promise<{ agent: Agent; csrfToken: string }> {
-    const agent = request.agent(app.getHttpServer());
-    const signUpToken = await fetchCsrfToken(agent);
-    await agent
-      .post('/users')
-      .set('X-CSRF-Token', signUpToken)
-      .send(credentials)
-      .expect(201);
-
-    const res = await agent
-      .post('/auth/login')
-      .set('X-CSRF-Token', signUpToken)
-      .send({ email: credentials.email, password: credentials.password })
-      .expect(200);
-
-    return { agent, csrfToken: cookieValue(setCookie(res, 'csrf_token')) };
-  }
-
   async function publish(
     overrides: Partial<typeof newPost> = {},
     credentials = author,
   ): Promise<{ agent: Agent; csrfToken: string; slug: string }> {
-    const { agent, csrfToken } = await signIn(credentials);
+    const { agent, csrfToken } = await loginAs(app, credentials);
     const res = await agent
       .post('/posts')
       .set('X-CSRF-Token', csrfToken)
@@ -245,13 +206,13 @@ describe('Posts (e2e)', () => {
     });
 
     it('requires a csrf token', async () => {
-      const { agent } = await signIn(author);
+      const { agent } = await loginAs(app, author);
 
       await agent.post('/posts').send(newPost).expect(403);
     });
 
     it('creates the post: 201, Location and a slug from the title', async () => {
-      const { agent, csrfToken } = await signIn(author);
+      const { agent, csrfToken } = await loginAs(app, author);
 
       const res = await agent
         .post('/posts')
@@ -280,7 +241,7 @@ describe('Posts (e2e)', () => {
 
     it('suffixes the slug when two posts share a title', async () => {
       await publish();
-      const { agent, csrfToken } = await signIn(reader);
+      const { agent, csrfToken } = await loginAs(app, reader);
 
       const res = await agent
         .post('/posts')
@@ -292,7 +253,7 @@ describe('Posts (e2e)', () => {
     });
 
     it('rejects an excerpt that is too short to be a meta description', async () => {
-      const { agent, csrfToken } = await signIn(author);
+      const { agent, csrfToken } = await loginAs(app, author);
 
       await agent
         .post('/posts')
@@ -302,7 +263,7 @@ describe('Posts (e2e)', () => {
     });
 
     it('rejects a thumbnail that is neither an http url nor a site-relative path', async () => {
-      const { agent, csrfToken } = await signIn(author);
+      const { agent, csrfToken } = await loginAs(app, author);
 
       await agent
         .post('/posts')
@@ -315,7 +276,7 @@ describe('Posts (e2e)', () => {
     });
 
     it('accepts a site-relative thumbnail path', async () => {
-      const { agent, csrfToken } = await signIn(author);
+      const { agent, csrfToken } = await loginAs(app, author);
 
       const res = await agent
         .post('/posts')
@@ -327,7 +288,7 @@ describe('Posts (e2e)', () => {
     });
 
     it('rejects an undeclared field', async () => {
-      const { agent, csrfToken } = await signIn(author);
+      const { agent, csrfToken } = await loginAs(app, author);
 
       await agent
         .post('/posts')
@@ -390,7 +351,7 @@ describe('Posts (e2e)', () => {
 
     it('counts likes from different people', async () => {
       const { slug } = await publish();
-      const other = await signIn(reader);
+      const other = await loginAs(app, reader);
 
       await other.agent
         .put(`/posts/${slug}/like`)
@@ -414,7 +375,7 @@ describe('Posts (e2e)', () => {
     });
 
     it('is 404 for an unknown slug', async () => {
-      const { agent, csrfToken } = await signIn(author);
+      const { agent, csrfToken } = await loginAs(app, author);
 
       await agent
         .put('/posts/nao-existe/like')

@@ -1,15 +1,13 @@
 import type { ExecutionContext } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { AuthController } from '../auth/auth.controller.js';
 import { OidcController } from '../auth/oidc/oidc.controller.js';
 import { LoginThrottlerGuard } from './login-throttler.guard.js';
 
 // handlerRef is the actual method (e.g. AuthController.prototype.login), the
 // same value a real ExecutionContext.getHandler() would return — exercising
-// the guard's real identity comparison, not a hand-rolled string that would
-// just mirror whatever the guard happens to compute internally. Every
-// prototype-method reference below trips oxlint's unbound-method warning,
-// which assumes the reference will be called — none of these ever are, only
-// compared for identity, so there is no `this` to lose.
+// the guard's real Reflector.get() lookup against the @ThrottleBucket
+// metadata the decorator set at class-definition time.
 /* oxlint-disable typescript/unbound-method */
 function contextFor(classRef: { name: string }, handlerRef: Function): ExecutionContext {
   return {
@@ -26,7 +24,7 @@ describe('LoginThrottlerGuard', () => {
   const guard = new LoginThrottlerGuard(
     undefined as never,
     undefined as never,
-    undefined as never,
+    new Reflector(),
   );
   const generateKey = (guard as unknown as { generateKey: (c: ExecutionContext, s: string, n: string) => string })
     .generateKey.bind(guard);
@@ -65,12 +63,11 @@ describe('LoginThrottlerGuard', () => {
     expect(posts).not.toBe(loginKey);
   });
 
-  // A different class entirely, but one that happens to reuse the exact
-  // same (name, method-name) pair — this is precisely the collision the
-  // string-based version of this guard could not tell apart from the real
-  // AuthController.login. Comparing by function identity instead of name
-  // fixes it: this unrelated handler never shares the password-guess bucket.
-  it('does not share the bucket with an unrelated handler that merely has the same class/method name', () => {
+  // A handler without @ThrottleBucket falls back to the class+method-name key
+  // and never enters the shared bucket — metadata opts in, name alone does not.
+  // An impostor whose class happens to be named 'AuthController' still gets its
+  // own independent key, not the shared password-guess one.
+  it('does not share the bucket with a handler that has no @ThrottleBucket — metadata opts in, name alone does not', () => {
     class ImpostorAuthController {
       login() {}
     }
