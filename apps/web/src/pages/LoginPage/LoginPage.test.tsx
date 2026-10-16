@@ -125,6 +125,31 @@ describe('LoginPage', () => {
     )
   })
 
+  it('shows a race-condition message when two tabs competed for the OIDC flow (?oidcError=1&oidcRace=1)', async () => {
+    renderLoginRoutes('/login?oidcError=1&oidcRace=1')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'O login social foi aberto em outra aba ao mesmo tempo.',
+    )
+  })
+
+  it('shows a throttle message when OIDC routes were rate-limited (?error=too_many_requests)', async () => {
+    renderLoginRoutes('/login?error=too_many_requests')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Muitas tentativas de login.',
+    )
+  })
+
+  it('strips oidcError, oidcRace and error params from the address bar after showing the message', async () => {
+    const { baseElement } = renderLoginRoutes('/login?oidcError=1&oidcRace=1')
+
+    await screen.findByRole('alert')
+
+    // After the cleanup effect runs the URL should be /login with no params.
+    expect(baseElement.ownerDocument.defaultView?.location.search ?? '').toBe('')
+  })
+
   it('has no WCAG 2.2 AA violations', async () => {
     const { container } = renderWithRouter(<LoginPage />)
 
