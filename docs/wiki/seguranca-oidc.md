@@ -518,6 +518,18 @@ if (!statesMatch(flow.state, state)) {
 res.redirect(`${getWebAppOrigin()}/login?oidcError=1`);
 ```
 
-O frontend pode usar `oidcRace=1` para exibir uma mensagem mais precisa ("outra aba pode ter interrompido seu login") em vez da mensagem generica de erro OIDC.
+A `LoginPage` trata os tres casos de forma distinta:
+
+| Query param(s) recebidos | Mensagem exibida |
+|---|---|
+| `?oidcError=1` | "Nao foi possivel entrar com o provedor. Tente novamente." |
+| `?oidcError=1&oidcRace=1` | "O login social foi aberto em outra aba ao mesmo tempo. Feche as outras abas e tente novamente." |
+| `?error=too_many_requests` | "Muitas tentativas de login. Aguarde alguns minutos e tente novamente." |
+
+Todos os tres params sao removidos da barra de endereco apos exibicao (via `setSearchParams` com `replace: true`) para evitar reexibicao em um refresh.
+
+| Comportamento | Arquivo | Referencia |
+|---|---|---|
+| `LoginPage` — tratamento de `oidcError`/`oidcRace`/`error` | `apps/web/src/pages/LoginPage/LoginPage.tsx` | `getInitialOidcError` |
 
 _Ultima atualizacao: 2026-10-16 | Gerado a partir do codigo-fonte._
