@@ -93,11 +93,11 @@ describe('OidcController', () => {
       expect(oidcService.authenticate).not.toHaveBeenCalled();
     });
 
-    it('redirects to /login when the query state does not match the cookie state', async () => {
+    it('redirects to /login with oidcRace=1 when the state does not match (likely multiple tabs)', async () => {
       const { res, redirect } = fakeResponse();
       const req = fakeRequest(flowCookieHeader(flow));
       await controller.callback('google', 'code', 'wrong-state', undefined, req, res);
-      expect(redirect).toHaveBeenCalledWith('http://localhost:5173/login?oidcError=1');
+      expect(redirect).toHaveBeenCalledWith('http://localhost:5173/login?oidcError=1&oidcRace=1');
       expect(oidcService.authenticate).not.toHaveBeenCalled();
     });
 

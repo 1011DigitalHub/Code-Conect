@@ -9,13 +9,27 @@ import { AuthTemplate } from '../../components/templates/AuthTemplate'
 import { socialProviders } from '../socialProviders'
 import { usePageMeta } from '../usePageMeta'
 
-// Deliberately generic: the API never says *which* check failed (an
-// expired flow, a bad signature, the person cancelling at the provider, ...)
-// behind ?oidcError=1 — see OidcController.callback — only that the social
-// login didn't complete, which is already enough to tell the person to try
-// again instead of leaving them on /login with no explanation at all
-// (WCAG 3.3.1).
+// ?oidcError=1 — generic social login failure (expired flow, bad signature,
+// user cancelled, …). See OidcController.callback. Deliberately generic:
+// the API never says which check failed (WCAG 3.3.1).
 const OIDC_ERROR_MESSAGE = 'Não foi possível entrar com o provedor. Tente novamente.'
+
+// ?oidcError=1&oidcRace=1 — state mismatch: two browser tabs raced for the
+// same OIDC flow cookie. Different from the generic oidcError so the person
+// knows what actually happened and how to fix it.
+const OIDC_RACE_MESSAGE =
+  'O login social foi aberto em outra aba ao mesmo tempo. Feche as outras abas e tente novamente.'
+
+// ?error=too_many_requests — OidcThrottleExceptionFilter redirects here when
+// the browser OIDC routes are throttled (too many attempts).
+const THROTTLE_ERROR_MESSAGE = 'Muitas tentativas de login. Aguarde alguns minutos e tente novamente.'
+
+function getInitialOidcError(params: URLSearchParams): string | undefined {
+  if (params.get('oidcRace')) return OIDC_RACE_MESSAGE
+  if (params.get('oidcError')) return OIDC_ERROR_MESSAGE
+  if (params.get('error') === 'too_many_requests') return THROTTLE_ERROR_MESSAGE
+  return undefined
+}
 
 export function LoginPage() {
   usePageMeta(
@@ -26,21 +40,24 @@ export function LoginPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | undefined>(() =>
-    searchParams.get('oidcError') ? OIDC_ERROR_MESSAGE : undefined,
-  )
+  const [error, setError] = useState<string | undefined>(() => getInitialOidcError(searchParams))
 
-  // Strips ?oidcError=1 from the address bar once shown, so refreshing or
-  // sharing the link doesn't keep re-displaying a stale error. An effect,
-  // not a render-phase call: setSearchParams triggers a navigation, which
-  // must happen after render, not while this component is still rendering.
-  // Safe to list as a normal dependency-driven effect: once the param is
-  // gone, the guard below makes every later re-run a no-op.
+  // Strips OIDC/throttle error params from the address bar once shown, so
+  // refreshing or sharing the link doesn't keep re-displaying a stale error.
+  // An effect, not a render-phase call: setSearchParams triggers a navigation,
+  // which must happen after render. Once the params are gone the guard makes
+  // every later re-run a no-op.
   useEffect(() => {
-    if (!searchParams.has('oidcError')) return
+    const hasOidcParam =
+      searchParams.has('oidcError') ||
+      searchParams.has('oidcRace') ||
+      searchParams.get('error') === 'too_many_requests'
+    if (!hasOidcParam) return
     setSearchParams(
       (params) => {
         params.delete('oidcError')
+        params.delete('oidcRace')
+        if (params.get('error') === 'too_many_requests') params.delete('error')
         return params
       },
       { replace: true },

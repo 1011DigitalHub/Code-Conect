@@ -175,27 +175,30 @@ Este é um dos detalhes de segurança mais sutis do projeto. Duas rotas verifica
 
 Se cada rota tiver seu próprio bucket independente, um atacante tem **10 tentativas/min** contra a mesma senha (5 em `/auth/login` + 5 em `/auth/oidc/link`), não 5. Obter um `linking_token` para usar `/auth/oidc/link` não custa nada — é emitido automaticamente quando o e-mail já existe.
 
-A solução é o `LoginThrottlerGuard`, que sobrescreve `generateKey` para que ambas as rotas compartilhem o *mesmo* bucket:
+A solução é o `LoginThrottlerGuard`, que sobrescreve `generateKey`. Cada rota que verifica senha anota `@ThrottleBucket('shared-password-guess')`; o guard lê esse metadado via Reflector e usa o nome do bucket como prefixo da chave:
 
 ```ts
-// apps/api/src/common/login-throttler.guard.ts (linhas 33–43)
-const SHARED_PASSWORD_GUESS_HANDLERS: ReadonlySet<string> = new Set([
-  `${AuthController.name}.${AuthController.prototype.login.name}`,
-  `${OidcController.name}.${OidcController.prototype.link.name}`,
-]);
-
+// apps/api/src/common/login-throttler.guard.ts
 protected generateKey(context: ExecutionContext, suffix: string, name: string): string {
-  const handlerKey = `${context.getClass().name}.${context.getHandler().name}`;
-  const bucket = SHARED_PASSWORD_GUESS_HANDLERS.has(handlerKey)
-    ? 'shared-password-guess'
-    : handlerKey;
-  return `${bucket}-${name}-${suffix}`;
+  const bucket = this.reflector.get<string | undefined>(THROTTLE_BUCKET_KEY, context.getHandler());
+  const prefix = bucket ?? `${context.getClass().name}.${context.getHandler().name}`;
+  return `${prefix}-${name}-${suffix}`;
 }
 ```
 
-**Por que usar `AuthController.prototype.login.name` em vez de uma string literal `'login'`?**
+```ts
+// apps/api/src/auth/auth.controller.ts
+@ThrottleBucket('shared-password-guess')
+async login(...) { ... }
 
-Se alguém renomear o método `login` para `authenticate`, a string literal silenciosamente pararia de funcionar — o bucket não seria mais compartilhado e ninguém perceberia até um pentest. A referência `AuthController.prototype.login.name` falha na *compilação* se o método for renomeado ou removido, forçando a correção imediata.
+// apps/api/src/auth/oidc/oidc.controller.ts
+@ThrottleBucket('shared-password-guess')
+async link(...) { ... }
+```
+
+**Por que usar um decorator em vez de uma lista hardcoded de referências de método?**
+
+A abordagem anterior usava um `Set` com `AuthController.prototype.login.name` e `OidcController.prototype.link.name`. Isso importava os controllers dentro do guard, criando um risco de ciclo de dependência (TDZ — *Temporal Dead Zone*) e acoplamento desnecessário. Com `@ThrottleBucket`, o guard não precisa conhecer nenhum controller — qualquer rota futura que precise do bucket compartilhado simplesmente adiciona o decorator.
 
 O teste e2e em `apps/api/test/throttle.e2e-spec.ts` (linhas 69–96) valida exatamente isso: divide as tentativas entre as duas rotas e verifica que o 429 é atingido na contagem total combinada.
 
@@ -439,7 +442,8 @@ Se o cache expirasse 1,5 s após a *chamada* que iniciou a probe, e a probe demo
 | `timingSafeEqual` | [apps/api/src/users/password.ts](../../apps/api/src/users/password.ts) | linha 103 |
 | `shouldRehash` | [apps/api/src/users/password.ts](../../apps/api/src/users/password.ts) | linhas 133–141 |
 | 5 tiers de throttle | [apps/api/src/common/throttle.constants.ts](../../apps/api/src/common/throttle.constants.ts) | linhas 7–15 |
-| Bucket compartilhado login/oidc | [apps/api/src/common/login-throttler.guard.ts](../../apps/api/src/common/login-throttler.guard.ts) | linhas 33–44 |
+| Bucket compartilhado via `@ThrottleBucket` + Reflector | [apps/api/src/common/login-throttler.guard.ts](../../apps/api/src/common/login-throttler.guard.ts) | todos |
+| Decorator `@ThrottleBucket` | [apps/api/src/common/throttle-bucket.decorator.ts](../../apps/api/src/common/throttle-bucket.decorator.ts) | todos |
 | `@SkipThrottle` + cache + inFlightQuery | [apps/api/src/health/health.service.ts](../../apps/api/src/health/health.service.ts) | linhas 15, 53–85, 101–124 |
 | Ordem helmet → enableCors | [apps/api/src/app.setup.ts](../../apps/api/src/app.setup.ts) | linhas 28–48 |
 | CSP com `'unsafe-inline'` para Swagger | [apps/api/src/app.setup.ts](../../apps/api/src/app.setup.ts) | linhas 38–44 |
@@ -458,4 +462,4 @@ Se o cache expirasse 1,5 s após a *chamada* que iniciou a probe, e a probe demo
 
 ---
 
-_Última atualização: 2026-10-09 | Gerado a partir do código-fonte._
+_Ultima atualizacao: 2026-10-16 | Gerado a partir do codigo-fonte._

@@ -1,9 +1,17 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import type { Response } from 'express';
 import { hashPassword, shouldRehash, verifyUserPassword } from '../users/password.js';
 import { UsersService } from '../users/users.service.js';
 import { JWT_EXPIRES_IN_SECONDS, REMEMBER_ME_EXPIRES_IN_SECONDS } from './auth.constants.js';
 import type { JwtPayload, SignInResult } from './auth.types.js';
+import {
+  ACCESS_TOKEN_COOKIE,
+  CSRF_COOKIE,
+  getCsrfCookieOptions,
+  getSessionCookieOptions,
+} from './cookie.constants.js';
+import { mintCsrfToken, sessionKey } from './csrf.js';
 
 @Injectable()
 export class AuthService {
@@ -11,6 +19,12 @@ export class AuthService {
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
   ) {}
+
+  static applySessionCookies(res: Response, session: SignInResult, remember = false): void {
+    res.cookie(ACCESS_TOKEN_COOKIE, session.accessToken, getSessionCookieOptions(remember, session.expiresIn));
+    const csrfToken = mintCsrfToken(sessionKey(session.accessToken));
+    res.cookie(CSRF_COOKIE, csrfToken, getCsrfCookieOptions(remember, session.expiresIn));
+  }
 
   async signIn(
     email: string,

@@ -476,7 +476,60 @@ Se o redirect_uri viesse da request, um atacante poderia manipula-lo para redire
 | Limpeza imediata do `oidc_flow` cookie no callback | `apps/api/src/auth/oidc/oidc.controller.ts` | linhas 132-134 |
 | Redirecionamento para `/login?oidcError=1` em erros | `apps/api/src/auth/oidc/oidc.controller.ts` | linhas 55-57 |
 | Rate limiting compartilhado entre `/login` e `/link` | `apps/api/src/auth/oidc/oidc.controller.ts` | linhas 204 |
+| `OidcThrottleExceptionFilter` — 302 em vez de JSON 429 | `apps/api/src/auth/oidc/oidc-throttle.filter.ts` | todos |
+| `redirectToLoginWithRaceError` — `oidcRace=1` em state mismatch | `apps/api/src/auth/oidc/oidc.controller.ts` | callback handler |
+| `OIDC_LINKING_TOKEN_DEV_SECRET` movido para `env.ts` | `apps/api/src/env.ts` | `readOidcLinkingTokenSecret` |
 
 ---
 
-_Ultima atualizacao: 2026-10-09 | Gerado a partir do codigo-fonte._
+### `OidcThrottleExceptionFilter` — 302 em vez de JSON 429 em rotas de navegacao OIDC
+
+Os endpoints `GET /auth/oidc/:provider/start` e `GET /auth/oidc/:provider/callback` sao **navegacoes de browser** iniciadas por um redirect — o usuario nunca ve a resposta HTTP diretamente. Se o rate limit for atingido e esses endpoints retornarem um JSON `429`, o browser exibe o JSON cru, o que e confuso e quebra o fluxo de login.
+
+O `OidcThrottleExceptionFilter` captura `ThrottlerException` nesses dois handlers e redireciona para `/login?error=too_many_requests`:
+
+```ts
+// apps/api/src/auth/oidc/oidc-throttle.filter.ts
+@Catch(ThrottlerException)
+export class OidcThrottleExceptionFilter implements ExceptionFilter {
+  catch(_exception: ThrottlerException, host: ArgumentsHost): void {
+    const res = host.switchToHttp().getResponse<Response>();
+    res.redirect(`${getWebAppOrigin()}/login?error=too_many_requests`);
+  }
+}
+```
+
+O endpoint `/auth/oidc/link` e excluido intencionalmente: ele e chamado via XHR da pagina `/vincular-conta` e o JSON 429 com `Retry-After` e a resposta correta para uma chamada programatica.
+
+### Deteccao de corrida de estado (race condition entre abas)
+
+O callback OIDC valida o `state` da URL contra o `state` armazenado no cookie `oidc_flow`. Se o usuario abrir a tela de login em duas abas simultaneamente, a segunda aba sobrescreve o cookie com seu proprio `state`. Quando o callback da primeira aba chegar, o `state` nao vai bater — mas isso nao e um ataque, e uma corrida de abas.
+
+Para distinguir esse caso de outros erros genericos:
+
+```ts
+// apps/api/src/auth/oidc/oidc.controller.ts
+if (!statesMatch(flow.state, state)) {
+  // Corrida entre abas: redireciona com flag distinta
+  res.redirect(`${getWebAppOrigin()}/login?oidcError=1&oidcRace=1`);
+  return;
+}
+// Todos os outros erros (provedor invalido, code ausente, etc.):
+res.redirect(`${getWebAppOrigin()}/login?oidcError=1`);
+```
+
+A `LoginPage` trata os tres casos de forma distinta:
+
+| Query param(s) recebidos | Mensagem exibida |
+|---|---|
+| `?oidcError=1` | "Nao foi possivel entrar com o provedor. Tente novamente." |
+| `?oidcError=1&oidcRace=1` | "O login social foi aberto em outra aba ao mesmo tempo. Feche as outras abas e tente novamente." |
+| `?error=too_many_requests` | "Muitas tentativas de login. Aguarde alguns minutos e tente novamente." |
+
+Todos os tres params sao removidos da barra de endereco apos exibicao (via `setSearchParams` com `replace: true`) para evitar reexibicao em um refresh.
+
+| Comportamento | Arquivo | Referencia |
+|---|---|---|
+| `LoginPage` — tratamento de `oidcError`/`oidcRace`/`error` | `apps/web/src/pages/LoginPage/LoginPage.tsx` | `getInitialOidcError` |
+
+_Ultima atualizacao: 2026-10-16 | Gerado a partir do codigo-fonte._
