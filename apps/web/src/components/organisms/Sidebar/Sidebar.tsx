@@ -22,7 +22,7 @@ export function Sidebar({ authenticated, onSignOut }: SidebarProps) {
   return (
     <nav
       aria-label="Menu principal"
-      className="flex shrink-0 flex-col gap-6 border-b border-surface px-4 py-6 md:w-64 md:border-b-0 md:border-r md:px-6"
+      className="flex shrink-0 flex-col gap-6 border-b border-surface px-4 py-6 md:w-64 md:gap-20 md:border-b-0 md:border-r md:px-6 md:py-10"
     >
       <Logo />
       <ul className="flex flex-wrap items-center gap-x-6 gap-y-3 md:flex-col md:items-start">

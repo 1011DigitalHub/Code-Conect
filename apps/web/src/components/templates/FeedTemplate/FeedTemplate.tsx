@@ -26,8 +26,8 @@ export function FeedTemplate({
     <div className="flex min-h-screen flex-col md:flex-row">
       <Sidebar authenticated={authenticated} onSignOut={onSignOut} />
 
-      <main className="flex-1 px-4 py-6 md:px-8 md:py-10">
-        <div className="mx-auto flex w-full max-w-5xl flex-col gap-8">
+      <main className="flex-1 px-4 py-6 md:px-8 md:py-14">
+        <div className="mx-auto flex w-full max-w-5xl flex-col gap-14">
           {title && <Heading level={1}>{title}</Heading>}
           {children}
         </div>
