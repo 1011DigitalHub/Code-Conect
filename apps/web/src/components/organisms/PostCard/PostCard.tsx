@@ -45,7 +45,10 @@ export function PostCard({
   now,
 }: PostCardProps) {
   return (
-    <article className="flex flex-col gap-3 rounded-2xl bg-surface p-4">
+    // Figma frame 155-3100: thumbnail is flush to the top of the card (no
+    // external padding above it). The content section below carries its own
+    // padding, matching the Figma body section's p-[16px].
+    <article className="flex flex-col rounded-2xl bg-surface">
       <PostThumbnail
         // Convention: public/posts/<slug>.webp — authors drop a cover there
         // and the card picks it up; onError in PostThumbnail falls back to
@@ -63,48 +66,50 @@ export function PostCard({
         eager={eager}
       />
 
-      <h2 className="text-paragraph-lg">
-        <TextLink href={`/posts/${post.slug}`} variant="primary">
-          {post.title}
-        </TextLink>
-      </h2>
+      <div className="flex flex-col gap-4 p-4">
+        <h2 className="text-paragraph-lg">
+          <TextLink href={`/posts/${post.slug}`} variant="primary">
+            {post.title}
+          </TextLink>
+        </h2>
 
-      {/* No line-clamp: a fixed-height clip hides text when the WCAG 1.4.12
-          text-spacing override grows the line height past what the clamp
-          allows, which the browser accessibility suite catches as content
-          loss. Cards are simply uneven in height instead. */}
-      <p className="text-paragraph-sm text-muted">{post.excerpt}</p>
+        {/* No line-clamp: a fixed-height clip hides text when the WCAG 1.4.12
+            text-spacing override grows the line height past what the clamp
+            allows, which the browser accessibility suite catches as content
+            loss. Cards are simply uneven in height instead. */}
+        <p className="text-paragraph-sm text-muted">{post.excerpt}</p>
 
-      <PostMeta authorName={post.author.name} createdAt={post.createdAt} now={now} />
+        <PostMeta authorName={post.author.name} createdAt={post.createdAt} now={now} />
 
-      <div className="flex items-center gap-4">
-        {authenticated ? (
-          <LikeButton
-            authenticated
-            liked={post.likedByMe}
-            count={post.likeCount}
-            postTitle={post.title}
-            pending={pending}
-            onToggle={() => onToggleLike(post.slug)}
-          />
-        ) : (
-          <LikeButton
-            authenticated={false}
-            count={post.likeCount}
-            postTitle={post.title}
-          />
-        )}
+        <div className="flex items-center gap-4">
+          {authenticated ? (
+            <LikeButton
+              authenticated
+              liked={post.likedByMe}
+              count={post.likeCount}
+              postTitle={post.title}
+              pending={pending}
+              onToggle={() => onToggleLike(post.slug)}
+            />
+          ) : (
+            <LikeButton
+              authenticated={false}
+              count={post.likeCount}
+              postTitle={post.title}
+            />
+          )}
 
-        {/* Spelled out visibly rather than with a sr-only suffix: hidden text
-            is indistinguishable, to the browser suite's text-spacing check,
-            from text a fixed box is clipping — and visible text serves
-            everyone, not just assistive technology, anyway. */}
-        <p className="flex items-center gap-2 text-paragraph-sm text-muted">
-          <Icon name="comment" size="sm" />
-          <span>
-            {post.commentCount} {post.commentCount === 1 ? 'comentário' : 'comentários'}
-          </span>
-        </p>
+          {/* Spelled out visibly rather than with a sr-only suffix: hidden text
+              is indistinguishable, to the browser suite's text-spacing check,
+              from text a fixed box is clipping — and visible text serves
+              everyone, not just assistive technology, anyway. */}
+          <p className="flex items-center gap-2 text-paragraph-sm text-muted">
+            <Icon name="comment" size="sm" />
+            <span>
+              {post.commentCount} {post.commentCount === 1 ? 'comentário' : 'comentários'}
+            </span>
+          </p>
+        </div>
       </div>
     </article>
   )

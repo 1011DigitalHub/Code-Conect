@@ -259,6 +259,18 @@ O `PostCard` também concentra decisões de acessibilidade ligadas a desempenho:
 <p className="text-paragraph-sm text-muted">{post.excerpt}</p>
 ```
 
+O `PostCard` também segue o layout do Figma: a thumbnail é *flush* ao topo do card (sem padding externo acima dela). O padding e o gap ficam no wrapper do conteúdo abaixo da thumbnail:
+
+```tsx
+<article className="flex flex-col rounded-2xl bg-surface">
+  <PostThumbnail ... />
+  <div className="flex flex-col gap-4 p-4">
+    <h2>...</h2>
+    <p>...</p>
+  </div>
+</article>
+```
+
 O tipo `PostCardPost` é declarado **localmente** no arquivo, não importado de `src/api/`:
 
 ```tsx
@@ -283,8 +295,8 @@ export function FeedTemplate({ title, authenticated, onSignOut, children }: Feed
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
       <Sidebar authenticated={authenticated} onSignOut={onSignOut} />
-      <main className="flex-1 px-4 py-6 md:px-8 md:py-10">
-        <div className="mx-auto flex w-full max-w-5xl flex-col gap-8">
+      <main className="flex-1 px-4 py-6 md:px-8 md:py-14">
+        <div className="mx-auto flex w-full max-w-5xl flex-col gap-14">
           {title && <Heading level={1}>{title}</Heading>}
           {children}
         </div>
