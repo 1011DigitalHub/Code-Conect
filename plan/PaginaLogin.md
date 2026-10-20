@@ -66,6 +66,17 @@ Assets em `public/`, usados por URL absoluta (`/Banner_login_page.png`, `/Github
 2. `style(web): add code connect theme tokens and font`
 3. `feat(web): add auth atoms` · `feat(web): add auth molecules` · `feat(web): add login organisms` · `feat(web): add auth template` · `feat(web): add login page`
 
+## Wiki
+
+> **Nota retroativa (2026-10-20):** seção adicionada ao aplicar o plano `WikiObrigatorioNosPlanos.md`, que tornou a seção Wiki obrigatória em todos os planos. O conteúdo abaixo descreve o que deveria ter sido documentado na wiki quando este plano foi executado.
+
+**Página afetada:** `Componentes-e-Design-System` (wiki do repositório)
+
+- Nova seção **"Átomos de Autenticação"** listando `Button`, `Input`, `Label`, `Checkbox`, `TextLink`, `Heading` e `Icon` com props principais e variantes.
+- Nova seção **"Moléculas de Autenticação"** listando `FormField`, `CheckboxField`, `SocialButton` e `TextDivider` com responsabilidades de composição.
+- Nova seção **"Template `AuthTemplate`"** explicando o padrão de slot `children` / `footer` que permite reaproveitar o layout entre Login e Cadastro sem duplicar HTML.
+- Tabela de tokens de cor do tema (`--color-page`, `--color-surface`, `--color-primary`, `--color-danger`, etc.) mapeados para seus valores hex originais — base para futuros planos de página que precisem referenciar a paleta.
+
 ## Verificação
 - `pnpm test:web`: todos os testes passam.
 - `pnpm lint` e `pnpm build` (o `tsc -b` precisa passar).

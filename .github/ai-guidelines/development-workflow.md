@@ -26,6 +26,10 @@ Every execution plan for this project lives in `plan/` at the repo root, one Mar
 - When a plan lists measurements from the design, it also names the Tailwind token each one maps to (for example "407px → `w-102`", "`#81FE88` → `primary`"), following the styling rules in `frontend-architecture.md`. New colors go in the plan's theme step as `--color-*` tokens.
 - API plans list the security cases a new endpoint needs, the same way web plans list accessibility cases: `401` with no session, `403` with a missing/mismatched CSRF pair on an unsafe method, and — for any route with a `:id` — an ownership case proving user A can't reach user B's resource (see "BOLA/IDOR" in `security-standards.md`).
 - **DevSecOps Compliance:** Every plan involving local environment tooling, compiler wrappers, or external AI/MCP connections must operate inside Docker. No execution layers may bypass the container setup or fetch runtime code from the public internet without explicit, version-pinned hashes in our lockfile. Wildcard permissions in setting profiles are a blocker.
+- Every plan must include a **`## Wiki`** section placed **between the commits step and the verification step**. This section is mandatory — a plan without it is incomplete and will not be approved. It must name:
+  - Which wiki page(s) are affected (a GitHub wiki page name, e.g., `Arquitetura`, `Fluxos-de-Autenticacao`, `Componentes-e-Design-System`).
+  - What content to add, update or remove in each page (new section title + 1-line summary of what it covers, modified section + what changes, diagram or table to add).
+  - If the change is a **pure infrastructure change with zero user-visible or architectural impact** (e.g., a CI timing tweak, a dev-dependency bump with no behavior change), write `Sem impacto na wiki — <motivo em uma linha>` explicitly. An **empty Wiki section is never acceptable** — it signals the author skipped the analysis, not that there is nothing to document.
 
 ## PR validation
 
