@@ -221,6 +221,45 @@ Planos para paginas web tambem documentam acessibilidade (casos axe, rotas para 
 
 O plano **nao e deletado depois**: ao fechar a feature, o plano e marcado como concluido com uma nota datada. Se o escopo mudou durante a implementacao, o plano e atualizado com o que mudou e por que.
 
+### Guardrails DevSecOps (CLAUDE.md + `.claude/rules/`)
+
+Em projetos que usam agentes de IA (como o Claude Code) no ciclo de desenvolvimento, ha uma categoria de risco que nao existe em fluxos puramente manuais: o agente pode, sem malicia, propor acoes que violam politicas de seguranca — como baixar ferramentas de terceiros sem versao fixada, criar permissoes com wildcard ou buscar texto de repositorios publicos como contexto. Esses erros sao chamados de **alucinacoes de infraestrutura**.
+
+O Code Connect mitiga esse risco com dois mecanismos complementares embutidos no proprio repositorio:
+
+#### 1. Secao "System Guardrails & Security Mandates" no `CLAUDE.md`
+
+Carregada automaticamente pelo Claude Code em toda sessao, a secao define quatro mandatos que o agente nao pode violar:
+
+| Mandato | O que proibe |
+|---------|-------------|
+| **Zero Dynamic Downloads** | `npx -y`, `npm i`, `pnpm add`, `curl` para ferramentas nao fixadas em lockfile |
+| **Docker-First Sidecar** | Integracoes de documentacao (MCP servers) fora de um container sidecar em `docker-compose.yml` |
+| **Fail-Closed Permissions** | Wildcards (`*`) em `.claude/settings.local.json`; toda permissao deve ser granular e nomeada |
+| **Context Poisoning Prevention** | Auto-fetch de issues, PRs ou servidores de documentacao nao verificados como input do agente |
+
+Qualquer plano ou implementacao que viole esses mandatos deve ser recusado antes de ser executado — o proprio arquivo serve de gate arquitetural.
+
+#### 2. Regra de contexto `.claude/rules/devsecops-planning.md`
+
+Alem dos mandatos globais, o repositorio tem uma **regra de contexto** que ativa automaticamente quando o agente edita qualquer um dos seguintes arquivos:
+
+```
+plan/*.md
+.mcp.json
+.claude/settings.local.json
+docker-compose.yml
+```
+
+Ao detectar esses paths, o Claude Code carrega a regra e e instruido a:
+
+1. Ler `security-standards.md` e `development-workflow.md` antes de aprovar passos
+2. Exigir Docker para toda integracao AI/MCP
+3. Rejeitar automacoes com wildcards ou `npx` dinamico
+4. Garantir que o plano tenha tabela de "Arquivos Modificados" e passos de verificacao sequencial
+
+A combinacao dos dois mecanismos garante que os guardrails sejam aplicados **sem instrucao manual** — eles fazem parte do repositorio, nao da sessao.
+
 ### Guardrails de minimalismo
 
 O projeto tem cinco camadas progressivas para detectar e sinalizar codigo duplicado, complexo, morto ou desnecessariamente verboso:
@@ -346,7 +385,10 @@ O timeout existe porque `playwright install --with-deps` pode levar ate ~10 minu
 | Config do jscpd (threshold 5%, ignora testes) | `.jscpd.json` | todos |
 | Config do BundleMon (limites index.js 250 kB, index.css 50 kB) | `bundlemon.config.json` | todos |
 | Escada de decisao antes de escrever codigo novo | `.github/ai-guidelines/development-workflow.md` | secao "Antes de escrever codigo novo" |
+| Mandatos DevSecOps (zero downloads, Docker-first, fail-closed, context poisoning) | `CLAUDE.md` | secao "System Guardrails & Security Mandates" |
+| Regra de contexto DevSecOps (ativa em plan/*.md, .mcp.json, settings.local.json, docker-compose.yml) | `.claude/rules/devsecops-planning.md` | frontmatter `paths:` + corpo |
+| DevSecOps Compliance em planos de execucao | `.github/ai-guidelines/development-workflow.md` | secao "Execution plans", bullet "DevSecOps Compliance" |
 
 ---
 
-_Ultima atualizacao: 2026-10-14 | Gerado a partir do codigo-fonte._
+_Ultima atualizacao: 2026-10-20 | Gerado a partir do codigo-fonte._
