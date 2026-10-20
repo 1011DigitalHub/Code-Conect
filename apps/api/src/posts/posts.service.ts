@@ -136,7 +136,7 @@ export class PostsService {
   async findBySlug(slug: string, viewerId = NO_VIEWER): Promise<PostEntity> {
     const post = await this.prisma.post.findUnique({
       where: { slug },
-      select: { ...feedSelect(viewerId), content: true },
+      select: { ...feedSelect(viewerId), content: true, code: true },
     });
     if (!post) throw new NotFoundException('Post não encontrado');
     return new PostEntity(post as PostDetailRecord);
@@ -160,9 +160,10 @@ export class PostsService {
           excerpt: dto.excerpt,
           content: dto.content,
           thumbnailUrl: dto.thumbnailUrl ?? null,
+          code: dto.code ?? null,
           authorId,
         },
-        select: { ...feedSelect(authorId), content: true },
+        select: { ...feedSelect(authorId), content: true, code: true },
       });
       return new PostEntity(post as PostDetailRecord);
     } catch (error) {

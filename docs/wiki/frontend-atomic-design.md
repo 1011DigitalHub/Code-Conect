@@ -177,6 +177,32 @@ A abordagem do Code Connect **não** usa uma lista negra de prefixos proibidos (
 
 ---
 
+### Átomo: `CodeBlock` — código sem markup
+
+O `CodeBlock` renderiza um trecho de código como texto puro dentro de `<pre><code>`, sem interpretação de HTML e sem syntax highlighting.
+
+```tsx
+// apps/web/src/components/atoms/CodeBlock/CodeBlock.tsx
+export function CodeBlock({ code }: CodeBlockProps) {
+  return (
+    <pre className="bg-surface overflow-x-auto rounded-lg p-4">
+      <code className="font-mono text-sm text-offwhite whitespace-pre">{code}</code>
+    </pre>
+  )
+}
+```
+
+Decisões de design:
+
+- **Sem `dangerouslySetInnerHTML`**: o conteúdo vem da API como texto bruto. Renderizá-lo via `dangerouslySetInnerHTML` abriria um vetor de XSS — `<script>alert(1)</script>` seria executado. React escapa automaticamente strings em `{code}`.
+- **Sem syntax highlighting**: a biblioteca mais leve (Prism, highlight.js) adiciona dezenas de kB ao bundle para um benefício estético, não funcional. O requisito do Figma é exibir o código com fidelidade tipográfica, não colorizá-lo.
+- **`font-mono`**: usa o token `--font-mono: "Roboto Mono", monospace` definido em `index.css`. O token permite trocar a fonte em um único lugar se o design evoluir.
+- **`overflow-x-auto`**: linhas longas de código não quebram o layout — o bloco rola horizontalmente em vez de ultrapassar a borda da coluna.
+
+Quando usar: sempre que precisar exibir um bloco de código de largura fixa, preservando espaçamento e quebras de linha sem qualquer risco de execução de markup.
+
+---
+
 ### Molécula: `FormField` compondo átomos
 
 O `FormField` é o exemplo clássico de molécula: ele pega `Input` (átomo) e `Label` (átomo) e os une com uma função coesa — um campo de formulário completo com label, dica e mensagem de erro.
