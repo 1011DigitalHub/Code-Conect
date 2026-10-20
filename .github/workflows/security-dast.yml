@@ -1,0 +1,98 @@
+name: DAST (active scan)
+
+on:
+  schedule:
+    - cron: '30 3 * * 0'   # domingos 03:30 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: dast-active
+  cancel-in-progress: true
+
+env:
+  PNPM_VERSION: 12.6.0
+  NODE_VERSION: 22
+
+jobs:
+  zap-active:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: codeconnect
+          POSTGRES_PASSWORD: codeconnect-ci-only
+          POSTGRES_DB: codeconnect
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U codeconnect"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/setup-workspace
+        with:
+          pnpm-version: ${{ env.PNPM_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Generate ephemeral JWT secret
+        id: secrets
+        run: echo "jwt_secret=$(openssl rand -base64 48)" >> "$GITHUB_OUTPUT"
+
+      - name: Build the API
+        run: pnpm --filter api build
+
+      - name: Apply migrations and seed
+        env:
+          DATABASE_URL: postgresql://codeconnect:codeconnect-ci-only@localhost:5432/codeconnect
+        run: |
+          pnpm --filter api exec prisma migrate deploy
+          pnpm db:seed
+
+      - name: Start the API in background
+        run: node apps/api/dist/main.js &
+        env:
+          NODE_ENV: test
+          PORT: 3000
+          DATABASE_URL: postgresql://codeconnect:codeconnect-ci-only@localhost:5432/codeconnect
+          JWT_SECRET: ${{ steps.secrets.outputs.jwt_secret }}
+          SWAGGER_ENABLED: "true"
+
+      - name: Wait for the API to be ready
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3000/api/docs-json > /dev/null 2>&1; then
+              echo "API is ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::API failed to start within 30s"
+          exit 1
+
+      - name: ZAP API scan (active)
+        uses: zaproxy/action-api-scan@5158fe4d9d8fcc75ea204db81317cce7f9e5453d # v0.10.0
+        with:
+          target: http://localhost:3000/api/docs-json
+          format: openapi
+          rules_file_name: .github/zap/rules.tsv
+          fail_action: true
+          allow_issue_writing: true
+          issue_title: 'ZAP Active Scan Report'
+          cmd_options: '-T 3600'
+
+      - name: Upload ZAP report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: zap-active-report
+          path: report_json.json
+          retention-days: 30
