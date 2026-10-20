@@ -1,6 +1,6 @@
 # Ecossistema Multi-LLM Seguro (v2)
 
-> Status: em progresso (2026-10-20). Passo 3 concluído (issues fechadas, v1 deprecado, `.vscode/extensions.json` atualizado). Passos 1 (Ollama + Continue.dev) e 2 (Aider) pendentes.
+> Status: em progresso (2026-10-20). Passo 3 ✅ concluído. Passo 1 ✅ concluído (Ollama `qwen2.5-coder:1.5b` + Continue.dev, 27.52 tokens/s). Passo 2 ✅ concluído (Aider 0.82.3 instalado, arquitetura dual-provider Gemini Flash + DeepSeek).
 
 ## Contexto
 
@@ -24,18 +24,31 @@ O plano v1 (`EcossistemaMultiLLM.md`) identificou corretamente o problema (depen
 
 **O que muda:** As issues #84 (migrar Ollama para settings.local.json) é fechada como `not_planned` — a abordagem está errada. A issue #60 (OpenRouter via settings.local.json) é fechada pela mesma razão.
 
-### D2 — Tier 2 via Aider conectado diretamente às APIs oficiais
+### D2 — Tier 2 via Aider com arquitetura dual-provider (Redundância Ativa)
 
-**Decisão:** Para tarefas de média complexidade (gerar DTOs, criar componentes, escrever testes), usar o CLI **Aider** conectado diretamente via TLS às APIs da **DeepSeek** ou **Google Gemini Flash** — sem proxies intermediários.
+**Decisão:** Para tarefas de média complexidade (gerar DTOs, criar componentes, escrever testes), usar o CLI **Aider** conectado diretamente via TLS às APIs oficiais — sem proxies intermediários. Arquitetura de redundância ativa com dois provedores:
 
-**Por que Aider:** CLI open-source (Python, MIT License), focado em edição de código, com suporte nativo a `--model deepseek/deepseek-coder` e `--model gemini/gemini-2.0-flash`. Não toca no Claude Code.
+- **Tier 2 — Primário:** Google Gemini Flash (`gemini/gemini-3.8-flash`) — janela de contexto de até 2 milhões de tokens, ideal para spokes complexos sem truncamento; modelo atual recomendado pela Google (2026-10-20).
+- **Tier 2.5 — Failover:** DeepSeek Coder (`deepseek/deepseek-coder`) — ativado quando a API da Google sofre indisponibilidade ou latência elevada; custo 90–95% menor que Claude Sonnet.
 
-**Por que DeepSeek/Gemini direto:** Custo 90–95% menor que Claude Sonnet por token; conexão TLS direta ao provedor (sem agregador); nenhuma configuração do Claude Code alterada.
+**Comandos de inicialização:**
+```powershell
+# Uso padrão (Gemini Flash — modelo atual)
+aider --model gemini/gemini-3.8-flash
+
+# Uso de contingência (DeepSeek)
+aider --model deepseek/deepseek-coder
+```
+
+**Por que Aider:** CLI open-source (Python, MIT License), focado em edição de código, com suporte nativo a ambos os modelos. Não toca no Claude Code.
 
 **Instalação pinada** (sem downloads dinâmicos, conforme CLAUDE.md):
 ```powershell
-pip install aider-chat==0.82.3
+# Requer Python 3.12 — aider-chat não suporta Python 3.14+
+py -3.12 -m pip install aider-chat==0.82.3
 ```
+
+> **Nota:** O Python 3.12 é instalado via `winget install Python.Python.3.12 --source winget` antes do pip.
 
 ### D3 — Tier 3 com modelo 1.5B + Continue.dev (substitui Cody AI)
 
@@ -60,9 +73,12 @@ pip install aider-chat==0.82.3
          │ quando tarefa é média complexidade
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  TIER 2 — Aider CLI                                             │
-│  Conexão TLS direta → DeepSeek API ou Gemini Flash API          │
-│  Para: DTOs, componentes, testes unitários, boilerplate         │
+│  TIER 2 — Aider CLI + Gemini Flash (PRIMÁRIO)                   │
+│  Conexão TLS direta → Google Gemini Flash API                   │
+│  Contexto: até 2M tokens · Para: DTOs, componentes, testes      │
+│                                                                 │
+│  TIER 2.5 — Aider CLI + DeepSeek Coder (FAILOVER)              │
+│  Conexão TLS direta → DeepSeek API (quando Gemini indisponível) │
 └─────────────────────────────────────────────────────────────────┘
          │ para autocomplete inline no editor
          ▼
@@ -118,35 +134,39 @@ git status .claude/
 }
 ```
 
-### Passo 2 — Configurar o Tier 2 (Aider) ⏳ — #88
+### ~~Passo 2~~ — ✅ Configurar o Tier 2 (Aider) — concluído 2026-10-20
 
-**2a. Instalar Aider com versão pinada:**
+**2a. Instalar Aider com versão pinada** (requer Python 3.12 — aider-chat não suporta Python 3.14+):
 ```powershell
-pip install aider-chat==0.82.3
-aider --version   # confirmar instalação
+# 1. Instalar Python 3.12 via winget (pinado, sem downloads dinâmicos)
+winget install Python.Python.3.12 --source winget
+
+# 2. Instalar Aider com Python 3.12
+py -3.12 -m pip install aider-chat==0.82.3
+aider --version   # esperado: aider 0.82.3
 ```
 
 > **Nota de segurança:** Não usar `pip install aider-chat` sem versão — viola o guardrail de Zero Dynamic Downloads do CLAUDE.md.
 
-**2b. Configurar variáveis de ambiente para o provedor escolhido** (variável de usuário no Windows — NUNCA commitado):
+**2b. Configurar AMBAS as API keys** (variável de usuário no Windows — NUNCA commitadas):
 
-Opção A — DeepSeek:
 ```powershell
-$env:DEEPSEEK_API_KEY = "sk-..."
-aider --model deepseek/deepseek-coder
+# Tier 2 primário — Google Gemini Flash
+[System.Environment]::SetEnvironmentVariable("GEMINI_API_KEY", "AIza...", "User")
+
+# Tier 2.5 failover — DeepSeek Coder
+[System.Environment]::SetEnvironmentVariable("DEEPSEEK_API_KEY", "sk-...", "User")
 ```
 
-Opção B — Google Gemini Flash:
-```powershell
-$env:GEMINI_API_KEY = "AIza..."
-aider --model gemini/gemini-2.0-flash
-```
+As duas chaves devem **coexistir** exportadas no perfil do desenvolvedor. A chave não usada fica inerte até o failover ser acionado.
 
-**2c. Testar com um arquivo do projeto:**
+**2c. Comandos de uso:**
 ```powershell
-# No diretório raiz do projeto:
-aider apps/api/src/app.controller.ts --model deepseek/deepseek-coder
-# Prompt de teste: "Add a /health/ready endpoint that returns { status: 'ok' }"
+# Uso padrão (Gemini Flash — Tier 2 primário)
+aider --model gemini/gemini-3.8-flash apps/api/src/app.controller.ts
+
+# Uso de contingência (DeepSeek — Tier 2.5 failover)
+aider --model deepseek/deepseek-coder apps/api/src/app.controller.ts
 ```
 
 ---
@@ -156,7 +176,8 @@ aider apps/api/src/app.controller.ts --model deepseek/deepseek-coder
 | Tipo de tarefa | Ferramenta | Critério de corte |
 |---|---|---|
 | Planos, audit, debug multi-arquivo | **Claude Code** | Sempre — não há substituto |
-| Gerar DTO, componente, teste unitário | **Aider + DeepSeek/Gemini** | Contexto < 5 arquivos, tarefa descritível em 2 linhas |
+| Gerar DTO, componente, teste unitário | **Aider + Gemini Flash** (primário) | Contexto < 5 arquivos, tarefa descritível em 2 linhas |
+| Idem, com Gemini indisponível | **Aider + DeepSeek** (failover) | Chavear com `--model deepseek/deepseek-coder` |
 | Tab-autocomplete, inline chat, dúvida rápida | **Continue.dev + Ollama** | Automático — sempre rodando no editor |
 | Troca de Aider → Claude Code | — | Resposta incorreta após 1 tentativa, ou contexto envolve auth/segurança |
 
@@ -226,13 +247,17 @@ cat .claude/settings.local.json   # inspecionar manualmente
 ```powershell
 # 1. Confirmar versão instalada
 aider --version
-# Esperado: aider-chat 0.82.3
+# Esperado: aider 0.82.3
 
-# 2. Testar conexão com DeepSeek
+# 2. Testar conexão com Gemini Flash (primário)
+aider --model gemini/gemini-3.8-flash --no-git --message "Write a one-line TypeScript type for a paginated response"
+# Deve responder em < 5s
+
+# 3. Testar failover com DeepSeek (contingência)
 aider --model deepseek/deepseek-coder --no-git --message "Write a one-line TypeScript type for a paginated response"
 # Deve responder em < 5s
 
-# 3. Confirmar que API key NÃO está em nenhum arquivo commitado
+# 4. Confirmar que NENHUMA API key está em arquivo commitado
 git status
 git log --oneline -5
 ```

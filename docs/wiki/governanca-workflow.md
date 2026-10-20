@@ -360,4 +360,79 @@ O timeout existe porque `playwright install --with-deps` pode levar ate ~10 minu
 
 ---
 
+## Ecossistema de Ferramentas de IA (Multi-LLM v2)
+
+> Plano completo: `plan/EcossistemaMultiLLMSeguro.md`
+
+### Arquitetura em 3 camadas
+
+```
+TIER 1 — Claude Code (inalterado)
+  Anthropic Cloud direto · settings.local.json NAO modificado
+  Para: planos, audit, debug cross-stack, multi-arquivo
+
+TIER 2 — Aider CLI + Gemini Flash (PRIMARIO)
+  Conexao TLS direta → Google Gemini Flash API
+  Contexto: ate 2M tokens · Para: DTOs, componentes, testes
+
+TIER 2.5 — Aider CLI + DeepSeek Coder (FAILOVER)
+  Ativado quando Gemini indisponivel ou com latencia elevada
+
+TIER 3 — Ollama local + Continue.dev
+  qwen2.5-coder:1.5b · http://localhost:11434
+  Para: tab-autocomplete, inline chat, perguntas rapidas
+```
+
+**Regra central:** O `settings.local.json` do Claude Code NUNCA deve conter `ANTHROPIC_BASE_URL`. Redirecionar essa variavel para Ollama ou qualquer outro endpoint quebra o tool-calling e o Agentic Reasoning da CLI.
+
+### Criterios de roteamento
+
+| Tipo de tarefa | Ferramenta | Criterio de corte |
+|---|---|---|
+| Planos, audit, debug multi-arquivo | **Claude Code** | Sempre — nao ha substituto |
+| Gerar DTO, componente, teste unitario | **Aider + Gemini Flash** | Contexto < 5 arquivos, tarefa em 2 linhas |
+| Idem, com Gemini indisponivel | **Aider + DeepSeek** (failover) | `--model deepseek/deepseek-coder` |
+| Tab-autocomplete, inline chat | **Continue.dev + Ollama** | Automatico no editor |
+| Troca Aider → Claude Code | — | Resposta incorreta apos 1 tentativa, ou contexto envolve auth/seguranca |
+
+### Ferramentas e versoes
+
+| Ferramenta | Versao | Instalacao |
+|---|---|---|
+| Aider | `0.82.3` | `py -3.12 -m pip install aider-chat==0.82.3` |
+| Python (para Aider) | `3.12.10` | `winget install Python.Python.3.12 --source winget` |
+| pip-system-certs | `5.3` | `py -3.12 -m pip install pip-system-certs` (fix SSL no Windows) |
+| qwen2.5-coder | `1.5b` | `ollama pull qwen2.5-coder:1.5b` |
+| Continue.dev | `2.0.0` | Extensao VS Code `continue.continue` |
+
+### Comandos de uso do Aider
+
+```powershell
+# Uso padrao (Gemini Flash — Tier 2 primario)
+aider --model gemini/gemini-3.8-flash
+
+# Uso de contingencia (DeepSeek — Tier 2.5 failover)
+aider --model deepseek/deepseek-coder
+```
+
+### Variaveis de ambiente (NUNCA commitadas)
+
+As duas chaves devem coexistir exportadas no perfil do desenvolvedor:
+
+```powershell
+# Definir como variaveis de usuario do Windows (persistentes entre sessoes)
+[System.Environment]::SetEnvironmentVariable("GEMINI_API_KEY", "AIza...", "User")
+[System.Environment]::SetEnvironmentVariable("DEEPSEEK_API_KEY", "sk-...", "User")
+```
+
+### Por que OpenRouter foi descartado
+
+O OpenRouter opera como proxy entre o dev e as APIs de destino. Para um projeto com autenticacao por cookie HttpOnly, CSRF duplo-submit e tokens JWT, rotear prompts com contexto de codigo sensivel por um agregador de terceiros introduz um vetor de exfiltracao de dados desnecessario. Gemini e DeepSeek sao acessados via TLS direto ao provedor.
+
+### Por que o modelo 7B e inviavel em CPU DDR4 2400 MHz
+
+O hardware do projeto (Ryzen 5 PRO 5675U, DDR4 2400 MHz dual-channel, ~38 GB/s bandwidth) gera 2-5 tokens/s com um modelo 7B quantizado — delay de 1-3 segundos por token para autocomplete. O modelo 1.5B no mesmo hardware entrega 25-35 tokens/s (medido: 27.52 tokens/s), tornando o autocomplete subjetivamente instantaneo.
+
+---
+
 _Ultima atualizacao: 2026-10-20 | Gerado a partir do codigo-fonte._

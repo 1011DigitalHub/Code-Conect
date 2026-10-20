@@ -7,3 +7,6 @@ node_modules
 postman/environments/
 apps/api/src/generated/
 .claude/settings.local.json
+.aider.chat.history.md
+.aider.input.history
+.aider.tags.cache.v3/
