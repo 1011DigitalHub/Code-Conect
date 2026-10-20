@@ -14,6 +14,7 @@ const post: PostArticlePost = {
   createdAt: '2026-10-04T12:00:00.000Z',
   author: { name: 'Ana Souza' },
   likeCount: 4,
+  commentCount: 2,
   likedByMe: false,
 }
 
@@ -93,6 +94,36 @@ describe('PostArticle', () => {
 
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Entre para curtir/ })).toBeInTheDocument()
+  })
+
+  it('renders CodeBlock and "Código:" heading when post.code is set', () => {
+    renderWithRouter(
+      <PostArticle
+        post={{ ...post, code: 'const x = 1' }}
+        authenticated={false}
+        onToggleLike={vi.fn()}
+        now={now}
+      />,
+    )
+
+    expect(screen.getByRole('heading', { level: 2, name: 'Código:' })).toBeInTheDocument()
+    expect(screen.getByText('const x = 1')).toBeInTheDocument()
+  })
+
+  it('does not render the code section when post.code is absent', () => {
+    renderWithRouter(
+      <PostArticle post={post} authenticated={false} onToggleLike={vi.fn()} now={now} />,
+    )
+
+    expect(screen.queryByRole('heading', { level: 2, name: 'Código:' })).not.toBeInTheDocument()
+  })
+
+  it('shows the comment count in the action bar', () => {
+    renderWithRouter(
+      <PostArticle post={post} authenticated={false} onToggleLike={vi.fn()} now={now} />,
+    )
+
+    expect(screen.getByLabelText('2 comentários')).toBeInTheDocument()
   })
 
   it('has no WCAG 2.2 AA violations', async () => {
