@@ -19,6 +19,21 @@ describe('CommentItem', () => {
     expect(screen.getByText('Muito bom, obrigado!')).toBeInTheDocument()
   })
 
+  it('does not render bg-surface in variant="inline"', () => {
+    const { container } = render(
+      <CommentItem
+        authorName="Bruno Lima"
+        createdAt="2026-10-05T11:00:00.000Z"
+        body="Muito bom, obrigado!"
+        now={now}
+        variant="inline"
+      />,
+    )
+
+    expect(container.firstChild).not.toHaveClass('bg-surface')
+    expect(container.firstChild).not.toHaveClass('p-4')
+  })
+
   it('has no WCAG 2.2 AA violations', async () => {
     const { container } = render(
       <CommentItem
