@@ -53,6 +53,19 @@ describe('CommentList', () => {
     ).toBeInTheDocument()
   })
 
+  it('wraps the section in the gray bg-input container', () => {
+    const { container } = render(<CommentList comments={comments} now={now} />)
+
+    expect(container.firstChild).toHaveClass('bg-input')
+  })
+
+  it('renders an hr separator between comments but not before the first', () => {
+    render(<CommentList comments={comments} now={now} />)
+
+    const separators = document.querySelectorAll('hr')
+    expect(separators).toHaveLength(1)
+  })
+
   it('has no WCAG 2.2 AA violations', async () => {
     const { container } = render(<CommentList comments={comments} now={now} />)
 
