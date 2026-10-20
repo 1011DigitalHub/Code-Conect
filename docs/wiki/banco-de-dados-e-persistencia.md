@@ -73,6 +73,7 @@ O schema define 5 modelos principais com as seguintes responsabilidades:
 **`Post`** — artigo do blog.
 - `slug`: identificador URL amigavel, unico (`@unique`). Gerado automaticamente a partir do titulo pela funcao `uniqueSlug`.
 - `thumbnailUrl`: opcional (`String?`). O frontend trata os casos de `null` e de URL invalida separadamente.
+- `code`: opcional (`String? @db.Text`). Trecho de codigo exibido na pagina do post. Sem indice, sem formatting, armazenado como texto bruto. Mapeado pelo frontend como `<pre><code>` via `CodeBlock`.
 - `searchVector`: coluna do tipo `Unsupported("tsvector")`. O Prisma nao sabe gerar essa coluna, entao ela e declarada apenas para evitar que o `migrate dev` a trate como "drift" e tente remover. O DDL real e escrito a mao na migration (veja a secao FTS abaixo).
 - Indice composto: `@@index([createdAt(sort: Desc), id(sort: Desc)])` garante paginacao eficiente do feed mais recente.
 

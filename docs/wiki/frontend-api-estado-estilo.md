@@ -407,6 +407,27 @@ WCAG 2.4.2 exige que cada página tenha título descritivo. Motores de busca usa
 **Tokens por papel semântico, não por valor:**
 Os nomes descrevem **o que a cor faz** (`page`, `surface`, `primary`, `danger`), não **o que ela parece** (`dark-green`, `gray-800`). Isso permite mudar um tom de verde sem caçar 47 usos de `bg-green-400` pelo código.
 
+**Variante `inverted` — componente em fundo alternativo:**
+
+Quando um átomo ou molécula é usado sobre um fundo de cor diferente do padrão, a abordagem do projeto é adicionar uma variante CVA em vez de criar um componente paralelo. O padrão `inverted` do `PostMeta` é o modelo de referência:
+
+```tsx
+// molecules/PostMeta/PostMeta.tsx
+const metaRoot = cva('flex items-center gap-2 text-paragraph-sm', {
+  variants: {
+    variant: {
+      default:  'text-muted',    // sobre bg-surface / bg-page
+      inverted: 'text-surface',  // sobre bg-input (cinza claro)
+    },
+  },
+  defaultVariants: { variant: 'default' },
+})
+```
+
+A variante `color="dark"` do `Heading` segue o mesmo princípio: o default produz `text-offwhite` (texto claro sobre fundo escuro); `color="dark"` produz `text-surface` (texto escuro sobre o wrapper cinza da `CommentList`).
+
+Regra prática: antes de criar `PostMetaInverted` ou `HeadingDark`, verifique se um `variant` no CVA existente resolve — ele reutiliza o componente, preserva a semântica e não duplica lógica de layout.
+
 **`@theme` como a única fonte da verdade:**
 Na v4 não há `tailwind.config.js`. O `@theme` gera automaticamente as classes utilitárias: `bg-page`, `text-primary`, `font-sans`, `text-subtitle`. Componentes usam **apenas esses nomes**; valores arbitrários como `bg-[#00090e]` são proibidos pela convenção do projeto.
 

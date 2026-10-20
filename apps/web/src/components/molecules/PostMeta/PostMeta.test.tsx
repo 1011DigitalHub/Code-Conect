@@ -22,6 +22,14 @@ describe('PostMeta', () => {
     expect(time).toHaveAttribute('title', '3 de outubro de 2026')
   })
 
+  it('applies inverted classes in variant="inverted"', () => {
+    const { container } = render(
+      <PostMeta authorName="Ana Souza" createdAt={createdAt} now={now} variant="inverted" />,
+    )
+
+    expect(container.firstChild).toHaveClass('text-surface')
+  })
+
   it('has no WCAG 2.2 AA violations', async () => {
     const { container } = render(
       <PostMeta authorName="Ana Souza" createdAt={createdAt} now={now} />,

@@ -1,4 +1,6 @@
+import { CodeBlock } from '../../atoms/CodeBlock'
 import { Heading } from '../../atoms/Heading'
+import { Icon } from '../../atoms/Icon'
 import { LikeButton } from '../../molecules/LikeButton'
 import { PostMeta } from '../../molecules/PostMeta'
 import { PostThumbnail } from '../../molecules/PostThumbnail'
@@ -7,10 +9,12 @@ export type PostArticlePost = {
   slug: string
   title: string
   content: string
+  code?: string | null
   thumbnailUrl: string | null
   createdAt: string
   author: { name: string }
   likeCount: number
+  commentCount: number
   likedByMe: boolean
 }
 
@@ -63,7 +67,14 @@ export function PostArticle({
         ))}
       </div>
 
-      <div>
+      {post.code && (
+        <div className="flex flex-col gap-2">
+          <Heading level={2}>Código:</Heading>
+          <CodeBlock code={post.code} />
+        </div>
+      )}
+
+      <div className="flex items-center gap-4">
         {authenticated ? (
           <LikeButton
             authenticated
@@ -80,6 +91,11 @@ export function PostArticle({
             postTitle={post.title}
           />
         )}
+
+        <span className="flex items-center gap-1 text-paragraph-sm text-muted">
+          <Icon name="comment" size="sm" />
+          <span aria-label={`${post.commentCount} comentários`}>{post.commentCount}</span>
+        </span>
       </div>
     </article>
   )

@@ -57,6 +57,7 @@ model Post {
   excerpt      String   @db.VarChar(160)
   content      String
   thumbnailUrl String?  @map("thumbnail_url") @db.VarChar(500)
+  code         String?  @db.Text
   authorId     Int      @map("author_id")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")

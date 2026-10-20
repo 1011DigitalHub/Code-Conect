@@ -12,6 +12,7 @@
   --color-danger: var(--color-red-400);
 
   --font-sans: "Prompt", sans-serif;
+  --font-mono: "Roboto Mono", monospace;
 
   /* Type scale from the Figma style guide (18px "Paragraph" is text-lg). */
   --text-subtitle: 1.9375rem;

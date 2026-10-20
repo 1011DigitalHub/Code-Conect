@@ -15,6 +15,12 @@ describe('Heading', () => {
     expect(screen.getByRole('heading', { level: 2, name: 'Boas-vindas!' })).toBeInTheDocument()
   })
 
+  it('applies text-surface for color="dark"', () => {
+    const { container } = render(<Heading color="dark">Comentários</Heading>)
+
+    expect(container.firstChild).toHaveClass('text-surface')
+  })
+
   it('has no WCAG 2.2 AA violations', async () => {
     const { container } = render(<Heading>Login</Heading>)
 
