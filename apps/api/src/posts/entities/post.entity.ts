@@ -20,7 +20,7 @@ export type PostRecord = {
   likes: { userId: number }[];
 };
 
-export type PostDetailRecord = PostRecord & { content: string };
+export type PostDetailRecord = PostRecord & { content: string; code: string | null };
 
 export class PostAuthorDto {
   @ApiProperty({ example: 3 })
@@ -117,9 +117,13 @@ export class PostEntity extends PostSummaryEntity {
   @ApiProperty({ example: 'Parágrafos separados por uma linha em branco.' })
   content: string;
 
+  @ApiProperty({ example: null, nullable: true, type: String })
+  code: string | null;
+
   constructor(post: PostDetailRecord) {
     super(post);
     this.content = post.content;
+    this.code = post.code;
   }
 }
 

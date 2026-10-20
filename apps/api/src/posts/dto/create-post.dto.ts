@@ -52,4 +52,15 @@ export class CreatePostDto {
     message: 'thumbnailUrl must be an http(s) URL or start with /',
   })
   thumbnailUrl?: string;
+
+  @ApiPropertyOptional({
+    example: 'const soma = (a: number, b: number) => a + b;',
+    maxLength: 5000,
+    description: 'Trecho de código exibido na página do post. Sem formatting ou syntax highlighting.',
+  })
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MaxLength(5000)
+  code?: string;
 }
