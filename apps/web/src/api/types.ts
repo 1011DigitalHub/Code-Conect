@@ -72,6 +72,7 @@ export type FeedPost = {
 
 export type PostDetail = FeedPost & {
   content: string
+  code?: string | null
 }
 
 export type Comment = {
@@ -105,6 +106,7 @@ export type CreatePostBody = {
   excerpt: string
   content: string
   thumbnailUrl?: string
+  code?: string
 }
 
 export type CreateCommentBody = {
