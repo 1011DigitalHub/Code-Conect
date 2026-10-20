@@ -49,9 +49,9 @@ No Github Actions, cada workflow e um arquivo YAML em `.github/workflows/`. Cada
 
 ## Aplicacao no Code Connect
 
-### Os 5 workflows de CI
+### Os 6 workflows de CI
 
-O projeto tem cinco workflows, cada um com escopo e responsabilidade distintos:
+O projeto tem seis workflows, cada um com escopo e responsabilidade distintos:
 
 #### 1. `ci.yml` — O gate principal
 
@@ -60,7 +60,7 @@ Roda em **todo push e todo PR**. Usa deteccao de escopo (`changes` job) para rod
 ```
 Stage 1 (paralelo): static-api · static-web · static-quality · docs-lint
 Stage 2 (paralelo): unit-api · component-web          (aguarda stage 1)
-Stage 3 (paralelo): e2e-api · e2e-web · lighthouse · bundlemon  (aguarda stage 2)
+Stage 3 (paralelo): e2e-api · e2e-web · lighthouse · bundlemon · dast-api  (aguarda stage 2)
 Gate: ci-gate                                          (aguarda todos)
 ```
 
@@ -76,6 +76,7 @@ Gate: ci-gate                                          (aguarda todos)
 | `e2e-web` | `pnpm test:web:a11y` contra build de producao (Playwright) |
 | `lighthouse` | Scores de performance, acessibilidade e SEO |
 | `bundlemon` | Delta de tamanho do bundle web por PR — nao-bloqueante |
+| `dast-api` | ZAP API scan passivo contra spec OpenAPI (DAST) — nao-bloqueante na fase de calibragem |
 | `claude-review` | Revisao automatica do diff pelo Claude Code |
 | `ci-gate` | Unico check obrigatorio no branch protection |
 
@@ -102,6 +103,12 @@ Escopo filtrado: `apps/api/**` e `apps/web/**`. O Claude Code GitHub Action revi
 #### 5. `validate-wiki.yml` — Documentacao como Codigo
 
 Descrito em detalhe abaixo.
+
+#### 6. `security-dast.yml` — Teste dinamico de seguranca (DAST)
+
+Scan ativo semanal com OWASP ZAP. Roda a cada domingo (03:30 UTC) e sob demanda via `workflow_dispatch`. Builda a API, levanta um PostgreSQL de teste, aponta o ZAP API scan contra a spec OpenAPI em `/api/docs-json`, e cria uma GitHub Issue automatica com os findings. O `JWT_SECRET` e gerado dinamicamente em runtime (`openssl rand`) — nao ha secret hardcoded no workflow.
+
+Usa a mesma action do `dast-api` (`zaproxy/action-api-scan`), mas em modo **ativo**: injeta payloads de SQLi, XSS, path traversal e outros vetores OWASP Top 10. O scan passivo do `dast-api` no `ci.yml` complementa este, rodando em cada PR sem payloads intrusivos.
 
 ### O workflow `validate-wiki.yml`: como funciona o gate de documentacao
 
@@ -346,7 +353,11 @@ O timeout existe porque `playwright install --with-deps` pode levar ate ~10 minu
 | Config do jscpd (threshold 5%, ignora testes) | `.jscpd.json` | todos |
 | Config do BundleMon (limites index.js 250 kB, index.css 50 kB) | `bundlemon.config.json` | todos |
 | Escada de decisao antes de escrever codigo novo | `.github/ai-guidelines/development-workflow.md` | secao "Antes de escrever codigo novo" |
+| Job `dast-api` (ZAP passivo, porta 5433, stage 3) | `.github/workflows/ci.yml` | job `dast-api` |
+| Workflow DAST ativo semanal (ZAP + JWT efemero) | `.github/workflows/security-dast.yml` | todos os steps |
+| Regras de supressao de falsos positivos do ZAP | `.github/zap/rules.tsv` | todos |
+| Pinagem de actions por SHA (supply chain guard) | `.github/workflows/ci.yml` | todas as linhas `uses:` |
 
 ---
 
-_Ultima atualizacao: 2026-10-14 | Gerado a partir do codigo-fonte._
+_Ultima atualizacao: 2026-10-20 | Gerado a partir do codigo-fonte._

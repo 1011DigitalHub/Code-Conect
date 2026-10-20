@@ -24,6 +24,25 @@ A piramide de testes e uma metafora para a distribuicao ideal de testes em um pr
 - **Testes de componente / integracao** — testam um componente de UI renderizado em jsdom, ou um modulo com suas dependencias reais (mas sem infraestrutura externa). No frontend, isso e "renderizar o LoginForm e clicar no botao". Na API, e "criar o modulo NestJS e chamar o servico com um Prisma mockado".
 - **Testes e2e (ponta a ponta)** — testam o sistema completo: um browser Chromium real abrindo paginas, ou um cliente HTTP (supertest) chamando a API real com banco PostgreSQL real. Sao os mais lentos e os que mais dependem de infraestrutura, por isso sao os menos numerosos.
 
+### DAST: Dynamic Application Security Testing
+
+DAST e o teste de seguranca que ataca a aplicacao **enquanto ela esta rodando** — como um atacante real faria. Diferente do SAST (Semgrep), que le o codigo parado, e do SCA (pnpm audit), que checa dependencias por CVEs conhecidos, o DAST envia requests maliciosos contra a API live e verifica se passam.
+
+```
+SAST (Semgrep)    →  "Esse codigo parece vulneravel"     (analise estatica)
+SCA  (pnpm audit) →  "Essa dependencia tem um CVE"       (base de dados)
+DAST (ZAP)        →  "Mandei SQL injection e o banco respondeu"  (ataque real)
+```
+
+O SAST encontra codigo que *parece* vulneravel. O DAST prova que a vulnerabilidade *e exploravel* na pratica. Por isso complementam-se: o SAST e rapido e abrangente, o DAST e mais lento mas elimina falsos positivos.
+
+No Code Connect, o DAST e implementado com o **OWASP ZAP** — o scanner de seguranca open-source mais usado do mundo (15+ anos de maturidade, mantido pela Linux Foundation). Ele tem dois modos:
+
+- **Scan passivo (baseline):** observa headers, cookies e info leaks sem injetar payloads. Rapido (2-5 min), seguro para rodar em cada PR.
+- **Scan ativo:** injeta payloads de SQLi, XSS, path traversal e outros vetores OWASP Top 10. Lento (1-2h), intrusivo — roda apenas em schedule semanal.
+
+O ZAP importa a spec OpenAPI da API (`/api/docs-json`) e testa cada endpoint documentado automaticamente — nao precisa saber os endpoints antecipadamente.
+
 ### Por que Vitest e nao Jest?
 
 **Vitest** e o test runner escolhido para ambas as apps. As razoes:
@@ -247,6 +266,26 @@ O `WCAG_AA_TAGS` filtra apenas as regras da WCAG 2.2 nivel AA — sem isso, o ax
 
 Os e2e do frontend rodam contra o **build de producao** (`vite build` + `vite preview`), nao contra o servidor de dev. Isso e intencional: o build de producao aplica tree-shaking, minificacao e os headers de seguranca que o `vite preview` serve — auditamos o que os usuarios realmente recebem.
 
+### Camada 5: DAST da API (OWASP ZAP)
+
+O DAST roda em dois contextos distintos:
+
+**No CI, a cada PR que toca o backend (`dast-api` no stage 3):**
+
+O job builda a API, levanta um PostgreSQL de teste (porta `5433`, isolada do `e2e-api` na `5432`), aplica migrations, inicia a API na porta `3001` e aponta o ZAP API scan em modo passivo contra `http://localhost:3001/api/docs-json`.
+
+O scan passivo **nao injeta payloads** — apenas observa o que a API retorna e verifica headers de seguranca, configuracao de cookies, information leaks e outros checks passivos. Roda em 2-5 minutos e comeca como `continue-on-error` ate ser promovido a bloqueante apos calibragem de falsos positivos.
+
+**Em schedule semanal (`security-dast.yml`, domingos 03:30 UTC):**
+
+Mesmo setup, mas em modo **ativo**: o ZAP injeta payloads reais (SQLi, XSS, path traversal, command injection) contra cada endpoint. Leva 1-2 horas. Findings criticos criam uma GitHub Issue automatica para triagem.
+
+O `JWT_SECRET` do scan semanal e gerado dinamicamente via `openssl rand -base64 48` — nao ha string hardcoded no workflow.
+
+**Falsos positivos:**
+
+O arquivo `.github/zap/rules.tsv` permite suprimir alertas confirmados como falsos positivos. O formato e: `<rule-id>\t<action>\t<justificativa>`. Novas entradas sao adicionadas somente apos triagem manual do report.
+
 ---
 
 ## Erros Comuns e Armadilhas
@@ -275,6 +314,10 @@ O global-setup vai lancar um erro claro: `TEST_DATABASE_URL must be set`. Mas se
 
 E tentador escrever apenas testes e2e porque eles "testam tudo". O problema: sao 10-50x mais lentos e precisam de banco. Um servico com 10 casos de borda que so tem cobertura em e2e leva minutos para rodar. Os casos de borda pertencem aos testes unitarios; o e2e cobre o caminho feliz e os casos de erro de infraestrutura (banco indisponivel, token expirado na rede).
 
+### 7. Achar que DAST substitui SAST (ou vice-versa)
+
+O DAST (ZAP) e o SAST (Semgrep) testam vetores diferentes. O Semgrep encontra padroes inseguros no codigo que podem nunca ser exploraveis em runtime (porque o helmet bloqueia, ou o input nunca chega ali). O ZAP so encontra o que e exploravel, mas nao enxerga codigo que nao esta exposto via endpoint. As duas camadas se complementam — nenhuma substitui a outra.
+
 ---
 
 ## Rastreabilidade
@@ -297,7 +340,11 @@ E tentador escrever apenas testes e2e porque eles "testam tudo". O problema: sao
 | Mock de UsersService construido manualmente | `apps/api/src/auth/auth.service.spec.ts` | linhas 39-50 |
 | Helper `createTestApp()` — bootstrap centralizado dos e2e | `apps/api/test/helpers/app.ts` | todos |
 | Helper `loginAs()` e tipo `Agent` — autenticacao centralizada | `apps/api/test/helpers/auth.ts` | todos |
+| Job `dast-api` (ZAP passivo, stage 3, porta 5433/3001) | `.github/workflows/ci.yml` | job `dast-api` |
+| Workflow DAST ativo semanal (ZAP + JWT efemero) | `.github/workflows/security-dast.yml` | todos |
+| Regras de supressao de FPs do ZAP | `.github/zap/rules.tsv` | todos |
+| OpenAPI spec servida pelo SwaggerModule | `apps/api/src/swagger.ts` | `SwaggerModule.setup('api/docs', ...)` |
 
 ---
 
-_Ultima atualizacao: 2026-10-15 | Gerado a partir do codigo-fonte._
+_Ultima atualizacao: 2026-10-20 | Gerado a partir do codigo-fonte._

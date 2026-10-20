@@ -1,0 +1,8 @@
+# ZAP scan rules override — Code-Conect
+# Format: <rule-id>	<action>	<description>
+# Actions: IGNORE (suppress), WARN (advisory), FAIL (break build)
+#
+# Start minimal. Add IGNORE entries only after confirming a false positive
+# through manual triage of the first scan reports.
+10049	IGNORE	Storable and Cacheable Content — API returns no-store via helmet
+10036	IGNORE	Server Leaks Version — helmet removes X-Powered-By
