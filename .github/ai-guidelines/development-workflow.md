@@ -25,6 +25,7 @@ Every execution plan for this project lives in `plan/` at the repo root, one Mar
 - Web plans for a page also include performance and SEO: the page's meta description, its LCP image and how it is optimized, and, in the verification step, a Lighthouse table (scores per category plus LCP, CLS and TBT) measured on the production build. See `frontend-ux-seo.md`.
 - When a plan lists measurements from the design, it also names the Tailwind token each one maps to (for example "407px → `w-102`", "`#81FE88` → `primary`"), following the styling rules in `frontend-architecture.md`. New colors go in the plan's theme step as `--color-*` tokens.
 - API plans list the security cases a new endpoint needs, the same way web plans list accessibility cases: `401` with no session, `403` with a missing/mismatched CSRF pair on an unsafe method, and — for any route with a `:id` — an ownership case proving user A can't reach user B's resource (see "BOLA/IDOR" in `security-standards.md`).
+- **DevSecOps Compliance:** Every plan involving local environment tooling, compiler wrappers, or external AI/MCP connections must operate inside Docker. No execution layers may bypass the container setup or fetch runtime code from the public internet without explicit, version-pinned hashes in our lockfile. Wildcard permissions in setting profiles are a blocker.
 
 ## PR validation
 
