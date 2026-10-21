@@ -1,0 +1,95 @@
+name: Wiki Infographics
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/wiki/*.md'
+      - '!docs/wiki/Home.md'
+  workflow_dispatch:
+    inputs:
+      regenerate_all:
+        description: 'Regenerate ALL infographics (initial seeding or style change)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wiki-infographics
+  cancel-in-progress: false
+
+jobs:
+  generate-infographics:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed wiki files
+        id: detect
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.regenerate_all }}" == "true" ]]; then
+            FILES=$(find docs/wiki -maxdepth 1 -name '*.md' ! -name 'Home.md' | sort)
+          else
+            FILES=$(git diff --name-only HEAD~1 HEAD -- 'docs/wiki/*.md' ':!docs/wiki/Home.md' 2>/dev/null || true)
+          fi
+
+          if [ -z "$FILES" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No wiki files to process."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "files<<EOF" >> "$GITHUB_OUTPUT"
+            echo "$FILES" >> "$GITHUB_OUTPUT"
+            echo "EOF" >> "$GITHUB_OUTPUT"
+            echo "Files to process:"
+            echo "$FILES"
+          fi
+
+      - name: Setup Python
+        if: steps.detect.outputs.changed == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        if: steps.detect.outputs.changed == 'true'
+        run: pip install -r scripts/requirements-infographic.txt
+
+      - name: Generate infographics
+        if: steps.detect.outputs.changed == 'true'
+        run: |
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            slug=$(basename "$file" .md)
+            echo "--- Generating: $slug ---"
+            python scripts/generate_infographic.py \
+              "$file" \
+              "docs/wiki/assets/${slug}-infographic.png" \
+              --inject
+          done <<< "${{ steps.detect.outputs.files }}"
+
+      - name: Commit and push generated assets
+        if: steps.detect.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add docs/wiki/assets/*.png docs/wiki/*.md
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+
+          SLUGS=$(echo "${{ steps.detect.outputs.files }}" | while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            basename "$f" .md
+          done | paste -sd ', ')
+
+          git commit -m "docs(wiki): regenerate infographics for ${SLUGS}"
+          git push
