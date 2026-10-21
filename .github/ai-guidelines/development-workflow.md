@@ -20,7 +20,7 @@ Every execution plan for this project lives in `plan/` at the repo root, one Mar
 
 - Once a plan is approved, save it in `plan/` before implementing it.
 - If the scope changes during or after implementation (a swapped asset, a changed component), update the plan file with a dated note explaining what changed and why. Don't create a new file for the change.
-- Plans follow the structure of `plan/PaginaLogin.md`: context, implementation steps, tests, commits and verification.
+- Plans follow the structure of `plan/PaginaLogin.md`: context, **security by design**, implementation steps, tests, commits, **wiki** and verification.
 - Web plans include accessibility: the tests step lists the axe case for each new component and the new routes added to `e2e/routes.ts`. The verification step runs `pnpm test:web:a11y` and the manual checks (keyboard only, screen reader, 200% zoom). See `frontend-ux-seo.md` for the full accessibility contract.
 - Web plans for a page also include performance and SEO: the page's meta description, its LCP image and how it is optimized, and, in the verification step, a Lighthouse table (scores per category plus LCP, CLS and TBT) measured on the production build. See `frontend-ux-seo.md`.
 - When a plan lists measurements from the design, it also names the Tailwind token each one maps to (for example "407px → `w-102`", "`#81FE88` → `primary`"), following the styling rules in `frontend-architecture.md`. New colors go in the plan's theme step as `--color-*` tokens.
@@ -30,6 +30,16 @@ Every execution plan for this project lives in `plan/` at the repo root, one Mar
   - Which wiki page(s) are affected (a GitHub wiki page name, e.g., `Arquitetura`, `Fluxos-de-Autenticacao`, `Componentes-e-Design-System`).
   - What content to add, update or remove in each page (new section title + 1-line summary of what it covers, modified section + what changes, diagram or table to add).
   - If the change is a **pure infrastructure change with zero user-visible or architectural impact** (e.g., a CI timing tweak, a dev-dependency bump with no behavior change), write `Sem impacto na wiki — <motivo em uma linha>` explicitly. An **empty Wiki section is never acceptable** — it signals the author skipped the analysis, not that there is nothing to document.
+- Every plan must include a **`## Security By Design`** section placed **before the implementation steps**. This section is mandatory — a plan without it is incomplete and will not be approved. It must contain the following checklist, with every item answered explicitly (never left blank):
+  1. **Autenticacao:** Does this change affect login, session, token lifecycle, or `@Public()` routes? If adding a new `@Public()` route, justify why it must be unauthenticated.
+  2. **Autorizacao / BOLA:** Does any new endpoint accept a `:id` param? If yes, describe the ownership check (`where: { id, authorId: actor.sub }`) and the e2e case proving user A cannot reach user B's resource. Reference the BOLA/IDOR pattern in `security-standards.md`.
+  3. **Validacao de entrada:** List every new DTO or param. Confirm that `ValidationPipe` with `whitelist`/`forbidNonWhitelisted` covers them and that no field allows mass assignment (`id`, `role`, `passwordHash`).
+  4. **Exposicao de dados:** What data does the response return? Confirm it uses a response DTO or entity (never raw database records). Confirm no password hash, internal id, or PII is leaked.
+  5. **CSRF:** Does this add or modify an unsafe method (`POST`/`PUT`/`PATCH`/`DELETE`)? If yes, confirm that `CsrfGuard` covers it. If it needs `@NoCsrf()`, justify why.
+  6. **Rate limiting:** Does this endpoint need a custom `@Throttle()` override? Reference the existing tiers (100/min global, 5/min login, 3/min signup) and justify the chosen limit.
+  7. **Gestao de segredos:** Does this change introduce new environment variables or secrets? If yes, confirm they are validated in `src/env.ts` at boot, listed in `.env.example`, and never committed to git.
+  8. **Risco de dependencias:** Does this change add a new dependency? If yes, confirm `pnpm audit` passes and the package is from a known, maintained source. For security-critical deps (crypto, auth), justify the choice.
+  - If the change has **zero security impact** (e.g., a pure UI layout change, a docs-only update, a CSS tweak), write `Sem impacto de seguranca — <motivo em uma linha>` explicitly. An **empty Security By Design section is never acceptable**.
 
 ## PR validation
 
