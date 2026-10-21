@@ -93,6 +93,18 @@ services:
     ports:
       - '127.0.0.1:8080:8080'
 
+  mcp-docs:
+    build:
+      context: ./docker/mcp
+      dockerfile: Dockerfile
+    container_name: code-connect-mcp-docs
+    restart: unless-stopped
+    volumes:
+      # Read-only: container nunca modifica os docs clonados.
+      - ./docker/mcp/docs:/docs:ro
+    stdin_open: true
+    tty: false
+
 volumes:
   pgdata:
     name: code-connect-pgdata
