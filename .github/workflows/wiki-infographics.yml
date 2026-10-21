@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 concurrency:
   group: wiki-infographics
@@ -73,8 +74,10 @@ jobs:
               --inject
           done <<< "${{ steps.detect.outputs.files }}"
 
-      - name: Commit and push generated assets
+      - name: Commit and open PR with generated assets
         if: steps.detect.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -91,5 +94,19 @@ jobs:
             basename "$f" .md
           done | paste -sd ', ')
 
+          BRANCH="bot/wiki-infographics-$(date +%s)"
+          git checkout -b "$BRANCH"
           git commit -m "docs(wiki): regenerate infographics for ${SLUGS}"
-          git push
+          git push -u origin "$BRANCH"
+
+          gh pr create \
+            --title "docs(wiki): regenerate infographics for ${SLUGS}" \
+            --body "$(cat <<EOF
+          Infográficos regenerados automaticamente pelo workflow Wiki Infographics.
+
+          **Páginas processadas:** ${SLUGS}
+
+          > PR criado pelo bot — merge após CI verde.
+          EOF
+          )" \
+            --label "skip-wiki"
