@@ -289,3 +289,7 @@ O servidor de dev serve bundles de desenvolvimento nao-minificados (varios MB). 
 ---
 
 _Ultima atualizacao: 2026-10-09 | Gerado a partir do codigo-fonte._
+
+<!-- infographic-start -->
+![Infográfico: Frontend: Acessibilidade (WCAG 2.2 AA) e SEO](assets/frontend-acessibilidade-seo-infographic.png)
+<!-- infographic-end -->

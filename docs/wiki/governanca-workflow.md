@@ -436,3 +436,7 @@ O hardware do projeto (Ryzen 5 PRO 5675U, DDR4 2400 MHz dual-channel, ~38 GB/s b
 ---
 
 _Ultima atualizacao: 2026-10-20 | Gerado a partir do codigo-fonte._
+
+<!-- infographic-start -->
+![Infográfico: Governanca: Workflow de PR, Wiki e CI](assets/governanca-workflow-infographic.png)
+<!-- infographic-end -->

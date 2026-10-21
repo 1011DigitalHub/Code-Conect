@@ -463,3 +463,7 @@ Se o cache expirasse 1,5 s após a *chamada* que iniciou a probe, e a probe demo
 ---
 
 _Ultima atualizacao: 2026-10-16 | Gerado a partir do codigo-fonte._
+
+<!-- infographic-start -->
+![Infográfico: Segurança: Senhas, Rate Limiting e Headers](assets/seguranca-senhas-rate-limiting-headers-infographic.png)
+<!-- infographic-end -->
