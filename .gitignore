@@ -10,3 +10,8 @@ apps/api/src/generated/
 .aider.chat.history.md
 .aider.input.history
 .aider.tags.cache.v3/
+
+# MCP — docs clonados do upstream (não commitar)
+docker/mcp/docs/
+# MCP config — contém caminhos locais, gerado por cada dev
+.mcp.json

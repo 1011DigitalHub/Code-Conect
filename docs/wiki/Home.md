@@ -18,6 +18,7 @@ praticas de QA** do Code Connect.
 | UI / UX | [Atomic Design](frontend-atomic-design.md) · [API, Estado e Estilo](frontend-api-estado-estilo.md) · [Acessibilidade e SEO](frontend-acessibilidade-seo.md) | [`frontend-architecture.md`](../../.github/ai-guidelines/frontend-architecture.md) · [`frontend-ux-seo.md`](../../.github/ai-guidelines/frontend-ux-seo.md) |
 | Dados / Persistencia | [Banco de Dados](banco-de-dados-e-persistencia.md) | [`database-persistence.md`](../../.github/ai-guidelines/database-persistence.md) |
 | QA / Testes & Workflow | [Estrategia de Testes](qa-estrategia-testes.md) · [Governanca](governanca-workflow.md) | [`development-workflow.md`](../../.github/ai-guidelines/development-workflow.md) |
+| Ferramentas | [Ferramentas de Desenvolvimento](ferramentas-desenvolvimento.md) | [`CLAUDE.md`](../../CLAUDE.md) |
 
 ## Como contribuir
 
