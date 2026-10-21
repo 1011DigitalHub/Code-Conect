@@ -11,6 +11,9 @@ apps/api/src/generated/
 .aider.input.history
 .aider.tags.cache.v3/
 
+# Python virtual env (infographic engine)
+.venv/
+
 # MCP — docs clonados do upstream (não commitar)
 docker/mcp/docs/
 # MCP config — contém caminhos locais, gerado por cada dev
