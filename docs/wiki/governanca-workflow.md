@@ -213,6 +213,58 @@ Multiplas issues podem ser linkadas no mesmo PR: `Closes #12, Closes #15`.
 
 Veja o fluxo completo para contribuidores em [`CONTRIBUTING.md`](../../CONTRIBUTING.md).
 
+### Controle de Mudancas: Issue Obrigatoria em PRs
+
+Todo PR para `main` precisa referenciar uma issue documentada usando uma **palavra-chave formal de fechamento do GitHub** no corpo do PR. O job `issue-check` no `ci.yml` verifica isso automaticamente — referencias soltas (`#N`) sao rejeitadas; apenas `Closes #N`, `Fixes #N` e `Resolves #N` passam.
+
+**Por que keywords formais e nao apenas `#N`?** As keywords de auto-close do GitHub so funcionam no corpo do PR, nao no titulo, e so fecham a issue automaticamente no merge se estiverem no formato correto. Alinhar o check com o comportamento real da plataforma garante rastreabilidade auditavel: todo merge em `main` tem sua issue fechada automaticamente.
+
+**Fluxo do `issue-check`:**
+
+```
+PR aberto/atualizado/label adicionada
+    │
+    ▼
+Escape hatch 1: label `skip-issue` no PR?
+    ├── SIM → passa com warning de governanca
+    └── NAO ↓
+Escape hatch 2: `[x] skip-issue` no corpo do PR?
+    ├── SIM → passa com warning de governanca
+    └── NAO ↓
+Regex estrita: corpo contem Closes/Fixes/Resolves #N?
+    ├── SIM → passa (issue reference found)
+    └── NAO → falha com mensagem de erro explicativa
+```
+
+**Escape hatches e governanca:** Os escape hatches existem para PRs de infraestrutura ou CI que genuinamente nao precisam de uma issue rastreada. O uso de qualquer escape hatch (`skip-issue` ou `skip-wiki`) requer **aprovacao formal do Code Owner** (`@1011DigitalHub`) antes do merge — isso e garantido pelo `CODEOWNERS` com catch-all `*` + "Require review from Code Owners" habilitado no branch protection.
+
+### Security By Design nos Planos de Execucao
+
+Todo plano de execucao em `plan/*.md` deve conter uma secao `## Security By Design` posicionada **antes dos passos de implementacao**. A secao e obrigatoria — um plano sem ela e incompleto e nao sera aprovado.
+
+A secao contem 8 itens de checklist, todos respondidos explicitamente:
+
+| Item | Pergunta |
+|------|----------|
+| 1. Autenticacao | Afeta login, sessao, ciclo de vida do token ou rotas `@Public()`? |
+| 2. Autorizacao / BOLA | Ha parametro `:id`? Descrever o ownership check e o caso e2e. |
+| 3. Validacao de entrada | Listar DTOs novos. Confirmar `ValidationPipe` com whitelist. |
+| 4. Exposicao de dados | O que o response retorna? Confirmar DTO de resposta, sem hash/PII. |
+| 5. CSRF | Adiciona metodo unsafe (`POST`/`PUT`/`PATCH`/`DELETE`)? `CsrfGuard` cobre? |
+| 6. Rate limiting | Precisa de `@Throttle()` customizado? Justificar. |
+| 7. Gestao de segredos | Novas env vars? Validadas em `src/env.ts`, listadas em `.env.example`? |
+| 8. Risco de dependencias | Nova dependencia? `pnpm audit` passa? Fonte conhecida? |
+
+**Exempcao:** Se a mudanca nao tem impacto de seguranca (ex.: ajuste de layout puro, docs-only), escreva `Sem impacto de seguranca — <motivo>` explicitamente. Uma secao vazia nunca e aceitavel.
+
+O plano `plan/PaginaLogin.md` e o exemplo canonico com a secao preenchida retroativamente.
+
+### CODEOWNERS: governanca de paths criticos
+
+O arquivo `.github/CODEOWNERS` define quem precisa revisar alteracoes em paths criticos de seguranca e governanca. Com "Require review from Code Owners" habilitado no branch protection de `main`, todo PR que toca esses paths fica bloqueado para merge ate o Owner aprovar.
+
+Paths cobertos: `apps/api/src/auth/`, `apps/api/src/env.ts`, `.github/workflows/`, `.github/CODEOWNERS`, `.claude/`, `CLAUDE.md`, `SECURITY.md` e o catch-all `*` (todo o restante). O catch-all garante que **todo PR** — incluindo os que usam escape hatches — requeira revisao formal.
+
 ### Planos de execucao em `plan/`
 
 Antes de implementar qualquer funcionalidade de porte, o projeto exige um **plano de execucao** em `plan/` — um arquivo Markdown nomeado em PascalCase e em portugues (ex: `plan/LoginSocial.md`).
@@ -342,6 +394,10 @@ O timeout existe porque `playwright install --with-deps` pode levar ate ~10 minu
 | `exactOptionalPropertyTypes` desligado no web | `.github/ai-guidelines/development-workflow.md` | "exactOptionalPropertyTypes" |
 | Templates de issue (bug, feature, debito tecnico) | `.github/ISSUE_TEMPLATE/` | `bug_report.md`, `feature_request.md`, `technical_debt.md` |
 | Workflow de conversao TODO → Issue | `.github/workflows/todo-to-issue.yml` | todos os steps |
+| Job `issue-check` (regex estrita, escape hatches) | `.github/workflows/ci.yml` | job `issue-check` |
+| Regra Security By Design Gate | `.claude/rules/devsecops-planning.md` | regra 5 |
+| CODEOWNERS com catch-all | `.github/CODEOWNERS` | todos |
+| Secao Security By Design obrigatoria nos planos | `.github/ai-guidelines/development-workflow.md` | secao "Execution plans" |
 | Script de varredura local de TODOs | `scripts/find-todos.sh` | todos |
 | Guia de contribuicao (templates, TODOs, Closes #N) | `CONTRIBUTING.md` | todos |
 | Labels de prioridade e tipo (`prio:*`, `feature`, `refactor`) | GitHub Labels | configuradas via `gh label create` |
