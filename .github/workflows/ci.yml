@@ -285,6 +285,8 @@ jobs:
       contents: read
       pull-requests: write
       id-token: write
+    # Advisory only: billing/API failures must not block the gate.
+    continue-on-error: true
     uses: ./.github/workflows/claude.yml
     secrets: inherit
 
