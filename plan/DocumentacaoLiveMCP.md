@@ -2,7 +2,29 @@
 
 > Issue: #78
 > Branch: `feat/mcp-docs-sidecar`
-> Status: Aguardando aprovação
+> Status: **Implementado — aguardando PR e revisão** (2026-10-20)
+
+## Desvios em relação ao plano original
+
+| # | Planejado | Implementado | Motivo |
+|---|---|---|---|
+| D1 | `FROM node:22-alpine` | `FROM node:24-alpine` | `@modelcontextprotocol/server-filesystem@2.0.0` declara `engines: { node: ">=24" }` — Node 22 geraria aviso `EBADENGINE` em runtime |
+| D2 | Versão `2.1.0` do pacote | Versão `2.0.0` | Última versão estável no registry no momento do desenvolvimento (`npm info` retornou `2.0.0`) |
+| D3 | 3 commits planejados | 4 commits entregues | Wiki e plano foram separados em commit dedicado (`docs(wiki)`) para rastreabilidade |
+
+## Resultado das verificações (checklist do plano)
+
+```
+✅ pnpm mcp:seed    → 8 diretórios clonados em docker/mcp/docs/
+✅ pnpm mcp:up      → container code-connect-mcp-docs Up
+✅ tools/list (stdio) → JSON-RPC retornou 14 tools (read_file, list_directory, etc.)
+✅ volume :ro        → touch /docs/test-write → "Read-only file system"
+✅ git status        → docker/mcp/docs/ e .mcp.json não aparecem
+✅ pnpm lint         → passou (warnings pré-existentes não relacionados)
+✅ pnpm typecheck    → passou sem erros
+✅ pnpm test:api     → 295/295
+✅ pnpm test:web     → 366/366
+```
 
 ## Contexto
 
