@@ -285,8 +285,6 @@ jobs:
       contents: read
       pull-requests: write
       id-token: write
-    # Advisory only: billing/API failures must not block the gate.
-    continue-on-error: true
     uses: ./.github/workflows/claude.yml
     secrets: inherit
 
@@ -638,8 +636,12 @@ jobs:
             result="${jobs[$name]}"
             printf '%-20s %s\n' "$name:" "$result"
             if [[ "$result" == "failure" ]]; then
-              echo "::error::$name $result"
-              failed=true
+              if [[ "$name" == "claude-review" ]]; then
+                echo "::warning::$name $result (advisory — does not block gate)"
+              else
+                echo "::error::$name $result"
+                failed=true
+              fi
             fi
           done
           [[ "$failed" == "true" ]] && exit 1 || echo "All jobs passed or were skipped."
