@@ -402,3 +402,7 @@ O fallback para `JWT_SECRET` existe por conveniencia de configuracao, mas e desa
 ---
 
 _Ultima atualizacao: 2026-10-09 | Gerado a partir do codigo-fonte._
+
+<!-- infographic-start -->
+![Infográfico: Seguranca: Protecao CSRF](assets/seguranca-csrf-infographic.png)
+<!-- infographic-end -->

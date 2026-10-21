@@ -395,3 +395,7 @@ Antes do refactoring, o `AuthGuard` era declarado no `AuthModule` e o `Throttler
 ---
 
 _Ultima atualizacao: 2026-10-15 | Gerado a partir do codigo-fonte._
+
+<!-- infographic-start -->
+![Infográfico: Arquitetura Backend: Monorepo, Modulos e Bootstrap](assets/arquitetura-backend-infographic.png)
+<!-- infographic-end -->

@@ -308,3 +308,7 @@ O logout limpa o cookie no browser, mas o JWT continua criptograficamente valido
 ---
 
 _Ultima atualizacao: 2026-10-09 | Gerado a partir do codigo-fonte._
+
+<!-- infographic-start -->
+![Infográfico: Seguranca: Autenticacao e Gerenciamento de Sessao](assets/seguranca-autenticacao-infographic.png)
+<!-- infographic-end -->

@@ -484,3 +484,7 @@ Elementos `role="alert"` devem ter conteúdo no momento em que são inseridos. U
 ---
 
 _Última atualização: 2026-10-09 | Gerado a partir do código-fonte._
+
+<!-- infographic-start -->
+![Infográfico: Frontend: Atomic Design e Arquitetura de Componentes](assets/frontend-atomic-design-infographic.png)
+<!-- infographic-end -->

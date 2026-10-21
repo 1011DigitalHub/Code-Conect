@@ -533,3 +533,7 @@ Todos os tres params sao removidos da barra de endereco apos exibicao (via `setS
 | `LoginPage` — tratamento de `oidcError`/`oidcRace`/`error` | `apps/web/src/pages/LoginPage/LoginPage.tsx` | `getInitialOidcError` |
 
 _Ultima atualizacao: 2026-10-16 | Gerado a partir do codigo-fonte._
+
+<!-- infographic-start -->
+![Infográfico: Seguranca: OIDC / Login Social](assets/seguranca-oidc-infographic.png)
+<!-- infographic-end -->
