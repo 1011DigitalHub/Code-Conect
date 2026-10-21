@@ -390,3 +390,7 @@ const rows = ids
 ---
 
 _Ultima atualizacao: 2026-10-09 | Gerado a partir do codigo-fonte._
+
+<!-- infographic-start -->
+![Infográfico: Banco de Dados e Persistencia (Prisma + PostgreSQL)](assets/banco-de-dados-e-persistencia-infographic.png)
+<!-- infographic-end -->

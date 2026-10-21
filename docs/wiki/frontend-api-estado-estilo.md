@@ -610,3 +610,7 @@ import '@fontsource/prompt/600.css'
 ---
 
 _Última atualização: 2026-10-09 | Gerado a partir do código-fonte._
+
+<!-- infographic-start -->
+![Infográfico: Frontend: Camada de API, Estado e Estilo](assets/frontend-api-estado-estilo-infographic.png)
+<!-- infographic-end -->
