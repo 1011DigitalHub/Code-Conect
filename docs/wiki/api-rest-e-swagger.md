@@ -448,3 +448,7 @@ A combinação dos dois é mais segura porque torna o ataque visível (retorna e
 ---
 
 _Última atualização: 2026-10-09 | Gerado a partir do código-fonte._
+
+<!-- infographic-start -->
+![Infográfico: API REST e Swagger](assets/api-rest-e-swagger-infographic.png)
+<!-- infographic-end -->

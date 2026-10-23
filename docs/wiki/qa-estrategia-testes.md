@@ -348,3 +348,7 @@ O DAST (ZAP) e o SAST (Semgrep) testam vetores diferentes. O Semgrep encontra pa
 ---
 
 _Ultima atualizacao: 2026-10-20 | Gerado a partir do codigo-fonte._
+
+<!-- infographic-start -->
+![Infográfico: QA: Estrategia e Padroes de Testes](assets/qa-estrategia-testes-infographic.png)
+<!-- infographic-end -->

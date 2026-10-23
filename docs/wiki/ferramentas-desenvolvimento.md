@@ -129,3 +129,7 @@ Consulte o Apêndice A do plano `plan/DocumentacaoLiveMCP.md`. Em resumo:
 | Docfork | Wildcard de permissões necessário — viola guardrail #3 |
 | Mintlify Index | Documentação pública indexada por terceiro — Context Poisoning |
 | Nia | Token de API externo + SSE — porta exposta, viola arquitetura Docker-First |
+
+<!-- infographic-start -->
+![Infográfico: Ferramentas de Desenvolvimento](assets/ferramentas-desenvolvimento-infographic.png)
+<!-- infographic-end -->
