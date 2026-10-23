@@ -6,7 +6,7 @@ on:
   pull_request:
     # ready_for_review re-triggers when a draft is promoted, preserving the
     # claude-review behaviour the previous standalone claude.yml had.
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
   workflow_dispatch:
 
 permissions:
@@ -268,6 +268,51 @@ jobs:
           fi
 
           echo "Wiki check passed."
+
+  # ── Issue gate (Change Management) ────────────────────────────────────────────
+  # Every PR must reference a documented issue via formal GitHub closing keywords
+  # (Closes/Fixes/Resolves #N). Bare #N references are NOT accepted — Change
+  # Management requires auditable auto-close traceability.
+  # Escape hatches: label `skip-issue` or `[x] skip-issue` in the PR body.
+  # GOVERNANCE: escape hatches require formal Owner/DevSecOps review (CODEOWNERS).
+  issue-check:
+    needs: [changes]
+    if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Verify PR references a documented issue
+        env:
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+
+          # Escape hatch 1: label `skip-issue`.
+          if printf ',%s,' "$LABELS" | grep -q ',skip-issue,'; then
+            echo "::warning::Escape hatch via label 'skip-issue' — requer aprovacao formal do Code Owner (@1011DigitalHub) antes do merge."
+            exit 0
+          fi
+          # Escape hatch 2: checkbox `[x] skip-issue` in the PR body.
+          if printf '%s' "$PR_BODY" | grep -qiE '\[x\][[:space:]]*skip-issue'; then
+            echo "::warning::Escape hatch via '[x] skip-issue' — requer aprovacao formal do Code Owner (@1011DigitalHub) antes do merge."
+            exit 0
+          fi
+
+          # Strict regex: only formal GitHub closing keywords are accepted.
+          # Closes/Close/Closed #N, Fixes/Fix/Fixed #N, Resolves/Resolve/Resolved #N.
+          # Case-insensitive. Bare #N references do NOT pass.
+          ISSUE_RE='(close[sd]?|fix(e[sd])?|resolve[sd]?)[[:space:]]+#[0-9]+'
+
+          if printf '%s' "$PR_BODY" | grep -qiE "$ISSUE_RE"; then
+            echo "Issue reference found (formal closing keyword). Check passed."
+            exit 0
+          fi
+
+          echo "::error::Este PR nao referencia nenhuma issue com palavra-chave formal de fechamento. Use 'Closes #N', 'Fixes #N' ou 'Resolves #N' no corpo do PR. Referencias soltas (#N) nao sao aceitas — Change Management exige rastreabilidade auditavel. Para PRs de infra/CI sem issue, aplique a label 'skip-issue' (requer aprovacao do Code Owner)."
+          exit 1
 
   # ── Claude code review ─────────────────────────────────────────────────────────
   # Runs only after stage 1 succeeds so tokens are never spent on code that
@@ -581,6 +626,7 @@ jobs:
       - static-quality
       - docs-lint
       - wiki-check
+      - issue-check
       - claude-review
       - unit-api
       - component-web
@@ -599,6 +645,7 @@ jobs:
           STATIC_QUALITY: ${{ needs.static-quality.result }}
           DOCS_LINT:      ${{ needs.docs-lint.result }}
           WIKI_CHECK:     ${{ needs.wiki-check.result }}
+          ISSUE_CHECK:    ${{ needs.issue-check.result }}
           CLAUDE_REVIEW: ${{ needs.claude-review.result }}
           UNIT_API:      ${{ needs.unit-api.result }}
           COMPONENT_WEB: ${{ needs.component-web.result }}
@@ -614,6 +661,7 @@ jobs:
             [static-quality]="$STATIC_QUALITY"
             [docs-lint]="$DOCS_LINT"
             [wiki-check]="$WIKI_CHECK"
+            [issue-check]="$ISSUE_CHECK"
             [claude-review]="$CLAUDE_REVIEW"
             [unit-api]="$UNIT_API"
             [component-web]="$COMPONENT_WEB"

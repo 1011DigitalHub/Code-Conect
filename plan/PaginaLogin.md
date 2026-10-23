@@ -15,6 +15,19 @@ Assets em `public/`, usados por URL absoluta (`/Banner_login_page.png`, `/Github
 
 > **Atualização (2026-10-02), ligação com a API:** o campo "Email ou usuário" virou "Email" (`type="email"`), porque `POST /auth/login` só aceita email. O formulário ganhou `submitting` e `error`, e a página chama a API com Axios e vai para `/perfil`. Detalhes em `IntegracaoFrontBack.md`.
 
+## Security By Design
+
+> **Nota retroativa (2026-10-21):** secao adicionada ao aplicar o plano `GovernancaSecurityByDesign.md`, que tornou a secao Security By Design obrigatoria em todos os planos.
+
+1. **Autenticacao:** Nao afeta — a pagina de login chama `POST /auth/login`, que ja existe e esta protegida. Nenhuma rota `@Public()` nova.
+2. **Autorizacao / BOLA:** Nao ha parametro `:id`. Sem risco.
+3. **Validacao de entrada:** `LoginDto` ja tem `@IsEmail()`, `@MinLength(8)`, `@MaxLength(72)`. Nenhum DTO novo.
+4. **Exposicao de dados:** A resposta de login retorna `{ tokenType, expiresIn }` — sem token, hash ou PII.
+5. **CSRF:** `POST /auth/login` ja esta coberto pelo `CsrfGuard` global.
+6. **Rate limiting:** Login tem `@Throttle(5/min)` existente. Sem alteracao.
+7. **Gestao de segredos:** Nenhuma variavel nova.
+8. **Risco de dependencias:** Nenhuma dependencia nova.
+
 ## 1. Test runner (exigido pelo CLAUDE.md antes de criar componentes)
 - devDeps em `apps/web`: `vitest`, `jsdom`, `@testing-library/react`, `@testing-library/user-event`, `@testing-library/jest-dom`.
 - `vite.config.ts`: bloco `test` com `environment: 'jsdom'`, `globals: true`, `setupFiles: './src/test/setup.ts'` (esse arquivo importa `@testing-library/jest-dom/vitest`). Usar `/// <reference types="vitest/config" />`.

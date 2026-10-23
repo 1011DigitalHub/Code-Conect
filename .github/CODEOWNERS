@@ -1,0 +1,29 @@
+# ─────────────────────────────────────────────────────────────────────
+# Code-Conect CODEOWNERS
+# ─────────────────────────────────────────────────────────────────────
+# Branch protection must have "Require review from Code Owners" enabled.
+# This ensures that:
+#   1. Security-critical paths require Owner review on every PR.
+#   2. Escape hatches (skip-issue, skip-wiki) require Owner approval
+#      to merge — the PR passes CI but cannot merge without review.
+# ─────────────────────────────────────────────────────────────────────
+
+# ── Security-critical application code ──────────────────────────────
+apps/api/src/auth/                          @1011DigitalHub
+apps/api/src/env.ts                         @1011DigitalHub
+apps/api/src/cors.ts                        @1011DigitalHub
+apps/api/src/common/login-throttler.guard.ts @1011DigitalHub
+
+# ── Governance and security configuration ───────────────────────────
+.github/workflows/                          @1011DigitalHub
+.github/ai-guidelines/security-standards.md @1011DigitalHub
+.github/CODEOWNERS                          @1011DigitalHub
+.claude/                                    @1011DigitalHub
+SECURITY.md                                 @1011DigitalHub
+CLAUDE.md                                   @1011DigitalHub
+
+# ── Catch-all: all other files ──────────────────────────────────────
+# In a single-maintainer project, this ensures every PR requires
+# Owner review — including PRs that use escape hatches. When the
+# team grows, replace with team-based ownership per module.
+*                                           @1011DigitalHub

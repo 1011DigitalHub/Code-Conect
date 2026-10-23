@@ -1,7 +1,25 @@
+## 🔗 Issue
+
+<!-- OBRIGATORIO: referencie a issue que este PR resolve usando uma
+     palavra-chave formal de fechamento do GitHub.
+     Use: Closes #N, Fixes #N ou Resolves #N.
+     O CI (job issue-check) bloqueia PRs sem esta referencia. -->
+
+Closes #
+
+### Excecao — Escape Hatch (`skip-issue`)
+<!-- Marque APENAS se este PR e uma mudanca de infraestrutura/CI que
+     comprovadamente NAO requer uma issue documentada.
+     ATENCAO: o uso deste escape hatch requer aprovacao formal do
+     Code Owner (@1011DigitalHub) antes do merge (CODEOWNERS). -->
+- [ ] skip-issue — este PR **nao requer** uma issue vinculada (justificativa na Descricao).
+
+---
+
 ## 📝 Descrição
 
 <!-- Descreva o que este PR faz e por quê. Contexto, problema resolvido e
-     decisões relevantes. Referencie issues com "Closes #123". -->
+     decisões relevantes. -->
 
 ## 🏷️ Tipo de Mudança
 

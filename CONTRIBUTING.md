@@ -68,6 +68,16 @@ Múltiplas issues podem ser linkadas no mesmo PR:
 Closes #12, Closes #15
 ```
 
+### Obrigatoriedade da Referencia a Issues (Change Management)
+
+**Todo PR deve referenciar uma issue documentada** usando uma palavra-chave formal de fechamento do GitHub (`Closes #N`, `Fixes #N` ou `Resolves #N`) no corpo do PR. O CI (job `issue-check` no `ci.yml`) verifica automaticamente e bloqueia PRs sem referencia formal. Referencias soltas (`#N`) nao sao aceitas.
+
+**Escape hatch:** Para PRs de infraestrutura ou CI que genuinamente nao requerem uma issue (ex.: bump trivial de dependencia, ajuste de formatacao de workflow), use uma das opcoes:
+- Aplique a label **`skip-issue`** ao PR, **ou**
+- Marque o checkbox **`[x] skip-issue`** no corpo do PR.
+
+**Governanca:** O uso de qualquer escape hatch (`skip-issue` ou `skip-wiki`) requer **aprovacao formal do Code Owner** (`@1011DigitalHub`) antes do merge. Esta regra e aplicada via `CODEOWNERS` + branch protection com "Require review from Code Owners".
+
 ---
 
 ## Commits
