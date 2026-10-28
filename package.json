@@ -37,8 +37,8 @@
     "cpd": "jscpd apps/"
   },
   "devDependencies": {
-    "jscpd": "^5.4.1",
-    "knip": "^6.41.0",
+    "jscpd": "^5.4.2",
+    "knip": "^6.43.0",
     "lint-staged": "^17.6.0",
     "simple-git-hooks": "^2.14.0"
   },
