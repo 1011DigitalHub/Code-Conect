@@ -16,3 +16,6 @@ overrides:
   # ships in the production build). Remove once vite/postcss bump it
   # themselves and re-run `pnpm audit`.
   source-map-js: ^1.2.2
+  # Transitive dep of @nestjs/platform-express — DoS via pending
+  # fileFilter. Remove once NestJS bumps express/multer internally.
+  multer: ^2.5.0
